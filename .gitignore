@@ -32,3 +32,12 @@ runs/
 wandb/
 *.log
 thermal_soak.csv
+
+# --- generated viewer scenes (binary terrain bundles, regenerate with export_terrain) ---
+viewer/scenes/*/
+viewer/scenes/index.json
+*.bin
+
+# --- inference outputs & HF cache ---
+out/
+.hf/

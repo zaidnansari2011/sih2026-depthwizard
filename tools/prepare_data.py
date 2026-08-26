@@ -50,30 +50,50 @@ def _read_tif(path: Path) -> np.ndarray:
 
 # --------------------------------------------------------------------------- extract
 
+def _looks_like_dfc(zf: zipfile.ZipFile) -> int:
+    """Count members that match our tile naming. Zero means this is somebody else's zip."""
+    return sum(1 for n in zf.namelist() if TILE_RE.match(Path(n).stem))
+
+
 def cmd_extract(args):
-    search = [RAW, Path(args.also)] if args.also else [RAW]
-    archives = []
-    for d in search:
-        if d.exists():
-            archives += sorted(d.glob("*.zip"))
-    if not archives:
-        sys.exit(f"No .zip found in {[str(d) for d in search]}")
+    if args.archives:
+        archives = [Path(a) for a in args.archives]
+        missing = [a for a in archives if not a.exists()]
+        if missing:
+            sys.exit(f"not found: {missing}")
+    else:
+        search = [RAW, Path(args.also)] if args.also else [RAW]
+        archives = []
+        for d in search:
+            if d.exists():
+                archives += sorted(d.glob("*.zip"))
+        if not archives:
+            sys.exit(f"No .zip found in {[str(d) for d in search]}")
 
     EXTRACTED.mkdir(parents=True, exist_ok=True)
+    total = 0
     for z in archives:
         gb = z.stat().st_size / 1e9
-        print(f"\n{z.name}  ({gb:.2f} GB)")
         with zipfile.ZipFile(z) as zf:
             members = zf.namelist()
-            print(f"  {len(members)} members; first few: {members[:3]}")
+            n_match = _looks_like_dfc(zf)
+            # A downloads folder holds all sorts of things. Only unpack archives that
+            # actually contain DFC tiles, or a stray fonts.zip ends up in data/extracted
+            # and every later stage has to reason about it.
+            if not n_match and not args.force:
+                print(f"\n{z.name}  ({gb:.2f} GB)  -- skipped, no DFC tiles inside")
+                continue
+            print(f"\n{z.name}  ({gb:.2f} GB)")
+            print(f"  {len(members)} members, {n_match} recognised tiles; e.g. {members[1:3]}")
             if args.dry_run:
                 continue
             zf.extractall(EXTRACTED)
+            total += n_match
         print(f"  -> {EXTRACTED}")
 
     if not args.dry_run:
         tifs = list(EXTRACTED.rglob("*.tif"))
-        print(f"\nextracted {len(tifs)} .tif files")
+        print(f"\nextracted {len(tifs)} .tif files ({total} recognised this run)")
 
 
 # ----------------------------------------------------------------------------- probe
@@ -107,9 +127,13 @@ def cmd_probe(args):
     if len(regions) > 12:
         print(f"    ... and {len(regions) - 12} more")
 
-    # Measure, don't assume.
-    sample = sorted(paired)[: args.sample]
+    # Measure, don't assume. Sample across the whole set rather than the first N, or we
+    # would characterise one city and call it the dataset.
+    ordered = sorted(paired)
+    step = max(1, len(ordered) // max(1, args.sample))
+    sample = ordered[::step][: args.sample]
     shapes, dtypes, mins, maxs, void_candidates = set(), set(), [], [], defaultdict(int)
+    gsds, crs_set, pooled, cls_heights = set(), set(), [], defaultdict(list)
     for t in sample:
         rgb = _read_tif(paired[t]["RGB"])
         agl = _read_tif(paired[t]["AGL"]).astype(np.float64)
@@ -119,6 +143,7 @@ def cmd_probe(args):
         if finite.size:
             mins.append(float(finite.min()))
             maxs.append(float(finite.max()))
+            pooled.append(finite[::37])          # thin, so 24 tiles stay cheap to pool
         # Void sentinels show up as repeated extreme values or NaN.
         if np.isnan(agl).any():
             void_candidates["nan"] += 1
@@ -126,14 +151,48 @@ def cmd_probe(args):
             frac = float((agl == sentinel).mean())
             if frac > 0.01:
                 void_candidates[str(sentinel)] += 1
+        # Georeferencing: the ground sample distance decides whether any measurement in
+        # the viewer is in metres or in pixels, so read it rather than trusting "30 cm".
+        try:
+            import rasterio
+            with rasterio.open(paired[t]["AGL"]) as src:
+                if src.transform:
+                    gsds.add(round(abs(src.transform.a), 4))
+                crs_set.add(str(src.crs))
+        except Exception:
+            pass
+        if "CLS" in paired[t]:
+            cls = _read_tif(paired[t]["CLS"])
+            for code, name in CLS_NAMES.items():
+                sel = (cls == code) & np.isfinite(agl)
+                if sel.sum() > 500:
+                    cls_heights[name].append(agl[sel][::17])
 
-    print(f"\nsampled {len(sample)} tiles")
+    print(f"\nsampled {len(sample)} tiles (every {step}th, spread across the set)")
     print(f"  shapes (rgb, agl) : {shapes}")
     print(f"  dtypes (rgb, agl) : {dtypes}")
+    print(f"  CRS               : {crs_set or 'none'}")
+    print(f"  GSD (m/px)        : {sorted(gsds) or 'no transform'}")
     if mins:
         print(f"  AGL min  : {min(mins):.2f} m   (per-tile min, range {min(mins):.1f}..{max(mins):.1f})")
         print(f"  AGL max  : {max(maxs):.2f} m   (per-tile max, range {min(maxs):.1f}..{max(maxs):.1f})")
-    print(f"  void candidates (>1% of pixels, or NaN present): {dict(void_candidates) or 'none detected'}")
+
+    pcts = {}
+    if pooled:
+        allh = np.concatenate(pooled)
+        for q in (1, 5, 25, 50, 75, 90, 95, 99, 99.9):
+            pcts[f"p{q}"] = float(np.percentile(allh, q))
+        print(f"\n  pooled height distribution over {allh.size:,} pixels:")
+        print("    " + "  ".join(f"p{q}={pcts[f'p{q}']:.1f}" for q in (1, 25, 50, 75, 95, 99, 99.9)))
+        print(f"    mean {allh.mean():.2f} m   std {allh.std():.2f} m")
+
+    if cls_heights:
+        print("\n  height by semantic class:")
+        for name, chunks in cls_heights.items():
+            v = np.concatenate(chunks)
+            print(f"    {name:12s} median {np.median(v):7.2f} m   p95 {np.percentile(v, 95):7.2f} m   n={v.size:,}")
+
+    print(f"\n  void candidates (>1% of pixels, or NaN present): {dict(void_candidates) or 'none detected'}")
 
     void = args.void
     if void is None:
@@ -145,15 +204,23 @@ def cmd_probe(args):
     print(f"\n  -> void value taken as: {void}")
     print("     (override with --void if this looks wrong; 0 is ambiguous, it is a legal height)")
 
+    is_nan_void = bool(void is not None and isinstance(void, float) and np.isnan(void))
     SHARDS.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps({
         "n_tiles": len(paired),
+        "n_regions": len(regions),
         "regions": {r: sorted(v) for r, v in regions.items()},
         "shapes": [list(map(list, s)) for s in shapes],
+        "crs": sorted(crs_set),
+        "gsd_m": sorted(gsds),
         "agl_min": min(mins) if mins else None,
         "agl_max": max(maxs) if maxs else None,
-        "void": None if void is None or (isinstance(void, float) and np.isnan(void)) else void,
-        "void_is_nan": isinstance(void, float) and np.isnan(void),
+        # train.py reads agl_p95 to set the output scale. Using the max instead would
+        # tie the scale to a single tall structure and squash everything else.
+        "agl_p95": pcts.get("p95"),
+        "agl_percentiles": pcts,
+        "void": None if void is None or is_nan_void else float(void),
+        "void_is_nan": is_nan_void,
     }, indent=2))
     print(f"\nwrote {REPORT}")
 
@@ -194,6 +261,15 @@ def cmd_shard(args):
     for t in sorted(paired):
         buckets[assign[t.rsplit("_", 1)[0]]].append(t)
 
+    # Shuffle tile order before cutting. Shards are the unit of shuffling at train time
+    # (see depthwizard/dataset.py), so a shard filled from consecutive tiles would be
+    # one neighbourhood of one city -- batches drawn from it would be near-duplicates
+    # and the gradient estimate correspondingly poor. Shuffling here means each shard
+    # spans ~32 tiles sampled from across the split.
+    rng = np.random.default_rng(args.seed)
+    for ids in buckets.values():
+        rng.shuffle(ids)
+
     SHARDS.mkdir(parents=True, exist_ok=True)
     (SHARDS / "split.json").write_text(json.dumps(assign, indent=2))
 
@@ -209,13 +285,14 @@ def cmd_shard(args):
             if not rgb_buf:
                 return
             out = SHARDS / f"{split}_{shard_i:04d}.npz"
+            perm = rng.permutation(len(rgb_buf))                  # decorrelate within shard too
             payload = {
-                "rgb": np.stack(rgb_buf),                        # uint8  N,C,C,3
-                "agl": np.stack(agl_buf).astype(np.float16),     # float16 N,C,C
-                "tile": np.array(ids),
+                "rgb": np.stack(rgb_buf)[perm],                  # uint8  N,C,C,3
+                "agl": np.stack(agl_buf).astype(np.float16)[perm],  # float16 N,C,C
+                "tile": np.array(ids)[perm],
             }
             if cls_buf:
-                payload["cls"] = np.stack(cls_buf)               # uint8 N,C,C
+                payload["cls"] = np.stack(cls_buf)[perm]         # uint8 N,C,C
             np.savez_compressed(out, **payload)
             written += len(rgb_buf)
             print(f"  {out.name}  {len(rgb_buf)} crops  {out.stat().st_size/1e6:.1f} MB")
@@ -230,7 +307,15 @@ def cmd_shard(args):
             if rgb.ndim == 3 and rgb.shape[2] > 3:
                 rgb = rgb[:, :, :3]
 
-            invalid = np.isnan(agl) if void_is_nan else (agl == void) if void is not None else np.zeros_like(agl, bool)
+            # Non-finite is always invalid, whatever the probe concluded about sentinels.
+            # Measured on DFC2019: only ~3% of tiles contain any NaN and then under
+            # 0.005% of their pixels, so this costs us essentially no data -- but a
+            # single NaN reaching an MSE would take the whole run's gradient with it.
+            invalid = ~np.isfinite(agl)
+            if void is not None:
+                invalid |= (agl == void)
+            # Implausible heights are void in disguise. Measured range is -3 to 204 m.
+            invalid |= (agl < -10.0) | (agl > 400.0)
             h, w = agl.shape
             for y in range(0, h - C + 1, S):
                 for x in range(0, w - C + 1, S):
@@ -261,7 +346,9 @@ def main():
     sub = ap.add_subparsers(dest="cmd", required=True)
 
     e = sub.add_parser("extract", help="unzip archives into data/extracted")
+    e.add_argument("archives", nargs="*", help="explicit .zip paths (preferred)")
     e.add_argument("--also", help="extra directory to scan for zips, e.g. D:\\Downloads")
+    e.add_argument("--force", action="store_true", help="extract even if no DFC tiles are recognised")
     e.add_argument("--dry-run", action="store_true", help="list archive contents without extracting")
     e.set_defaults(func=cmd_extract)
 
@@ -271,9 +358,16 @@ def main():
     p.set_defaults(func=cmd_probe)
 
     s = sub.add_parser("shard", help="cut crops into npz shards")
-    s.add_argument("--crop", type=int, default=256)
-    s.add_argument("--stride", type=int, default=256, help="256 = non-overlapping")
-    s.add_argument("--per-shard", type=int, default=512)
+    # 518 is DA-V2's native training resolution AND a multiple of its patch size 14.
+    # 256 is neither: the head computes patch_h = H // 14, so a 256 input returns 252
+    # with no warning. Cropping at 518 also means the ground truth is never resampled,
+    # so no interpolation error is baked into the labels.
+    # 1024 = 506 + 518, so stride 506 tiles a 1024 tile exactly 2x2 with 12 px overlap.
+    s.add_argument("--crop", type=int, default=518)
+    s.add_argument("--stride", type=int, default=506, help="506 tiles a 1024 tile 2x2")
+    # 128 crops at 518x518 is ~200 MB uncompressed -- small enough that the training
+    # loader can hold two in RAM for shuffling without the process ballooning.
+    s.add_argument("--per-shard", type=int, default=128)
     s.add_argument("--max-void", type=float, default=0.30, help="drop crops with more void than this")
     s.add_argument("--max-tiles", type=int, default=0, help="cap tiles per split (0 = all); use a small value for a week-1 smoke run")
     s.add_argument("--seed", type=int, default=1337)
