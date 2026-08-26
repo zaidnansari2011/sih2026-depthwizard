@@ -64,9 +64,15 @@ class GaussianNLLLoss(nn.Module):
             loss_map = sq_err
         else:
             inv_var = torch.exp(-log_var)
-            if self.beta > 0:
-                inv_var = inv_var * (inv_var.detach() ** -self.beta)
             loss_map = 0.5 * (log_var + sq_err * inv_var)
+            if self.beta > 0:
+                # beta-NLL, Seitzer et al. 2022: weight each pixel's NLL by
+                # stopgrad(sigma^2)^beta. The weight covers the WHOLE term, not just
+                # the residual. At beta=1 it cancels the 1/sigma^2 so the mean head's
+                # gradient stops depending on sigma -- which is the point: plain NLL
+                # lets mu abandon noisy regions, because down-weighting them is
+                # cheaper than fitting them.
+                loss_map = loss_map * torch.exp(log_var.detach() * self.beta)
 
         if mask is not None:
             n = mask.sum().clamp(min=1.0)
