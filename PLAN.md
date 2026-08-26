@@ -57,6 +57,34 @@ Corollary: *never* let the viewer become the last night's work.
 - Checkpoint every epoch — 12 h session cuts are routine, not exceptional.
 - Verify Azure GPU quota in week 1: student subscriptions default N-series quota to 0 and cap vCPUs. If blocked, nothing is lost — training was always local.
 
+### Measured throughput and thermals, 26 Aug 2026
+
+| Batch | ms/step | crops/s | Peak VRAM |
+|---|---|---|---|
+| 4 | 174 | 23.0 | 2.21 GB |
+| **8** | **327** | **24.5** | **6.01 GB** |
+| 12 | 469 | 25.6 | 7.57 GB |
+
+Throughput plateaus around **25 crops/s**, so batch 8 — the Depth Any Canopy setting — is
+also the efficient one, and 12 GB is not the binding constraint. **Heat is.**
+
+**The card runs at its thermal limit long before it runs out of memory.** Unregulated, the
+3060 reached **91 °C in under ten minutes** and down-clocked itself from 1875 to
+**1492 MHz** — so the "full speed" run was not faster, just hotter. `nvidia-smi -pl` is the
+clean fix but needs an administrator shell (`Insufficient Permissions` otherwise), so
+`train.py` carries a software `ThermalGovernor`: sample every N steps, pause proportional
+to overshoot, hard-stop above a ceiling until it cools.
+
+Running settings: `--max-temp 82 --temp-gain 0.6 --temp-ceiling 87`. That holds peaks at
+87–88 °C with clocks at **1822 MHz — no throttling** — versus 1492 MHz at 91 °C. Tighter
+targets (78/84) are gentler but cost roughly 30% throughput to a ~50% duty cycle, because
+the card reheats within about three seconds of resuming work.
+
+> **User-side action worth taking:** MSI Afterburner is already installed. A more
+> aggressive fan curve would let training run *both* faster and cooler than software
+> pausing can, and running one shell as administrator would allow a proper 120 W power
+> limit. Either beats duty-cycling.
+
 ## 5. Method
 
 Three stages. Only the middle is genuinely novel work.
