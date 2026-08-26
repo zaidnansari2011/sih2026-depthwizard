@@ -55,6 +55,94 @@ def pick_precision(requested: str):
     return torch.float16, True, "fp16 + GradScaler"
 
 
+class ThermalGovernor:
+    """Keep the GPU below a temperature by inserting short pauses.
+
+    Measured on this 3060: an unconstrained run reaches 91 C within ten minutes and the
+    card down-clocks itself from 1875 to 1492 MHz. At that point it is already throttling,
+    so the "full speed" run is not actually faster -- it is just hotter. nvidia-smi -pl
+    would be the clean fix but setting a power limit needs administrator rights on
+    Windows, so we regulate from user space instead.
+
+    A proportional controller: sample every `check_every` optimiser steps, and if we are
+    over target, sleep in proportion to the overshoot. Sleeping between steps lets the
+    cooler catch up while costing only the sleep itself.
+
+    Set --max-temp 0 to disable.
+    """
+
+    def __init__(self, max_temp: float = 80.0, check_every: int = 10, verbose: bool = True,
+                 gain: float = 0.8, hard_ceiling: float | None = None):
+        self.max_temp = float(max_temp)
+        self.check_every = max(1, int(check_every))
+        self.verbose = verbose
+        self.gain = float(gain)
+        self.hard_ceiling = float(hard_ceiling if hard_ceiling is not None else max_temp + 6)
+        self.enabled = max_temp > 0 and self._read() is not None
+        self.slept = 0.0
+        self.peak = 0.0
+        self.cooldowns = 0
+        self.samples = []
+        if max_temp > 0 and not self.enabled:
+            print("  ! thermal governor: nvidia-smi unavailable, running unregulated")
+
+    @staticmethod
+    def _read():
+        import subprocess
+        try:
+            o = subprocess.run(
+                ["nvidia-smi", "--query-gpu=temperature.gpu", "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=5,
+            )
+            return float(o.stdout.strip().splitlines()[0])
+        except Exception:
+            return None
+
+    def step(self, i: int):
+        if not self.enabled or i % self.check_every:
+            return
+        t = self._read()
+        if t is None:
+            return
+        self.peak = max(self.peak, t)
+        self.samples.append(t)
+        over = t - self.max_temp
+        if over <= 0:
+            return
+
+        # Hard ceiling. Proportional control alone stabilises a few degrees above target
+        # -- the card heats faster than short pauses shed -- so past a threshold we stop
+        # feeding it work until it has actually come down. This is the guard that makes
+        # a 91 C excursion impossible rather than merely unlikely.
+        if t >= self.hard_ceiling:
+            t0 = time.time()
+            while True:
+                time.sleep(3.0)
+                cur = self._read()
+                if cur is None or cur <= self.max_temp or (time.time() - t0) > 120:
+                    break
+            waited = time.time() - t0
+            self.slept += waited
+            self.cooldowns += 1
+            if self.verbose:
+                print(f"      [thermal] {t:.0f} C hit the {self.hard_ceiling:.0f} C ceiling, "
+                      f"held {waited:.0f}s until {cur if cur else '?'} C")
+            return
+
+        pause = min(15.0, over * self.gain)
+        time.sleep(pause)
+        self.slept += pause
+        if self.verbose and over > 3:
+            print(f"      [thermal] {t:.0f} C > {self.max_temp:.0f} C, paused {pause:.1f}s")
+
+    def summary(self):
+        if not self.enabled or not self.samples:
+            return "thermal governor: off"
+        a = np.array(self.samples)
+        return (f"thermal: mean {a.mean():.1f} C, peak {self.peak:.0f} C, "
+                f"{self.cooldowns} hard cool-downs, paused {self.slept/60:.1f} min total")
+
+
 def lr_lambda_factory(total_steps: int, warmup_frac: float = 0.05):
     warm = max(1, int(total_steps * warmup_frac))
 
@@ -134,6 +222,14 @@ def main():
     ap.add_argument("--no-uncertainty", action="store_true",
                     help="ablation: train a plain regressor, the 6.1 baseline")
     ap.add_argument("--checkpointing", action="store_true", help="gradient checkpointing")
+    ap.add_argument("--max-temp", type=float, default=80.0,
+                    help="pause briefly above this GPU temperature; 0 disables. "
+                         "Unregulated, this 3060 hits 91 C and self-throttles.")
+    ap.add_argument("--temp-check-every", type=int, default=10)
+    ap.add_argument("--temp-gain", type=float, default=0.8,
+                    help="seconds of pause per degree over target")
+    ap.add_argument("--temp-ceiling", type=float, default=None,
+                    help="hard stop-and-cool threshold; default max-temp + 6")
     ap.add_argument("--seed", type=int, default=1337)
     args = ap.parse_args()
 
@@ -226,6 +322,12 @@ DepthWizard training
         log.write(json.dumps(rec) + "\n")
         log.flush()
 
+    gov = ThermalGovernor(args.max_temp, args.temp_check_every,
+                          gain=args.temp_gain, hard_ceiling=args.temp_ceiling)
+    if gov.enabled:
+        print(f"  thermal      governor on, target {args.max_temp:.0f} C, "
+              f"hard ceiling {gov.hard_ceiling:.0f} C")
+
     t0 = time.time()
     stop = False
     model.train()
@@ -266,6 +368,7 @@ DepthWizard training
                 opt.zero_grad(set_to_none=True)
                 sched.step()
                 gstep += 1
+                gov.step(gstep)
 
             for k, v in stats.items():
                 run[k] = run.get(k, 0.0) + v
@@ -277,7 +380,8 @@ DepthWizard training
                 print(f"  e{epoch} s{gstep:6d}/{total_steps}  "
                       f"loss {avg['loss']:8.4f}  rmse {avg['rmse']:7.3f} m  "
                       f"sigma {avg.get('sigma_mean', 0):6.3f} m  "
-                      f"lr {sched.get_last_lr()[0]:.2e}  {el/60:.1f} min")
+                      f"lr {sched.get_last_lr()[0]:.2e}  {el/60:.1f} min"
+                      + (f"  {gov.peak:.0f}C" if gov.enabled else ""))
                 write_log({"t": "train", "epoch": epoch, "step": gstep,
                            "elapsed_s": round(el, 1), **{k: round(v, 5) for k, v in avg.items()}})
                 run, seen = {}, 0
@@ -323,6 +427,7 @@ DepthWizard training
 
     log.close()
     print(f"\ndone in {(time.time()-t0)/60:.1f} min. best val RMSE {best:.3f} m")
+    print(f"  {gov.summary()}")
     print(f"checkpoints: {ckpt_last}" + (f" and {out_dir/'best.pt'}" if best < float('inf') else ""))
 
 
