@@ -195,7 +195,27 @@ SOTA reference line: [TSE-Net](https://github.com/zhu-xlab/tse-net) reports on D
 
 ### Domain imagery — Bhoonidhi (Cartosat)
 
-ISRO's own portal, free registration. API access requires emailing `bhoonidhi@nrsc.gov.in` — **lead-time item, send in week 1.**
+ISRO's own portal, free registration. The API is a **STAC** interface (use `pystac-client`), requested via `bhoonidhi@nrsc.gov.in` — **lead-time item, send in week 1.** The API is optional; the *account* is what matters, and browser download works without it.
+
+**Access tiers, per Indian Space Policy 2023 (from the NRSC Bhoonidhi brochure):**
+
+| Data | Tier |
+|---|---|
+| 5 m resolution **and coarser** | Free and open to everyone |
+| **Finer than 5 m** | Free to Government Entities *on declaration*; **priced for Non-Government Entities** |
+| 30 m Carto DSM | Open for GE, priced for NGE |
+
+| Sensor | GSD | Us as an NGE |
+|---|---|---|
+| Cartosat-1 / 2 / 3 | 2.5 → 0.25 m | **priced** |
+| Resourcesat LISS-IV | 5.8 m | **free** |
+| LISS-III / AWiFS | 23.5 / 56 m | free |
+
+LISS-IV is free and genuinely Indian, but at 5.8 m a building spans 2–3 pixels — adequate for terrain relief, weak for building height, and a DSM needs both.
+
+**Worth pursuing:** GEs get finer-than-5 m data free on declaration. SIH is a Government of India initiative under the Ministry of Education, this is an ISRO problem statement, and many Indian engineering colleges are government institutions. Ask Bhoonidhi directly whether that qualifies — worst case is a no.
+
+**Not a blocker either way.** `meanOffNadirViewAngle` spans 4.8°–28.9° across the 67 DFC scenes (§6.2), so we can already measure accuracy degradation vs look angle on data we hold. Cartosat strengthens the domain story; its absence does not sink it.
 
 ### Metric anchor — SRTM 30 m / Copernicus GLO-30
 
