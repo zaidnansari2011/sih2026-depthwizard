@@ -66,9 +66,61 @@ def cosine_window(n: int, overlap: int) -> np.ndarray:
     return w
 
 
+def _d4(x: torch.Tensor, k: int, flip: bool) -> torch.Tensor:
+    if flip:
+        x = torch.flip(x, dims=[3])
+    return torch.rot90(x, k, dims=(2, 3))
+
+
+def _d4_inv(y: torch.Tensor, k: int, flip: bool) -> torch.Tensor:
+    y = torch.rot90(y, -k, dims=(2, 3))
+    if flip:
+        y = torch.flip(y, dims=[3])
+    return y
+
+
+@torch.no_grad()
+def _predict_window(model, t: torch.Tensor, amp_dtype, device: str, tta: bool):
+    """One batch of windows through the model, optionally averaged over the D4 group.
+
+    D4 (four rotations x optional mirror) is exactly valid for nadir height: rotating
+    the scene rotates the height map identically and height is invariant to reflection.
+    It would NOT be valid once a shadow prior is in play, since shadow direction is tied
+    to sun azimuth.
+
+    The uncertainty combination is the interesting part. Averaging the eight sigmas would
+    be wrong twice over. By the law of total variance the correct total is
+
+        Var[h] = E[sigma^2]  +  Var[mu]
+                 \\_ aleatoric _/    \\_ disagreement between the eight views _/
+
+    so TTA does not just sharpen the mean, it *adds* a genuine epistemic term the single
+    forward pass cannot see: where the eight views disagree, the model is unsure in a way
+    its own sigma head never expressed.
+    """
+    variants = [(0, False)] if not tta else [(k, f) for f in (False, True) for k in range(4)]
+    mus, varis = [], []
+    for k, f in variants:
+        with torch.autocast("cuda", dtype=amp_dtype,
+                            enabled=(device == "cuda" and amp_dtype != torch.float32)):
+            mu, log_var = model(_d4(t, k, f))
+        mus.append(_d4_inv(mu.float(), k, f))
+        if log_var is not None:
+            varis.append(_d4_inv(torch.exp(log_var.float().clamp(-20, 20)), k, f))
+
+    mu_stack = torch.stack(mus)
+    mu_mean = mu_stack.mean(0)
+    if not varis:
+        return mu_mean, None
+    total = torch.stack(varis).mean(0)
+    if len(mus) > 1:
+        total = total + mu_stack.var(0, unbiased=False)
+    return mu_mean, total
+
+
 @torch.no_grad()
 def infer_scene(model, rgb: np.ndarray, tile: int, overlap: int, device: str,
-                amp_dtype, batch: int = 4, verbose: bool = True):
+                amp_dtype, batch: int = 4, verbose: bool = True, tta: bool = False):
     H, W = rgb.shape[:2]
     stride = tile - overlap
     ys = list(range(0, max(1, H - tile + 1), stride))
@@ -85,7 +137,8 @@ def infer_scene(model, rgb: np.ndarray, tile: int, overlap: int, device: str,
 
     coords = [(y, x) for y in ys for x in xs]
     if verbose:
-        print(f"  {len(coords)} windows of {tile}px, stride {stride}px")
+        print(f"  {len(coords)} windows of {tile}px, stride {stride}px"
+              + ("  x8 D4 test-time augmentation" if tta else ""))
 
     for i in range(0, len(coords), batch):
         chunk = coords[i: i + batch]
@@ -93,10 +146,9 @@ def infer_scene(model, rgb: np.ndarray, tile: int, overlap: int, device: str,
         crops = (crops - IMAGENET_MEAN) / IMAGENET_STD
         t = torch.from_numpy(crops.transpose(0, 3, 1, 2)).to(device)
 
-        with torch.autocast("cuda", dtype=amp_dtype, enabled=(device == "cuda" and amp_dtype != torch.float32)):
-            mu, log_var = model(t)
-        mu = mu.float().cpu().numpy()[:, 0]
-        var = np.exp(log_var.float().cpu().numpy()[:, 0]) if log_var is not None else None
+        mu_t, var_t = _predict_window(model, t, amp_dtype, device, tta)
+        mu = mu_t.cpu().numpy()[:, 0]
+        var = var_t.cpu().numpy()[:, 0] if var_t is not None else None
 
         for j, (y, x) in enumerate(chunk):
             acc_mu[y:y + tile, x:x + tile] += mu[j] * taper
@@ -142,6 +194,9 @@ def main():
     ap.add_argument("--tile", type=int, default=518, help="must be a multiple of 14")
     ap.add_argument("--overlap", type=int, default=140)
     ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--tta", action="store_true",
+                    help="average over the 8 D4 transforms. ~8x slower, and it adds a "
+                         "genuine epistemic term to sigma via the law of total variance.")
     ap.add_argument("--height-scale", type=float, default=None)
     ap.add_argument("--precision", default="auto", choices=["auto", "bf16", "fp16", "fp32"])
     ap.add_argument("--truth", default=None, help="AGL GeoTIFF; if given, score the result")
@@ -179,7 +234,8 @@ def main():
     print(f"{Path(args.image).name}  {rgb.shape[1]} x {rgb.shape[0]}  |  {prec}  |  {device}")
 
     t0 = time.time()
-    height, sigma = infer_scene(model, rgb, args.tile, args.overlap, device, amp_dtype, args.batch)
+    height, sigma = infer_scene(model, rgb, args.tile, args.overlap, device, amp_dtype,
+                                args.batch, tta=args.tta)
     dt = time.time() - t0
 
     out = Path(args.out)
@@ -195,7 +251,7 @@ def main():
         print(f"  sigma  {sigma.min():.2f} .. {sigma.max():.2f}  mean {sigma.mean():.2f}")
 
     summary = {
-        "image": str(args.image), "ckpt": args.ckpt, "zero_shot": args.ckpt is None,
+        "image": str(args.image), "ckpt": args.ckpt, "zero_shot": args.ckpt is None, "tta": args.tta,
         "seconds": round(dt, 3), "mpx_per_s": round(px / dt / 1e6, 3),
         "height_min": float(height.min()), "height_max": float(height.max()),
         "height_mean": float(height.mean()),
