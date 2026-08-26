@@ -27,12 +27,32 @@ import sys
 import time
 from pathlib import Path
 
+# Windows consoles default to cp1252, and torch.onnx prints status lines containing
+# emoji. That raises UnicodeEncodeError *after* a successful export, which reads exactly
+# like a failed export. Force UTF-8 before anything can print.
+if sys.platform == "win32":
+    for _s in (sys.stdout, sys.stderr):
+        try:
+            _s.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
 import numpy as np
 import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from depthwizard.model import build, PATCH  # noqa: E402
+
+
+def _has_external(path: Path) -> bool:
+    """True if the graph stores any tensor outside the .onnx file."""
+    try:
+        import onnx
+        m = onnx.load(str(path), load_external_data=False)
+        return any(i.data_location == onnx.TensorProto.EXTERNAL for i in m.graph.initializer)
+    except Exception:
+        return False
 
 
 class ExportWrapper(torch.nn.Module):
@@ -61,7 +81,9 @@ def main():
     ap.add_argument("--ckpt", required=True)
     ap.add_argument("--out", default="out/depthwizard.onnx")
     ap.add_argument("--size", type=int, default=518, help="tracing size; must be a multiple of 14")
-    ap.add_argument("--opset", type=int, default=17)
+    ap.add_argument("--opset", type=int, default=18,
+                    help="18 is the lowest torch implements natively; 17 forces a "
+                         "conversion pass that may not succeed")
     ap.add_argument("--quantize", action="store_true", help="also write an int8 dynamic-quantised copy")
     ap.add_argument("--tolerance", type=float, default=0.05, help="max allowed divergence, metres")
     args = ap.parse_args()
@@ -90,8 +112,21 @@ def main():
                       "sigma_m": {0: "batch", 2: "height", 3: "width"}},
         opset_version=args.opset, do_constant_folding=True,
     )
+    # torch.onnx.export writes tensors over 1 MB to a sidecar .onnx.data file by
+    # default. That silently breaks the entire deployability claim: the .onnx is a
+    # 1.8 MB stub that is useless without a 95 MB companion, so "one file, no Python,
+    # no CUDA" would have been false. Inline everything back into a single file.
+    sidecar = out.with_suffix(out.suffix + ".data")
+    if sidecar.exists() or _has_external(out):
+        import onnx
+        m = onnx.load(str(out))                       # pulls the sidecar in
+        onnx.save(m, str(out), save_as_external_data=False)
+        if sidecar.exists():
+            sidecar.unlink()
+        print("  inlined external weights into a single file")
+
     mb = out.stat().st_size / 1e6
-    print(f"  wrote {out}  ({mb:.1f} MB)")
+    print(f"  wrote {out}  ({mb:.1f} MB, self-contained)")
 
     # ------------------------------------------------------------------ verify
     try:
@@ -115,12 +150,19 @@ def main():
     print(f"    -> {'PASS' if ok else 'FAIL'} against a {args.tolerance*100:.0f} cm tolerance")
 
     # A different input size proves the dynamic axes are real rather than nominal.
+    # They frequently are not: DINOv2 interpolates its position embeddings from the
+    # input resolution, and the exporter bakes that interpolation at the traced size.
     alt = args.size + PATCH * 2
     try:
         alt_out = sess.run(None, {"image": torch.randn(1, 3, alt, alt).numpy()})
         print(f"    dynamic shape {alt}x{alt}: OK, returned {alt_out[0].shape}")
+        dynamic_ok = True
     except Exception as e:
-        print(f"    dynamic shape {alt}x{alt}: FAILED -- {str(e)[:120]}")
+        dynamic_ok = False
+        print(f"    dynamic shape {alt}x{alt}: NOT SUPPORTED -- {str(e)[:90]}")
+        print(f"    -> this export is FIXED at {args.size}x{args.size}. That is acceptable for us,")
+        print("       because inference is sliding-window at exactly this size (infer.py), but")
+        print("       it must be stated rather than implied by the dynamic_axes argument.")
 
     t0 = time.time()
     n = 3
@@ -138,7 +180,12 @@ def main():
             print("\n  ! quantization tools unavailable; skipping int8")
             return
         q = out.with_name(out.stem + ".int8.onnx")
-        quantize_dynamic(str(out), str(q), weight_type=QuantType.QInt8)
+        # MatMul only. Quantising Conv emits ConvInteger, which this ONNX Runtime CPU
+        # build has no kernel for -- the file writes successfully and then fails to
+        # load, which is the worst kind of artefact to ship. A ViT's parameters live
+        # overwhelmingly in MatMul anyway, so little is lost.
+        quantize_dynamic(str(out), str(q), weight_type=QuantType.QInt8,
+                         op_types_to_quantize=["MatMul"])
         qmb = q.stat().st_size / 1e6
         qs = ort.InferenceSession(str(q), providers=["CPUExecutionProvider"])
         q_mu, q_sg = qs.run(None, {"image": dummy.numpy()})
