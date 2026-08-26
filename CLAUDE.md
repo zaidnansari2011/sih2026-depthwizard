@@ -32,6 +32,12 @@ buildings are ~13% and carry over 90% of the squared error. Report per-class err
 and share-of-squared-error alongside any headline figure. Oracle-affine numbers are
 not deployable and must never be presented as results.
 
+Development metrics come from `--split val`. The three evaluation protocols in use,
+and the ~1.5 m offset between crop-wise and whole-tile scoring of the *same*
+checkpoint, are tabulated in [docs/evaluation-protocol.md](docs/evaluation-protocol.md).
+The test split has already been spent twice; do not score it again until the final
+reported number.
+
 ## Never change GPU settings while a CUDA job is running
 
 Applying MSI Afterburner settings resets the driver and invalidates live CUDA
