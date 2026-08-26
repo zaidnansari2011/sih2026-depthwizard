@@ -143,6 +143,26 @@ class ThermalGovernor:
                 f"{self.cooldowns} hard cool-downs, paused {self.slept/60:.1f} min total")
 
 
+def _ram() -> str:
+    """Report host memory. The first long run died to an OOM with no traceback, so the
+    number that made it possible belongs in the run header."""
+    try:
+        import ctypes
+
+        class S(ctypes.Structure):
+            _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong), ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong), ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong), ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+        st = S()
+        st.dwLength = ctypes.sizeof(S)
+        ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st))
+        return f"{st.ullTotalPhys/2**30:.1f} GB total, {st.ullAvailPhys/2**30:.1f} GB free"
+    except Exception:
+        return "unknown"
+
+
 def lr_lambda_factory(total_steps: int, warmup_frac: float = 0.05):
     warm = max(1, int(total_steps * warmup_frac))
 
@@ -155,10 +175,25 @@ def lr_lambda_factory(total_steps: int, warmup_frac: float = 0.05):
 
 
 @torch.no_grad()
-def evaluate(model, loader, device, amp_dtype, max_batches=0, height_scale=1.0):
-    """Full evaluation: the accuracy numbers ISRO scores, plus calibration of sigma."""
+def evaluate(model, loader, device, amp_dtype, max_batches=0, height_scale=1.0,
+             max_pixels: int = 20_000_000):
+    """Full evaluation: the accuracy numbers ISRO scores, plus calibration of sigma.
+
+    Subsampling is not optional here. At 518x518, 80 batches of 8 is ~171 M valid pixels;
+    holding those as float32 predictions, targets and sigmas plus an int64 class map is
+    about 3.4 GB, and np.concatenate briefly doubles it. On a 16 GB machine already
+    running four dataloader workers, that is an out-of-memory kill with no traceback --
+    which is exactly how the first 12-epoch run died, silently, entering its first
+    validation.
+
+    So: thin each batch to fit a pixel budget, and keep classes as uint8 rather than the
+    int64 the collate produces. Metrics over 20 M pixels are indistinguishable from
+    metrics over 171 M, and they fit.
+    """
     model.eval()
     P, T, S, C = [], [], [], []
+    n_batches = max_batches if max_batches else len(getattr(loader, "dataset", []) or [1])
+    per_batch = max(1, max_pixels // max(1, n_batches))
     for i, b in enumerate(loader):
         if max_batches and i >= max_batches:
             break
@@ -167,12 +202,16 @@ def evaluate(model, loader, device, amp_dtype, max_batches=0, height_scale=1.0):
             mu, log_var = model(rgb)
         mu = mu.float().cpu()
         m = b["mask"].bool()
-        P.append(mu[m].numpy())
-        T.append(b["agl"][m].numpy())
+        n_valid = int(m.sum())
+        stride = max(1, n_valid // per_batch)
+
+        P.append(mu[m].numpy()[::stride].astype(np.float32))
+        T.append(b["agl"][m].numpy()[::stride].astype(np.float32))
         if log_var is not None:
-            S.append(torch.exp(0.5 * log_var.float().cpu())[m].numpy())
+            S.append(torch.exp(0.5 * log_var.float().cpu())[m].numpy()[::stride].astype(np.float32))
         if "cls" in b:
-            C.append(b["cls"][m].numpy())
+            C.append(b["cls"][m].numpy()[::stride].astype(np.uint8))
+        del mu, log_var, rgb
     model.train()
     if not P:
         return {}
@@ -255,7 +294,12 @@ def main():
     aug = Augment()
     train_ds = ShardStream(shard_dir, "train", augment=aug,
                            buffer_shards=args.buffer_shards, seed=args.seed)
-    val_ds = HeightShardDataset(shard_dir, "val", augment=None, return_cls=True)
+    # cache_shards=1: validation sweeps sequentially, so a single cached shard already
+    # gives a ~100% hit rate, and each 518x518 shard is ~200 MB decompressed. Caching two
+    # buys nothing and competes for RAM with the training workers, which stay alive
+    # through validation because persistent_workers is on.
+    val_ds = HeightShardDataset(shard_dir, "val", augment=None, return_cls=True,
+                                cache_shards=1)
     train_ld = DataLoader(train_ds, batch_size=args.batch, num_workers=args.workers,
                           pin_memory=(device == "cuda"), drop_last=True,
                           persistent_workers=args.workers > 0)
@@ -313,6 +357,7 @@ DepthWizard training
   train rows    {n_train:,}  ->  {steps_per_epoch:,} steps/epoch
   total steps   {total_steps:,}  ({args.epochs} epochs, accum {args.accum})
   objective     NLL + {args.grad_weight} * gradient-matching, {args.warmup_mse} MSE warmup steps
+  host RAM      {_ram()}
 """.rstrip())
 
     log_path = out_dir / "train_log.jsonl"
