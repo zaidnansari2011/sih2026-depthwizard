@@ -1,0 +1,34 @@
+# --- secrets: never commit ---
+kaggle.json
+access_token
+*.pem
+*.key
+.env
+.env.*
+secrets/
+
+# --- data & weights (live outside the repo, but be defensive) ---
+data/
+*.zip
+*.tif
+*.tiff
+*.npy
+*.npz
+checkpoints/
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+
+# --- env ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# --- run artifacts ---
+runs/
+wandb/
+*.log
+thermal_soak.csv

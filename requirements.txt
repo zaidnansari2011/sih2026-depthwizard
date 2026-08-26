@@ -1,0 +1,26 @@
+# install torch separately -- CUDA build must match the driver:
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+torch>=2.4
+torchvision>=0.19
+
+# geospatial
+rasterio>=1.3        # GeoTIFF read/write, CRS, transforms
+pyproj>=3.6
+
+# core
+numpy>=1.24
+pillow>=10.0
+pyyaml>=6.0
+tqdm>=4.66
+
+# metrics / analysis
+scipy>=1.11
+matplotlib>=3.8
+pandas>=2.0
+
+# model zoo
+timm>=1.0
+huggingface-hub>=0.24
+
+# packaging for kaggle sync
+kaggle>=1.7
