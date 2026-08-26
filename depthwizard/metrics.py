@@ -20,7 +20,17 @@ from dataclasses import dataclass, asdict, field
 import numpy as np
 
 # DFC2019 Track 1 semantic classes.
+#
+# Measured distribution over 60 random tiles (62.9 M pixels):
+#   2  ground      66.3%    5  vegetation  13.2%    6  building  15.8%
+#   9  water        2.4%   17  bridge       1.2%   65  unlabeled  1.1%
+#
+# Class 65 is the DFC "unlabeled" code. Its heights are finite and valid, so those
+# pixels stay in the regression -- they are real surface, just unlabelled. They are
+# deliberately absent from CLS_NAMES so they never appear in a per-class breakdown as
+# a category, which would be reporting a label that does not exist.
 CLS_GROUND, CLS_VEG, CLS_BUILDING, CLS_WATER, CLS_BRIDGE = 2, 5, 6, 9, 17
+CLS_UNLABELED = 65
 CLS_NAMES = {
     CLS_GROUND: "ground",
     CLS_VEG: "vegetation",

@@ -65,7 +65,32 @@ Three stages. Only the middle is genuinely novel work.
 
 Depth Anything V2 (DINOv2 encoder + DPT decoder) producing a scale-free depth map.
 
-> **This is NOT zero-shot.** The team brief's claim that "the weights already exist, we train nothing" is wrong, and it is the plan's one load-bearing wrong assumption. DA-V2 degrades badly at nadir: at pitch ≈ -90° there are no horizon cues, and it overestimates tree height from straight down. Its priors are natural photographs with a ground plane and a vanishing point. A satellite tile has neither. Run zero-shot it correlates with rooftop albedo, not height.
+> **This is NOT zero-shot.** The team brief's claim that "the weights already exist, we train nothing" is wrong, and it is the plan's one load-bearing wrong assumption. DA-V2 was trained on natural photographs with a ground plane and a vanishing point; a nadir satellite tile has neither.
+
+#### Measured, 26 Aug 2026 — and the earlier wording here was too harsh
+
+This section used to claim that run zero-shot, DA-V2 "correlates with rooftop albedo, not height." That was an assertion, so it got tested: `tools/zero_shot_baseline.py`, DA-V2-Small over **80 held-out test tiles drawn from 16 regions that appear in no training split**.
+
+| | RMSE | MAE | r | bias | Deployable? |
+|---|---|---|---|---|---|
+| Raw output vs metres | 5.50 m | 3.10 m | 0.43 | −1.56 m | units are arbitrary — read *r*, not RMSE |
+| **Global affine** — one scale+shift fitted on *train* tiles | **4.68 m** | 3.32 m | 0.43 | +0.70 m | **yes — this is the bar** |
+| Oracle affine — refitted per test tile from its own truth | 3.94 m | 2.58 m | 0.63 | 0.00 m | no — needs the answer to compute the answer |
+
+**Verdict: the pretrained features do see height at nadir.** r ≈ 0.43 is not albedo, it is signal. What is broken is *calibration*, not perception — and the failure has a specific, diagnosable shape:
+
+| Class | RMSE | Bias | |
+|---|---|---|---|
+| ground | 3.62 m | **+2.53 m** | flat ground pushed *up* |
+| building | 7.60 m | **−3.30 m** | rooftops pulled *down* |
+| vegetation | 5.93 m | −3.57 m | |
+| water | 1.80 m | +0.60 m | |
+
+The model **compresses dynamic range**: it lifts the ground and flattens the structures. That is what a relative-depth prior does when it has no absolute reference, and it is what fine-tuning on metric labels exists to fix. Per terrain: mixed 4.31 m, sparse 5.74 m (bias **+5.16 m**), urban 6.17 m. Per-tile RMSE spans 2.11–8.07 m, so cross-terrain stability is a measured problem, not a hypothetical one (§7.5).
+
+**The fix is smaller than feared, but the need for it is confirmed.** Fine-tuning must beat **4.68 m** and should approach the **3.94 m** oracle. Landing above 4.68 m would mean we did worse than a two-parameter linear correction, and §6.1 would have nothing to stand on.
+
+*The earlier "overestimates tree height" concern did not reproduce: vegetation bias is −3.57 m, an under-estimate. Range compression dominates it.*
 
 **Fix — the [Depth Any Canopy](https://github.com/DarthReca/depth-any-canopy) recipe**, which did exactly this adaptation for canopy height and beat prior SOTA:
 
@@ -193,6 +218,36 @@ Skip all MSI (30 GB) and all of Tracks 2/3/4. Cities: JAX (Jacksonville), OMA (O
 Metrics + baselines: [pubgeo/dfc2019](https://github.com/pubgeo/dfc2019), MIT.
 SOTA reference line: [TSE-Net](https://github.com/zhu-xlab/tse-net) reports on DFC2019.
 
+#### Measured facts — downloaded, extracted and probed 26 Aug 2026
+
+The DFC2019 documentation specifies none of the following, so `tools/prepare_data.py probe` measures them and every later stage reads the report rather than a hardcoded guess.
+
+| Property | Measured value | Why it matters |
+|---|---|---|
+| Tiles | **2 783** RGB+AGL+CLS triples, **108 regions** | 108 regions is enough for a clean geographic split |
+| Tile size | **1024 × 1024** | decides the crop geometry, below |
+| dtypes | RGB `uint8`, AGL `float32` | |
+| **Georeferencing** | **none — no CRS, no transform** | ⚠️ see below |
+| GSD | **not in the files**; US3D/DFC2019 Track 1 is **0.3 m/px** | must be passed as `--gsd 0.3` |
+| Height range | −2.98 m to 204.15 m | |
+| Height distribution | p50 **0.0**, p75 4.6, p95 **13.2**, p99 21.1 | p95 sets the model's output scale |
+| Void | **NaN only, and negligible** — 6/200 tiles contain any, then <0.005% of pixels | void handling is nearly a non-issue |
+| Split | **76 train / 16 val / 16 test regions**, seed 1337 | region-level, so no tile neighbourhood spans two splits |
+
+**⚠️ The tiles carry no georeferencing at all.** They were rewritten by `tifffile.py`, which stripped CRS and affine transform — `rasterio` returns the identity matrix and warns. Nothing in the files says a pixel is 30 cm. Every distance the viewer reports is therefore derived from an explicitly supplied `--gsd`, and `export_terrain.py` refuses to invent one: with no GSD it labels the axes *pixels* rather than printing confident nonsense. Sanity check: 1024 px × 0.3 m = 307 m per tile, which is the right order for a city block.
+
+**Class distribution** (60 random tiles, 62.9 M px): ground 66.3%, building 15.8%, vegetation 13.2%, water 2.4%, bridge 1.2%, and **65 = "unlabeled" 1.1%** — an undocumented code. Its heights are finite and valid, so those pixels stay in the regression but are excluded from per-class breakdowns.
+
+Median height by class: vegetation **7.97 m**, building **6.83 m**. *Vegetation is taller than buildings in this dataset* — Jacksonville tree canopy — which is worth remembering before reading too much into any single aggregate number.
+
+#### Crop geometry — 518, not 256
+
+The Depth Any Canopy recipe uses 256×256 crops. **We cannot.** DA-V2's patch size is 14 and its head computes `patch_h = H // 14`, then interpolates its output to `patch_h × 14`. 256 is not a multiple of 14, so a 256×256 input silently returns **252×252** — a size mismatch that reaches the loss as a confusing broadcast error, or worse, quietly works after an accidental resize.
+
+So: **crop 518** (= 14 × 37, and DA-V2's native training resolution), **stride 506**. Since 1024 = 506 + 518, that tiles each tile exactly 2×2 with 12 px of overlap and full coverage. The ground truth is never resampled, so no interpolation error is baked into the labels. `model.check_input_size()` raises rather than let a bad size through.
+
+Result: **~11 000 crops, ~9.5 GB of compressed shards.**
+
 ### Domain imagery — Bhoonidhi (Cartosat)
 
 ISRO's own portal, free registration. The API is a **STAC** interface (use `pystac-client`), requested via `bhoonidhi@nrsc.gov.in` — **lead-time item, send in week 1.** The API is optional; the *account* is what matters, and browser download works without it.
@@ -230,14 +285,29 @@ Build the baseline first: once it runs end to end we always have something demoa
 **Goal: a complete end-to-end path, however bad the output looks.**
 
 - [x] Track 3 metadata checked for sun angles → §6.2 gate passed (26 Aug)
-- [ ] DFC2019 Track 1 extracted, probed, sharded; held-out test split carved out
-- [ ] Email Bhoonidhi (§8) — lead-time item
-- [ ] Resolve SIH team registration (§11)
-- [ ] **Zero-shot DA-V2 → heightmap → GeoTIFF → Three.js flythrough, working end to end**
+- [x] DFC2019 Track 1 extracted, probed, sharded; held-out test split carved out (26 Aug)
+- [x] **Zero-shot DA-V2 → heightmap → GeoTIFF → Three.js flythrough, working end to end** (26 Aug)
+- [x] Honest zero-shot baseline on 80 held-out tiles → **4.68 m RMSE to beat** (§5)
+- [x] Training loop verified end to end: resumable, bf16/fp16 autodetect, per-class + calibration eval
+- [x] Loss suite under test — 19 tests, incl. recovery of known heteroscedastic σ
+- [x] Email Bhoonidhi (§8) — **sent 26 Aug**
+- [ ] Resolve SIH team registration (§11) ← *the only unrecoverable open item*
 - [ ] Verify Azure GPU quota (expect it blocked; nothing lost if so)
 
 *The output will be mediocre. Irrelevant. After this week there is always something to
 demo, and nothing left that is critical-path.*
+
+**Closed 26 Aug.** The slice runs: image → sliding-window inference with cosine blending
+→ GeoTIFF → browser bundle → Three.js flythrough with texture / height / uncertainty /
+slope surfaces and a two-point measurement tool. Ground truth is exported as a second
+scene so the two can be flown side by side.
+
+**Local compute turned out to be far less of a constraint than assumed.** Measured on the
+3060: batch 12 fits in 7.6 GB and throughput plateaus near **25 crops/s** at batch 8, so
+one full 3-epoch pass over ~7 800 training crops is roughly **15 minutes**, not the
+5–9 hours §5 estimated from the A6000 figure. That estimate assumed a much larger crop
+count. The consequence is strategic: we can afford many training runs and real ablations
+locally, and Kaggle becomes a parallel-experiments resource rather than a dependency.
 
 ### Week 2 — Make the model good
 

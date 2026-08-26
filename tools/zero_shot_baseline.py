@@ -194,7 +194,8 @@ def main():
         for cat, d in sorted(per_terrain.items()):
             m = height_metrics(np.concatenate(d["p"]), np.concatenate(d["t"]))
             terrain[cat] = m.to_dict()
-            print(f"  {cat:14s} RMSE {m['rmse']:7.3f}  MAE {m['mae']:7.3f}  n={m['n_valid']:,}")
+            print(f"  {cat:14s} RMSE {m.rmse:7.3f}  MAE {m.mae:7.3f}  "
+                  f"bias {m.bias:+7.3f}  n={m.n_valid:,}")
         results["per_terrain"] = terrain
 
     rmses = np.array([t["rmse_global"] for t in per_tile])
