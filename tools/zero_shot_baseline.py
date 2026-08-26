@@ -93,14 +93,19 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--model-id", default=DEFAULT_MODEL)
     ap.add_argument("--fit-tiles", type=int, default=40, help="train tiles used to fit the affine")
-    ap.add_argument("--eval-tiles", type=int, default=60, help="test tiles to score")
+    ap.add_argument("--eval-tiles", type=int, default=60, help="tiles to score")
+    ap.add_argument("--split", default="val", choices=["val", "test"],
+                    help="region split to score. Must match whatever the model is "
+                         "compared against; test is for final numbers only")
     ap.add_argument("--tile", type=int, default=518)
     ap.add_argument("--overlap", type=int, default=140)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--precision", default="auto")
-    ap.add_argument("--out", default=str(ROOT / "out" / "zero_shot_baseline.json"))
+    ap.add_argument("--out", default=None)
     ap.add_argument("--seed", type=int, default=1337)
     args = ap.parse_args()
+    if args.out is None:
+        args.out = str(ROOT / "out" / f"zero_shot_baseline_{args.split}.json")
 
     split_path = SHARDS / "split.json"
     if not split_path.exists():
@@ -108,9 +113,13 @@ def main():
     assign = json.loads(split_path.read_text())
 
     rng = np.random.default_rng(args.seed)
-    fit_pool, eval_pool = tiles_for("train", assign), tiles_for("test", assign)
+    fit_pool, eval_pool = tiles_for("train", assign), tiles_for(args.split, assign)
     fit_tiles = list(rng.choice(fit_pool, min(args.fit_tiles, len(fit_pool)), replace=False))
-    eval_tiles = list(rng.choice(eval_pool, min(args.eval_tiles, len(eval_pool)), replace=False))
+    # Fresh rng, not the one already advanced by the fit draw, so this selection is
+    # bit-identical to evaluate.py's for the same --seed, pool and count. The model
+    # and the baseline must be scored on exactly the same tiles.
+    eval_rng = np.random.default_rng(args.seed)
+    eval_tiles = list(eval_rng.choice(eval_pool, min(args.eval_tiles, len(eval_pool)), replace=False))
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     from train import pick_precision
@@ -118,9 +127,11 @@ def main():
     model = build(model_id=args.model_id, height_scale=1.0).to(device).eval()
 
     print(f"zero-shot baseline  |  {args.model_id}  |  {prec}  |  {device}")
-    print(f"  fit on {len(fit_tiles)} train tiles, evaluate on {len(eval_tiles)} test tiles")
+    print(f"  fit on {len(fit_tiles)} train tiles, "
+          f"evaluate on {len(eval_tiles)} {args.split} tiles")
     print(f"  train regions {sum(v=='train' for v in assign.values())}, "
-          f"test regions {sum(v=='test' for v in assign.values())} -- no region appears in both")
+          f"{args.split} regions {sum(v==args.split for v in assign.values())}"
+          " -- no region appears in both")
 
     # ---------------------------------------------------------------- fit
     fp, ft = [], []
@@ -212,7 +223,7 @@ def main():
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps({
-        "model_id": args.model_id,
+        "model_id": args.model_id, "split": args.split,
         "affine": {"scale": scale, "shift": shift},
         "n_fit_tiles": len(fit_tiles), "n_eval_tiles": len(eval_tiles),
         "fit_tiles": fit_tiles, "eval_tiles": eval_tiles,

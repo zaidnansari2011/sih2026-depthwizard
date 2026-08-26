@@ -1,4 +1,8 @@
-"""Score a checkpoint on the held-out test split and write a report.
+"""Score a checkpoint on a region-disjoint split and write a report.
+
+Defaults to --split val. The test split is held out on day one and is not a
+development metric: score it only for a final, reported number, because every
+look at it leaks a little of its independence (prepare_data.py, standing rule 5).
 
     python tools/evaluate.py --ckpt D:/sih2026/checkpoints/run01/best.pt --tiles 80
 
@@ -62,18 +66,31 @@ def main():
     ap.add_argument("--precision", default="auto")
     ap.add_argument("--tta", action="store_true",
                     help="D4 test-time augmentation; ~8x slower")
-    ap.add_argument("--baseline", default=str(ROOT / "out" / "zero_shot_baseline.json"))
+    ap.add_argument("--baseline", default=None,
+                    help="zero-shot json to compare against; defaults to the one "
+                         "matching --split")
     ap.add_argument("--out", default=str(ROOT / "out" / "eval"))
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--split", default="val", choices=["val", "test"],
+                    help="region split to score. val for development; test only for a "
+                         "final reported number (see module docstring)")
     args = ap.parse_args()
+    if args.baseline is None:
+        cand = ROOT / "out" / f"zero_shot_baseline_{args.split}.json"
+        if not cand.exists() and args.split == "test":
+            cand = ROOT / "out" / "zero_shot_baseline.json"   # pre-split-flag filename
+        args.baseline = str(cand)
+    if args.split == "test":
+        print("!! scoring the HELD-OUT TEST split.")
+        print("!! Use it for a reported number only, never to pick between checkpoints.")
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
     assign = json.loads((SHARDS / "split.json").read_text())
-    test_regions = {r for r, v in assign.items() if v == "test"}
+    eval_regions = {r for r, v in assign.items() if v == args.split}
     tiles = [p.stem[:-4] for p in sorted(RGB_DIR.glob("*_RGB.tif"))
-             if p.stem[:-4].rsplit("_", 1)[0] in test_regions
+             if p.stem[:-4].rsplit("_", 1)[0] in eval_regions
              and (TRUTH_DIR / f"{p.stem[:-4]}_AGL.tif").exists()]
     rng = np.random.default_rng(args.seed)
     tiles = list(rng.choice(tiles, min(args.tiles, len(tiles)), replace=False))
@@ -86,7 +103,8 @@ def main():
     model = build(model_id=ck.get("model_id"), height_scale=ck.get("height_scale", 30.0)).to(device).eval()
     model.load_state_dict(ck["model"])
     print(f"checkpoint {args.ckpt}  epoch {ck.get('epoch')}  |  {prec}  |  {device}")
-    print(f"evaluating on {len(tiles)} whole test tiles from {len(test_regions)} held-out regions")
+    print(f"evaluating on {len(tiles)} whole {args.split} tiles "
+          f"from {len(eval_regions)} region-disjoint {args.split} regions")
 
     P, T, S, C = [], [], [], []
     per_terrain = defaultdict(lambda: {"p": [], "t": []})
@@ -125,7 +143,8 @@ def main():
     m = height_metrics(p, t, cls=c)
 
     results = {"overall": m.to_dict(), "n_tiles": len(tiles), "checkpoint": str(args.ckpt),
-               "epoch": ck.get("epoch"), "tta": args.tta}
+               "epoch": ck.get("epoch"), "tta": args.tta,
+               "split": args.split}
     if s is not None:
         results["ece"] = expected_calibration_error(p, t, s)
         results["sigma_rank_corr"] = uncertainty_error_correlation(p, t, s)
@@ -146,9 +165,9 @@ def main():
 
     # ------------------------------------------------------------------ report
     L = []
-    L.append("# DepthWizard — held-out test results\n")
+    L.append(f"# DepthWizard — {args.split} split results\n")
     L.append(f"Checkpoint `{Path(args.ckpt).name}` (epoch {ck.get('epoch')}), "
-             f"**{len(tiles)} whole 1024x1024 tiles** from {len(test_regions)} regions "
+             f"**{len(tiles)} whole 1024x1024 tiles** from {len(eval_regions)} regions "
              f"that appear in no training split.\n")
     L.append("Inference is sliding-window with cosine blending, the same path a deployed "
              "system would take — not crop-level scoring.\n")
