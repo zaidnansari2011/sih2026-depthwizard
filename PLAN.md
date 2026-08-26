@@ -75,10 +75,25 @@ clean fix but needs an administrator shell (`Insufficient Permissions` otherwise
 `train.py` carries a software `ThermalGovernor`: sample every N steps, pause proportional
 to overshoot, hard-stop above a ceiling until it cools.
 
-Running settings: `--max-temp 82 --temp-gain 0.6 --temp-ceiling 87`. That holds peaks at
-87–88 °C with clocks at **1822 MHz — no throttling** — versus 1492 MHz at 91 °C. Tighter
-targets (78/84) are gentler but cost roughly 30% throughput to a ~50% duty cycle, because
-the card reheats within about three seconds of resuming work.
+**The trade-off, measured.** The card reheats within about three seconds of resuming work,
+so holding a low temperature means a low duty cycle, and that is expensive:
+
+| Governor | Peak | Steps/min | Full 12-epoch run | |
+|---|---|---|---|---|
+| off | **91 °C** | 125 | 1.5 h | throttles to 1492 MHz — hot *and* wasteful |
+| `82 / 87` | 89–90 °C | 111 | 1.7 h | clocks hold 1822 MHz, no throttling |
+| **`76 / 82`** ← running | **81 °C** | **53** | **3.6 h** | never approaches the ceiling |
+
+**Chosen: 76 / 82.** The middle setting is the better *engineering* answer — it escapes the
+throttling regime and keeps 89% of throughput — but the card's owner asked explicitly that
+it not run hot, and no result is blocked on the extra two hours, since training runs
+unattended in the background. When the constraint is someone else's hardware and the cost
+is wall-clock nobody is waiting on, the conservative setting wins. Raise it to `82 / 87`
+any time speed actually matters.
+
+> **Two user-side fixes beat duty-cycling outright**, and would give *both* speed and low
+> temperatures: MSI Afterburner is already installed, so a more aggressive fan curve costs
+> nothing; and one shell run as administrator allows a real `nvidia-smi -pl 120`.
 
 > **User-side action worth taking:** MSI Afterburner is already installed. A more
 > aggressive fan curve would let training run *both* faster and cooler than software
