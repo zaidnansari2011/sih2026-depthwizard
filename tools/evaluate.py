@@ -60,6 +60,8 @@ def main():
     ap.add_argument("--overlap", type=int, default=140)
     ap.add_argument("--batch", type=int, default=4)
     ap.add_argument("--precision", default="auto")
+    ap.add_argument("--tta", action="store_true",
+                    help="D4 test-time augmentation; ~8x slower")
     ap.add_argument("--baseline", default=str(ROOT / "out" / "zero_shot_baseline.json"))
     ap.add_argument("--out", default=str(ROOT / "out" / "eval"))
     ap.add_argument("--seed", type=int, default=1337)
@@ -93,7 +95,7 @@ def main():
     for i, t in enumerate(tiles):
         rgb = load_image(RGB_DIR / f"{t}_RGB.tif")
         pred, sigma = infer_scene(model, rgb, args.tile_size, args.overlap, device,
-                                  amp_dtype, args.batch, verbose=False)
+                                  amp_dtype, args.batch, verbose=False, tta=args.tta)
         truth = read_tif(TRUTH_DIR / f"{t}_AGL.tif").astype(np.float32)
         cls_p = TRUTH_DIR / f"{t}_CLS.tif"
         cls = read_tif(cls_p) if cls_p.exists() else None
@@ -123,7 +125,7 @@ def main():
     m = height_metrics(p, t, cls=c)
 
     results = {"overall": m.to_dict(), "n_tiles": len(tiles), "checkpoint": str(args.ckpt),
-               "epoch": ck.get("epoch")}
+               "epoch": ck.get("epoch"), "tta": args.tta}
     if s is not None:
         results["ece"] = expected_calibration_error(p, t, s)
         results["sigma_rank_corr"] = uncertainty_error_correlation(p, t, s)
@@ -161,7 +163,7 @@ def main():
         o = base["results"]["oracle_affine"]
         L.append(f"| Zero-shot + *oracle* affine *(not deployable)* | {o['rmse']:.3f} m | "
                  f"{o['mae']:.3f} m | {o['corr']:.3f} | {o['bias']:+.3f} m | {o['p90_ae']:.3f} m |")
-    L.append(f"| **DepthWizard (fine-tuned)** | **{m.rmse:.3f} m** | **{m.mae:.3f} m** | "
+    L.append(f"| **DepthWizard (fine-tuned{' + TTA' if args.tta else ''})** | **{m.rmse:.3f} m** | **{m.mae:.3f} m** | "
              f"**{m.corr:.3f}** | {m.bias:+.3f} m | {m.p90_ae:.3f} m |")
 
     if base:
