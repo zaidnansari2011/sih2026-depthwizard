@@ -225,34 +225,39 @@ Public, free, named in the problem statement. *Not* CartoDEM (see §5 Stage 02).
 
 Build the baseline first: once it runs end to end we always have something demoable, and every later improvement becomes optional rather than critical-path.
 
-### Week 1 — Baseline end to end
+### Week 1 — The ugly vertical slice
 
-- [ ] DFC2019 Track 1 downloaded, extracted, sharded; held-out test split carved out
-- [ ] **Check Track 3 metadata for sun angles** → decides §6.2
-- [ ] Email Bhoonidhi for API access
-- [ ] Verify Azure GPU quota (expect it to be blocked)
-- [ ] DA-V2 Small fine-tuned on one city → relative depth → SRTM-anchored metric DSM
+**Goal: a complete end-to-end path, however bad the output looks.**
+
+- [x] Track 3 metadata checked for sun angles → §6.2 gate passed (26 Aug)
+- [ ] DFC2019 Track 1 extracted, probed, sharded; held-out test split carved out
+- [ ] Email Bhoonidhi (§8) — lead-time item
+- [ ] Resolve SIH team registration (§11)
+- [ ] **Zero-shot DA-V2 → heightmap → GeoTIFF → Three.js flythrough, working end to end**
+- [ ] Verify Azure GPU quota (expect it blocked; nothing lost if so)
+
+*The output will be mediocre. Irrelevant. After this week there is always something to
+demo, and nothing left that is critical-path.*
+
+### Week 2 — Make the model good
+
+- [ ] DA-V2 Small fine-tuned on DFC2019 AGL, uncertainty head in from the first run (§6.1)
+- [ ] Metric calibration against SRTM 30 m
 - [ ] **The honest table:** zero-shot vs fine-tuned vs TSE-Net published, same held-out tiles
-- [ ] Uncertainty head + Gaussian NLL in from the first run (§6.1)
+- [ ] Benchmark remaining backbones on Kaggle (parallel sessions, 30 GPU-h/week)
+- [ ] Calibration curves — is the predicted sigma actually right?
 
-*One tile, one number. Proves the core and kills "is this too hard" empirically.*
+*Slow down here and understand the calibration and the NLL properly (§10). These are what
+the jury probes hardest.*
 
-### Week 2 — The viewer
+### Week 3 — Make the viewer good, and measure the domain
 
-- [ ] Three.js flythrough over week-1 heightmaps
-- [ ] Upload → DSM → flythrough path working end to end
-- [ ] Confidence shading on the mesh (§6.1)
-- [ ] Measurement tools: point-to-point delta with error bar, cross-section (§6.3)
-
-*The half the judges watch. Building it early de-risks the demo.*
-
-### Week 3 — Accuracy and domain
-
-- [ ] Benchmark all backbones on DFC2019 metrics (Kaggle sweep, parallel)
-- [ ] Pull Cartosat imagery from Bhoonidhi, measure the drop (§7.1)
-- [ ] Shadow prior as self-supervision on Cartosat, if gated in (§6.2)
+- [ ] Confidence shading on the mesh (§6.1) — judges *see* the model's doubt
+- [ ] Point-to-point height measurement with error bar (§6.3)
 - [ ] Error maps + per-terrain breakdown: urban / sparse / hilly / forested
-- [ ] Calibration curves for the uncertainty head
+- [ ] Accuracy vs `meanOffNadirViewAngle` (4.8°–28.9°) — the domain-gap number we can get
+      without Bhoonidhi (§7.1)
+- [ ] Cartosat check if access came through
 
 ### Week 4 — Package and submit
 
@@ -263,21 +268,61 @@ Build the baseline first: once it runs end to end we always have something demoa
 - [ ] Idea submission written **against the evaluation criteria, in their language**
 - [ ] Re-check live submission counts on the portal (§3)
 
-## 10. Team split — six people
+## 10. Execution — solo build
 
-| Seats | Owns |
+**Decided 26 Aug 2026: this is a solo build.** The six-person split is withdrawn. That
+invalidates the original competitive premise — *"both halves build in parallel from hour
+one, so nobody is idle"* — because one person cannot parallelise. Everything is serial now.
+
+### The sequencing inverts
+
+For a team: model baseline first, viewer second. **Solo that is the failure mode** — three
+weeks perfecting a model, a rushed viewer, half the marks forfeited.
+
+**Vertical slice first.** Week 1 produces a complete, ugly, end-to-end path: image in →
+*some* heightmap (zero-shot is fine) → mesh → flythrough in the browser. It will look
+mediocre. Irrelevant. Once it exists, every later improvement is optional rather than
+critical-path, and there is no world where we hold an excellent model and nothing to show.
+
+Improve the model *behind a viewer that already works*.
+
+### Two timelines — this is what makes solo viable
+
+| Date | Deliverable |
 |---|---|
-| **Depth & calibration — 2** | Stages 01–02. Backbone benchmarking, relative→metric regression, uncertainty head, error analysis across terrain types. *Carries the half we cannot fake.* |
-| **Viewer & deployment — 2** | Stage 03 + standalone build. Upload flow, mesh displacement, camera navigation, measurement tooling, ONNX/Docker. |
-| **Data & geospatial — 1** | DFC2019 + Bhoonidhi acquisition, GeoTIFF handling, SRTM alignment, held-out test set, output format compliance. |
-| **Report & demo — 1** | Technical documentation, benchmark write-up, demo script. *Half the marks are judged on what the jury sees and understands.* |
+| **20 Sep 2026** | **Idea submission** — a proposal judged on approach. Needs *evidence*: benchmark table, error maps, calibration curve, demo video. Not a finished product. |
+| Grand finale (later, if shortlisted) | 36 hours of building. The real runway. |
+
+25 days from 26 Aug. Solo, that is enough for evidence and a demo. It is not enough for
+four differentiators plus a polished system — hence the scope call below.
+
+### Scope, revised for solo
+
+| | Verdict |
+|---|---|
+| **6.1 Uncertainty** | **Committed.** Already in `losses.py`. Cheapest, best return. |
+| **6.3 Measurement tooling** | **Committed, trimmed.** Point-to-point height + error bar for submission. Cross-sections and difference maps → finale phase. |
+| **6.4 Deployability** | **Committed.** Mostly packaging, explicitly scored. |
+| **6.2 Shadow prior** | **Relocated to finale phase.** Not cut — solo, shadow detection + geometry + validation is a week we do not have before 20 Sep. It is excellent *submission* material as a stated method with evidence behind it (54 of 67 scenes carry usable solar geometry). Full credit for the insight in the proposal; build it on the finale runway. |
+
+### The explain-it-yourself risk is now concentrated
+
+§7.5 applies with force: solo, with AI-assisted code, **every component that cannot be
+explained from memory is a liability carried by one person.** Standing rule — readable over
+clever, and the metric calibration and uncertainty head get walked through properly, because
+those are what a SAC jury probes hardest.
 
 ## 11. Open decisions
 
-- [ ] Who takes the two CV seats
+- [x] ~~Who takes the two CV seats~~ — solo build, concept withdrawn (26 Aug)
+- [x] Viewer framework → **Three.js** (26 Aug)
+- [x] Does DFC2019 ship solar metadata → **yes**, gate passed (26 Aug), see §6.2
+- [x] Differentiator scope → 6.1 / 6.3 / 6.4 committed, 6.2 to finale phase (26 Aug)
+- [ ] **Six names registered for SIH?** Rules require a six-member team from one institution,
+      normally including at least one female member. Carrying the build alone is fine and
+      common; having no registered team means nothing gets submitted. **Resolve in week 1.**
 - [ ] Commit to SIH26175 or hedge to SIH26143 — **decide by 10 Sep on live counts**
-- [ ] Viewer framework: Three.js (default) vs Babylon.js
-- [ ] Does DFC2019 ship solar metadata → §6.2 headline or footnote
+- [ ] Bhoonidhi access tier — awaiting reply (§8)
 
 ## 12. Standing rules
 
