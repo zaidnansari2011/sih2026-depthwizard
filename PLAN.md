@@ -75,25 +75,38 @@ clean fix but needs an administrator shell (`Insufficient Permissions` otherwise
 `train.py` carries a software `ThermalGovernor`: sample every N steps, pause proportional
 to overshoot, hard-stop above a ceiling until it cools.
 
-**The trade-off, measured.** The card reheats within about three seconds of resuming work,
-so holding a low temperature means a low duty cycle, and that is expensive:
+#### Solved 27 Aug 2026 — and the software governor was always a workaround
 
-| Governor | Peak | Steps/min | Full 12-epoch run | |
-|---|---|---|---|---|
-| off | **91 °C** | 125 | 1.5 h | throttles to 1492 MHz — hot *and* wasteful |
-| `82 / 87` | 89–90 °C | 111 | 1.7 h | clocks hold 1822 MHz, no throttling |
-| **`76 / 82`** ← running | **81 °C** | **53** | **3.6 h** | never approaches the ceiling |
+Duty-cycling in software was the wrong tree. MSI Afterburner has a **"Prioritize" switch
+between power ⚡ and temperature 🌡**, and it defaults to *power* — which makes the Temp
+Limit **advisory**. The card draws to its power limit and lets temperature land wherever
+it lands. That is why a Temp Limit of 77 °C still produced 91 °C readings, and why raising
+the fan from 62% to 85% bought only ~3 °C.
 
-**Chosen: 76 / 82.** The middle setting is the better *engineering* answer — it escapes the
-throttling regime and keeps 89% of throughput — but the card's owner asked explicitly that
-it not run hot, and no result is blocked on the extra two hours, since training runs
-unattended in the background. When the constraint is someone else's hardware and the cost
-is wall-clock nobody is waiting on, the conservative setting wins. Raise it to `82 / 87`
-any time speed actually matters.
+Setting **Prioritize = temperature** makes the limit binding in hardware:
 
-> **Two user-side fixes beat duty-cycling outright**, and would give *both* speed and low
-> temperatures: MSI Afterburner is already installed, so a more aggressive fan curve costs
-> nothing; and one shell run as administrator allows a real `nvidia-smi -pl 120`.
+| | Before | After |
+|---|---|---|
+| Temperature | 91 °C | **mean 80.1 °C, peak 85 °C** |
+| Clocks | throttled to 1492 MHz | **1777–1867 MHz** |
+| Throughput | 53 steps/min (governed) | **143 steps/min** |
+| 12-epoch run | 3.6 h | **~1.6 h** |
+
+Cooler *and* 2.7× faster, because the card down-clocks smoothly instead of being stopped
+and started. Working config: **fan 85% (auto off), Temp Limit 80, Power Limit 85%,
+Prioritize = temperature, ⇄ link off** (that toggle ties the two limits together; turn it
+off to set them independently). The software `ThermalGovernor` now fires **zero** times and
+remains only as a backstop at `83 / 87`.
+
+> ⚠️ **Never change GPU settings while a CUDA job is running.** Applying Afterburner
+> settings resets the display driver and invalidates live CUDA contexts. Doing it mid-run
+> killed a training process with `torch.AcceleratorError: CUDA error: unknown error` on a
+> `.to(device)` call, and silently reverted the power limit to 170 W. Pause first.
+
+`tools/vitals.py` samples GPU, RAM and disk on a timer, logs to a CSV that outlives the
+session, and prints only on breach. It exists because both hardware failures in this
+project — ten minutes at 91 °C, and an OOM kill with no traceback — were sitting in
+numbers nobody was reading.
 
 > **User-side action worth taking:** MSI Afterburner is already installed. A more
 > aggressive fan curve would let training run *both* faster and cooler than software
