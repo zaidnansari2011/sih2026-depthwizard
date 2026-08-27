@@ -37,6 +37,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from depthwizard.metrics import (  # noqa: E402
     height_metrics, calibration_curve, expected_calibration_error,
     uncertainty_error_correlation, terrain_category_with_relief,
+    building_instances, building_wise_metrics,
 )
 from depthwizard.model import from_checkpoint  # noqa: E402
 from infer import infer_scene, load_image  # noqa: E402
@@ -108,6 +109,9 @@ def main():
     P, T, S, C = [], [], [], []
     per_terrain = defaultdict(lambda: {"p": [], "t": []})
     per_tile = []
+    # One height per building, accumulated at full resolution before subsampling --
+    # connected components cannot be recovered from a thinned array.
+    BP, BT = [], []
 
     for i, t in enumerate(tiles):
         rgb = load_image(RGB_DIR / f"{t}_RGB.tif")
@@ -128,6 +132,10 @@ def main():
             cat = terrain_category_with_relief(cls, truth)
             per_terrain[cat]["p"].append(pred[mask][::step])
             per_terrain[cat]["t"].append(truth[mask][::step])
+            bp, bt = building_instances(pred, truth, cls)
+            if bp.size:
+                BP.append(bp)
+                BT.append(bt)
 
         e = pred[mask] - truth[mask]
         per_tile.append({"tile": t, "rmse": float(np.sqrt((e ** 2).mean())),
@@ -157,6 +165,10 @@ def main():
         terrain[cat] = tm.to_dict()
     results["per_terrain"] = terrain
     results["per_tile"] = per_tile
+
+    bw = building_wise_metrics(np.concatenate(BP), np.concatenate(BT)) if BP else {
+        "n_buildings": 0}
+    results["building_wise"] = bw
 
     base = None
     if Path(args.baseline).exists():
@@ -192,6 +204,35 @@ def main():
             verdict += (" That is worse than a two-parameter linear correction — "
                         "the fine-tuning is not earning its place yet.")
         L.append(f"\n{verdict}\n")
+
+    if bw.get("n_buildings"):
+        L.append("\n## Per building — the metric the literature reports\n")
+        L.append("One median height per building instance, on both sides, for buildings of "
+                 "at least 25 m2. Our per-pixel building RMSE is **not** comparable to "
+                 "published figures: a pixel score is dominated by roof edges and lets a "
+                 "single large building outvote a whole neighbourhood.\n")
+        L.append(f"| | value |")
+        L.append("|---|---|")
+        L.append(f"| buildings scored | {bw['n_buildings']:,} |")
+        L.append(f"| **RMSE** | **{bw['rmse']:.3f} m** |")
+        L.append(f"| MAE | {bw['mae']:.3f} m |")
+        L.append(f"| bias | {bw['bias']:+.3f} m |")
+        L.append(f"| median abs error | {bw['median_ae']:.3f} m |")
+        L.append(f"| r | {bw['corr']:+.3f} |")
+        L.append(f"| true building height (median / p90) | "
+                 f"{bw['truth_median_h']:.1f} m / {bw['truth_p90_h']:.1f} m |")
+        L.append("\n**Reference points.** GlobalBuildingAtlas (ESSD 2025) reports "
+                 "per-building height RMSE of **5.9 m over Asia** and 5.5 m globally, "
+                 "using HTC-DC Net on 3 m PlanetScope imagery — the closest published peer, "
+                 "and a generalisation number like ours. HTC-DC Net's own DFC2019 "
+                 "building-wise figure is 2.3-2.8 m, but on a **randomly split** crop "
+                 "protocol where a test crop's neighbour is in training; ours is "
+                 "region-disjoint and the two are not the same measurement.\n")
+        if bw["rmse"] > 0 and bw["truth_median_h"] > 0:
+            ratio = bw["rmse"] / bw["truth_median_h"]
+            L.append(f"Our per-building RMSE is **{ratio:.2f}x the median building "
+                     f"height** in this split. Below 1.0 the model is doing better than "
+                     f"guessing a constant; well below is where it becomes useful.\n")
 
     L.append("\n## Per semantic class\n")
     L.append("| Class | RMSE | MAE | bias | pixels |")
