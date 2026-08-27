@@ -110,3 +110,59 @@ Sources: [HTC-DC Net (arXiv 2309.16486)](https://arxiv.org/abs/2309.16486) ·
 [code](https://github.com/zhu-xlab/HTC-DC-Net) ·
 [TSE-Net (arXiv 2511.13552)](https://arxiv.org/pdf/2511.13552) ·
 [AdaBins lineage / survey context](https://arxiv.org/html/2603.29245)
+
+---
+
+## 5. Soft-argmax needs distribution supervision, or it will not help us
+
+Added 27 Aug 2026, before implementing the binned head. This contradicts the plan in
+section 4 above, which said to build soft-argmax first and treat the distribution
+constraint as a later refinement.
+
+Soft-argmax computes `H = sum_i P_i * c_i` - the **mean** of the predicted distribution.
+That is only close to the mode when the distribution is unimodal and peaked. The stereo
+and depth literature documents what happens when it is not:
+
+> "3D stereo architectures typically employ a soft argmax operation to obtain the final
+> disparity estimate by calculating the mean of the often multimodal predicted
+> distribution, which leads to disparity estimates falling between the foreground and
+> background modes, resulting in erroneous predictions and over-smoothed depth
+> discontinuities."
+
+and, on why nothing prevents this by default:
+
+> "Networks trained with soft-argmax lack explicit supervision for the distribution,
+> resulting in unconstrained probability shape."
+
+**A roof edge is exactly a foreground/background bimodal pixel** - the truth is either
+roof height or ground, never the average. Supervising only the mean lets the network put
+mass on both modes and score well on the mean while bleeding the edge. Our error is
+already concentrated on buildings (91.8% of squared error on 12.8% of pixels), and
+building edges are where a large share of that lives.
+
+**Consequence for the build:** bins + soft-argmax + Chamfer alone is not the safe
+increment it looked like. The distribution has to be supervised in the same run, or the
+experiment does not test what we think it tests. HTC-DC Net's distribution constraint
+(KL against a Gaussian reference over the bins) exists for this reason, and its
+head-tail cut - separate token sets for foreground and background, split at 1 m - attacks
+the same bimodality from the architecture side.
+
+**What we implement:** adaptive bins normalised the AdaBins way, soft-argmax, the
+bi-directional Chamfer term on bin centres (AdaBins uses beta = 0.1), **and** a
+cross-entropy term against a Gaussian centred on the truth, which is the distribution
+constraint in its simplest defensible form. The existing heteroscedastic sigma head and
+its NLL stay - run02 showed that head is working (ECE 0.083, rank rho +0.836) and it is
+a committed differentiator.
+
+Bin count: the ablations do not support paying for many bins. Gains saturate early
+(4 -> 8 bins is large, 16 -> 32 marginal), 256 is convention rather than a measured
+optimum, and one recent method reports N = 128 as the best accuracy/robustness
+trade-off. We use N = 128, which is also what fits: bin logits at 518x518 cost ~550 MB
+per 4 images in bf16, on a card that run02 already had at 10.2 of 12 GB.
+
+Sources: [AdaBins (arXiv 2011.14141)](https://arxiv.org/abs/2011.14141) ·
+[BinsFormer (arXiv 2204.00987)](https://arxiv.org/pdf/2204.00987) ·
+[LocalBins (arXiv 2203.15132)](https://arxiv.org/pdf/2203.15132) ·
+[IEBins (arXiv 2309.14137)](https://arxiv.org/html/2309.14137) ·
+[Sampling-Gaussian for stereo matching (arXiv 2410.06527)](https://arxiv.org/pdf/2410.06527) ·
+[Adaptive Multi-Modal Cross-Entropy Loss for Stereo Matching](https://arxiv.org/pdf/2407.07816)

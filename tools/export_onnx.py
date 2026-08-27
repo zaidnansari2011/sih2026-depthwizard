@@ -42,7 +42,7 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from depthwizard.model import build, PATCH  # noqa: E402
+from depthwizard.model import from_checkpoint, PATCH  # noqa: E402
 
 
 def _has_external(path: Path) -> bool:
@@ -92,8 +92,7 @@ def main():
         raise SystemExit(f"--size must be a multiple of {PATCH}; {args.size} is not")
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    model = build(model_id=ck.get("model_id"), height_scale=ck.get("height_scale", 30.0))
-    model.load_state_dict(ck["model"])
+    model = from_checkpoint(ck)
     model.eval()
     wrapper = ExportWrapper(model).eval()
 

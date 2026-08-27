@@ -270,6 +270,24 @@ def main():
     ap.add_argument("--temp-ceiling", type=float, default=None,
                     help="hard stop-and-cool threshold; default max-temp + 6")
     ap.add_argument("--seed", type=int, default=1337)
+    ap.add_argument("--bins", type=int, default=0,
+                    help="0 = direct regression. >0 switches to the adaptive-bin "
+                         "classification head with soft-argmax")
+    ap.add_argument("--bin-min", type=float, default=-3.0)
+    ap.add_argument("--bin-max", type=float, default=120.0,
+                    help="bins span [bin-min, bin-max] and soft-argmax cannot predict "
+                         "outside it. Measured: p99.9 is 44 m and the max is 204 m, so "
+                         "120 m clears p99.9 by 2.7x without spending most of the "
+                         "resolution on one skyscraper")
+    ap.add_argument("--chamfer", type=float, default=0.1,
+                    help="bi-directional Chamfer on bin centres (AdaBins uses 0.1). "
+                         "Ignored without --bins")
+    ap.add_argument("--dist-weight", type=float, default=1.0,
+                    help="cross-entropy supervising the shape of the bin "
+                         "distribution. Without it soft-argmax averages across "
+                         "bimodal roof edges. Ignored without --bins")
+    ap.add_argument("--sigma-bins", type=float, default=1.0,
+                    help="width of the reference Gaussian, in average bin widths")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -317,7 +335,9 @@ def main():
     # ---------------------------------------------------------------- model
     model = build(height_scale=height_scale, init_sigma_m=args.init_sigma,
                   freeze_backbone=args.freeze_backbone,
-                  predict_uncertainty=not args.no_uncertainty).to(device)
+                  predict_uncertainty=not args.no_uncertainty,
+                  bins=args.bins, bin_min=args.bin_min,
+                  bin_max=args.bin_max).to(device)
     if args.checkpointing:
         model.enable_gradient_checkpointing()
 
@@ -328,8 +348,14 @@ def main():
         model.param_groups(args.lr, args.lr_head, args.weight_decay), betas=(0.9, 0.999)
     )
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda_factory(total_steps))
+    head_desc = (f"binned soft-argmax, N={args.bins}, range "
+                 f"[{args.bin_min:.0f}, {args.bin_max:.0f}] m" if args.bins
+                 else "direct regression")
     loss_fn = CompositeLoss(grad_weight=args.grad_weight, beta=args.beta,
-                            warmup_mse=args.warmup_mse).to(device)
+                            warmup_mse=args.warmup_mse,
+                            chamfer_weight=args.chamfer if args.bins else 0.0,
+                            dist_weight=args.dist_weight if args.bins else 0.0,
+                            sigma_bins=args.sigma_bins).to(device)
 
     start_epoch, gstep, best = 0, 0, float("inf")
     ckpt_last = out_dir / "last.pt"
@@ -356,6 +382,7 @@ DepthWizard training
   uncertainty   {'off (ablation)' if args.no_uncertainty else 'on'}
   train rows    {n_train:,}  ->  {steps_per_epoch:,} steps/epoch
   total steps   {total_steps:,}  ({args.epochs} epochs, accum {args.accum})
+  head          {head_desc}
   objective     NLL + {args.grad_weight} * gradient-matching, {args.warmup_mse} MSE warmup steps
   host RAM      {_ram()}
 """.rstrip())
@@ -389,10 +416,17 @@ DepthWizard training
             check_input_size(rgb.shape[-2], rgb.shape[-1], model.patch_size)
 
             with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype != torch.float32):
-                mu, log_var = model(rgb)
+                if args.bins:
+                    mu, log_var, probs, centres = model(rgb, return_bins=True)
+                else:
+                    mu, log_var = model(rgb)
+                    probs = centres = None
                 if log_var is None:                       # ablation path
                     log_var = torch.zeros_like(mu)
-                loss, stats = loss_fn(mu.float(), log_var.float(), agl, mask)
+                loss, stats = loss_fn(
+                    mu.float(), log_var.float(), agl, mask,
+                    probs=None if probs is None else probs.float(),
+                    centres=None if centres is None else centres.float())
             loss = loss / args.accum
 
             if needs_scaler:
@@ -457,7 +491,7 @@ DepthWizard training
             "scaler": scaler.state_dict() if needs_scaler else None,
             "epoch": epoch, "gstep": gstep, "best": best, "rng": torch.get_rng_state(),
             "args": vars(args), "height_scale": height_scale, "val": val,
-            "model_id": model.model_id,
+            "model_id": model.model_id, "model_config": model.config(),
         }
         torch.save(state, ckpt_last)
         if val and val.get("rmse", float("inf")) < best:

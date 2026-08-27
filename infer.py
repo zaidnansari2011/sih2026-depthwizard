@@ -26,7 +26,7 @@ import numpy as np
 import torch
 
 from depthwizard.dataset import IMAGENET_MEAN, IMAGENET_STD
-from depthwizard.model import DEFAULT_MODEL, build, PATCH
+from depthwizard.model import DEFAULT_MODEL, build, from_checkpoint, PATCH
 
 
 def load_image(path: Path) -> np.ndarray:
@@ -215,10 +215,15 @@ def main():
         ckpt = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         height_scale = args.height_scale or ckpt.get("height_scale", height_scale)
 
-    model = build(model_id=(ckpt or {}).get("model_id", args.model_id),
-                  height_scale=height_scale).to(device).eval()
     if ckpt:
-        model.load_state_dict(ckpt["model"])
+        # One place knows how to rebuild a model from a checkpoint, so adding a head
+        # option cannot silently break inference.
+        model = from_checkpoint(ckpt, height_scale=height_scale).to(device).eval()
+    else:
+        model = build(model_id=args.model_id,
+                      height_scale=height_scale).to(device).eval()
+
+    if ckpt:
         ep, rmse = ckpt.get("epoch", "?"), (ckpt.get("val") or {}).get("rmse")
         print(f"loaded {args.ckpt}  (epoch {ep}"
               + (f", val RMSE {rmse:.3f} m" if rmse else "") + ")")

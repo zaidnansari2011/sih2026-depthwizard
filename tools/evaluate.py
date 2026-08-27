@@ -38,7 +38,7 @@ from depthwizard.metrics import (  # noqa: E402
     height_metrics, calibration_curve, expected_calibration_error,
     uncertainty_error_correlation, terrain_category_with_relief,
 )
-from depthwizard.model import build  # noqa: E402
+from depthwizard.model import from_checkpoint  # noqa: E402
 from infer import infer_scene, load_image  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -100,8 +100,7 @@ def main():
     amp_dtype, _, prec = pick_precision(args.precision)
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    model = build(model_id=ck.get("model_id"), height_scale=ck.get("height_scale", 30.0)).to(device).eval()
-    model.load_state_dict(ck["model"])
+    model = from_checkpoint(ck).to(device).eval()
     print(f"checkpoint {args.ckpt}  epoch {ck.get('epoch')}  |  {prec}  |  {device}")
     print(f"evaluating on {len(tiles)} whole {args.split} tiles "
           f"from {len(eval_regions)} region-disjoint {args.split} regions")
