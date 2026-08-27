@@ -222,3 +222,68 @@ def report(pred, target, sigma=None, mask=None, cls=None) -> dict:
         out["ece"] = expected_calibration_error(pred, target, sigma, mask)
         out["sigma_error_rank_corr"] = uncertainty_error_correlation(pred, target, sigma, mask)
     return out
+
+
+# DFC2019 Track 1 ground sample distance. Building areas are quoted in square metres so
+# the minimum-size filter means the same thing whatever the raster resolution.
+DFC_GSD_M = 0.3
+
+
+def building_instances(pred, target, cls, gsd=DFC_GSD_M, min_area_m2=25.0):
+    """One height per building, for both sides. Returns (ours, truth) in metres.
+
+    This is the metric the field actually reports and the one we could not previously
+    quote. HTC-DC Net's "building-wise" column and GlobalBuildingAtlas's per-continent
+    RMSE are both computed this way; our per-pixel building RMSE is not comparable to
+    either, because a pixel score is dominated by roof edges and by how many pixels a
+    large building happens to contribute.
+
+    Median on both sides, deliberately. Taking a higher percentile of ours against a
+    median of theirs manufactures accuracy out of the summary statistic alone -- measured
+    at +1.3 m when that mistake was made against Open Buildings. Like-for-like or nothing.
+
+    Components smaller than `min_area_m2` are dropped: at 0.3 m a 25 m2 threshold is about
+    278 pixels, below which the label raster's own edge noise dominates the height.
+    """
+    from scipy import ndimage
+
+    cls = np.asarray(cls)
+    pred = np.asarray(pred, np.float64)
+    target = np.asarray(target, np.float64)
+    mask = (cls == CLS_BUILDING) & np.isfinite(pred) & np.isfinite(target)
+    if not mask.any():
+        return np.array([]), np.array([])
+
+    lab, n = ndimage.label(mask, structure=np.ones((3, 3)))
+    if n == 0:
+        return np.array([]), np.array([])
+    idx = np.arange(1, n + 1)
+    counts = np.bincount(lab.ravel(), minlength=n + 1)[1:]
+    keep = counts * gsd * gsd >= min_area_m2
+    if not keep.any():
+        return np.array([]), np.array([])
+
+    t_med = ndimage.median(target, lab, idx)
+    p_med = ndimage.median(pred, lab, idx)
+    good = keep & np.isfinite(t_med) & np.isfinite(p_med)
+    return p_med[good], t_med[good]
+
+
+def building_wise_metrics(ours, truth):
+    """Aggregate per-building errors. `ours` and `truth` are one value per building."""
+    ours, truth = np.asarray(ours, np.float64), np.asarray(truth, np.float64)
+    if ours.size == 0:
+        return {"n_buildings": 0}
+    e = ours - truth
+    r = (float(np.corrcoef(ours, truth)[0, 1])
+         if ours.size > 1 and ours.std() > 0 and truth.std() > 0 else float("nan"))
+    return {
+        "n_buildings": int(ours.size),
+        "rmse": float(np.sqrt((e ** 2).mean())),
+        "mae": float(np.abs(e).mean()),
+        "bias": float(e.mean()),
+        "median_ae": float(np.median(np.abs(e))),
+        "corr": r,
+        "truth_median_h": float(np.median(truth)),
+        "truth_p90_h": float(np.percentile(truth, 90)),
+    }
