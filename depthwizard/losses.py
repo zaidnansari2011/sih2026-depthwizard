@@ -123,20 +123,107 @@ class GradientMatchingLoss(nn.Module):
                 + (ly * my).sum() / my.sum().clamp(min=1.0))
 
 
+class ChamferBinLoss(nn.Module):
+    """Bi-directional Chamfer between bin centres and the heights actually present.
+
+    Without it the adaptive widths are free to park anywhere. This pulls them onto the
+    quantiles of the scene height distribution, which is the point of making them
+    adaptive at all. AdaBins weights this term at 0.1.
+    """
+
+    def __init__(self, max_points: int = 4096):
+        super().__init__()
+        self.max_points = int(max_points)
+
+    def forward(self, centres, target, mask=None):
+        total, n = centres.new_zeros(()), 0
+        for b in range(centres.shape[0]):
+            t = target[b][mask[b] > 0] if mask is not None else target[b].flatten()
+            if t.numel() == 0:
+                continue
+            if t.numel() > self.max_points:
+                t = t[torch.randint(0, t.numel(), (self.max_points,), device=t.device)]
+            d = (t[:, None] - centres[b][None, :]).abs()
+            total = total + d.min(dim=1).values.mean() + d.min(dim=0).values.mean()
+            n += 1
+        return total / max(n, 1)
+
+
+class BinDistributionLoss(nn.Module):
+    """Supervise the SHAPE of the per-pixel bin distribution, not only its mean.
+
+    Soft-argmax returns the mean. Trained on the mean alone the distribution shape is
+    unconstrained, so at a roof edge, where the truth is bimodal (roof or ground), the
+    mean lands between the two modes and the edge bleeds. That is the documented
+    over-smoothing failure of soft-argmax, and it is exactly where our building error
+    lives. Cross-entropy against a Gaussian centred on the truth forces the mass onto one
+    mode. See docs/literature.md section 5.
+
+    Scored on a random subsample of valid pixels: a full (B, N, H, W) reference would be
+    another half-gigabyte on a card that is already tight, and a few thousand pixels
+    estimate this term perfectly well.
+    """
+
+    def __init__(self, sigma_bins: float = 1.0, n_points: int = 8192):
+        super().__init__()
+        self.sigma_bins = float(sigma_bins)
+        self.n_points = int(n_points)
+
+    def forward(self, probs, centres, target, mask=None):
+        B, N = centres.shape
+        p = probs.flatten(2)                                  # (B, N, P)
+        t = target.flatten(2).squeeze(1)                      # (B, P)
+        m = (mask.flatten(2).squeeze(1) > 0) if mask is not None else None
+        total, n = p.new_zeros(()), 0
+        for b in range(B):
+            idx = (m[b].nonzero(as_tuple=False).squeeze(1) if m is not None
+                   else torch.arange(t.shape[1], device=t.device))
+            if idx.numel() == 0:
+                continue
+            if idx.numel() > self.n_points:
+                idx = idx[torch.randint(0, idx.numel(), (self.n_points,),
+                                        device=idx.device)]
+            # Reference width tracks the average bin spacing, so the target stays about as
+            # sharp as the bins can actually represent.
+            width = ((centres[b, -1] - centres[b, 0]).abs() / N).clamp(min=1e-3)
+            ref = torch.exp(-0.5 * (((t[b][idx][None, :] - centres[b][:, None])
+                                     / (self.sigma_bins * width)) ** 2))
+            ref = ref / ref.sum(dim=0, keepdim=True).clamp(min=1e-12)
+            total = total - (ref * p[b][:, idx].clamp(min=1e-12).log()).sum(dim=0).mean()
+            n += 1
+        return total / max(n, 1)
+
+
 class CompositeLoss(nn.Module):
     """NLL + optional gradient matching. The default training objective."""
 
-    def __init__(self, grad_weight: float = 0.5, **nll_kwargs):
+    def __init__(self, grad_weight: float = 0.5, chamfer_weight: float = 0.0,
+                 dist_weight: float = 0.0, sigma_bins: float = 1.0, **nll_kwargs):
         super().__init__()
         self.nll = GaussianNLLLoss(**nll_kwargs)
         self.grad = GradientMatchingLoss()
+        self.chamfer = ChamferBinLoss()
+        self.dist = BinDistributionLoss(sigma_bins=sigma_bins)
         self.grad_weight = grad_weight
+        self.chamfer_weight = chamfer_weight
+        self.dist_weight = dist_weight
 
-    def forward(self, mu, log_var, target, mask=None):
+    def forward(self, mu, log_var, target, mask=None, probs=None, centres=None):
         loss, stats = self.nll(mu, log_var, target, mask)
         if self.grad_weight > 0:
             g = self.grad(mu, target, mask)
             loss = loss + self.grad_weight * g
             stats["grad"] = float(g.detach())
-            stats["loss"] = float(loss.detach())
+        if self.chamfer_weight > 0 and centres is not None:
+            c = self.chamfer(centres, target, mask)
+            loss = loss + self.chamfer_weight * c
+            stats["chamfer"] = float(c.detach())
+        if self.dist_weight > 0 and probs is not None:
+            d = self.dist(probs, centres, target, mask)
+            loss = loss + self.dist_weight * d
+            stats["dist"] = float(d.detach())
+        # Outside the grad_weight branch. With --grad-weight 0 the logged loss used to
+        # be whatever the NLL alone reported, which went stale the moment any other
+        # term existed.
+        stats["loss"] = float(loss.detach())
         return loss, stats

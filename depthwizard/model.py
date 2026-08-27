@@ -76,6 +76,9 @@ class DepthWizard(nn.Module):
         init_sigma_m: float = 5.0,
         freeze_backbone: bool = False,
         predict_uncertainty: bool = True,
+        bins: int = 0,
+        bin_min: float = -3.0,
+        bin_max: float = 120.0,
     ):
         super().__init__()
         from transformers import AutoModelForDepthEstimation
@@ -112,6 +115,37 @@ class DepthWizard(nn.Module):
         else:
             self.conv_log_var = None
 
+        # -------------------------------------------------------- binned height head
+        self.bins = int(bins)
+        self.bin_min, self.bin_max = float(bin_min), float(bin_max)
+        if self.bins > 0:
+            self.conv_bins = nn.Conv2d(self.conv_mu.in_channels, self.bins,
+                                       kernel_size=1)
+            # Bin widths are a global, per-image quantity, so they come from pooled
+            # features rather than per-pixel ones. Mean and std together carry how
+            # high the scene is and how spread out it is, which is what should decide
+            # where the bins are dense.
+            self.bin_width = nn.Sequential(
+                nn.Linear(2 * self.conv1.in_channels, 256), nn.GELU(),
+                nn.Linear(256, self.bins))
+            # Start the head where the data is. Randomly initialised, the bin
+            # logits give a near-uniform distribution whose expectation is the
+            # MIDDLE of the height range -- about 99 m for [-2, 200] -- against a
+            # true median of 0. The whole first epoch would go on climbing back
+            # down. So zero the weights and shape the bias into a Gaussian over the
+            # (now uniform) bins centred on the ground, the same trick conv_log_var
+            # uses above to begin at a plausible constant.
+            nn.init.zeros_(self.bin_width[-1].weight)
+            nn.init.zeros_(self.bin_width[-1].bias)      # -> uniform widths
+            nn.init.zeros_(self.conv_bins.weight)
+            step = (self.bin_max - self.bin_min) / self.bins
+            c0 = self.bin_min + (torch.arange(self.bins) + 0.5) * step
+            tau = max(self.height_scale / 4.0, 1.0)
+            self.conv_bins.bias.data.copy_(-0.5 * (c0 / tau) ** 2)
+        else:
+            self.conv_bins = None
+            self.bin_width = None
+
         if freeze_backbone:
             for p in self.backbone.parameters():
                 p.requires_grad_(False)
@@ -120,8 +154,13 @@ class DepthWizard(nn.Module):
 
     # ------------------------------------------------------------------ forward
 
-    def forward(self, pixel_values: torch.Tensor):
-        """pixel_values: (B, 3, H, W), ImageNet-normalised. Returns (mu, log_var) in metres."""
+    def forward(self, pixel_values: torch.Tensor, return_bins: bool = False):
+        """pixel_values: (B, 3, H, W), ImageNet-normalised. Returns (mu, log_var) in metres.
+
+        return_bins additionally yields per-pixel bin probabilities and per-image bin
+        centres, which the Chamfer and distribution losses need. It defaults to False
+        so every existing caller (inference, ONNX export, the viewer) is untouched.
+        """
         _, _, H, W = pixel_values.shape
         check_input_size(H, W, self.patch_size)
         ph, pw = H // self.patch_size, W // self.patch_size
@@ -130,7 +169,8 @@ class DepthWizard(nn.Module):
             pixel_values, output_hidden_states=False, output_attentions=False
         )
         hidden = self.neck(out.feature_maps, ph, pw)
-        x = hidden[self.head_in_index]
+        feat = hidden[self.head_in_index]
+        x = feat
 
         # Mirrors the stock head: upsample after conv1, exactly as in the DPT paper.
         x = self.conv1(x)
@@ -138,14 +178,48 @@ class DepthWizard(nn.Module):
                           mode="bilinear", align_corners=True)
         x = self.activation1(self.conv2(x))
 
-        mu = self.conv_mu(x) * self.height_scale
+        if self.bins:
+            mu, probs, centres = self._binned_height(feat, x)
+        else:
+            mu = self.conv_mu(x) * self.height_scale
+            probs = centres = None
+
         if self.conv_log_var is None:
-            return mu, None
-        # Variance is predicted in normalised units, so converting to metres is a shift
-        # of 2*log(scale) in log space. Doing it here rather than in the loss keeps the
-        # loss unit-agnostic and the reported sigma in metres.
-        log_var = self.conv_log_var(x) + 2.0 * math.log(self.height_scale)
+            log_var = None
+        else:
+            # Variance is predicted in normalised units, so converting to metres is a
+            # shift of 2*log(scale) in log space. Doing it here rather than in the loss
+            # keeps the loss unit-agnostic and the reported sigma in metres.
+            log_var = self.conv_log_var(x) + 2.0 * math.log(self.height_scale)
+
+        if return_bins:
+            return mu, log_var, probs, centres
         return mu, log_var
+
+    def _binned_height(self, feat, x):
+        """Adaptive-bin classification head with soft-argmax.
+
+        One regressed scalar has to span a long-tailed height distribution and
+        systematically loses the tail. Predicting a distribution over bins and taking its
+        expectation keeps a continuous output while letting the network put its
+        resolution where the scene heights actually are.
+
+        Widths are normalised the AdaBins way: a softmax, so they are strictly positive
+        and always sum to the full height range.
+
+        Note the expectation is the MEAN of the distribution, which sits between the
+        modes wherever the truth is bimodal (a roof edge is roof or ground, never the
+        average). Nothing here prevents that. BinDistributionLoss supervises the shape.
+        See docs/literature.md section 5.
+        """
+        g = torch.cat([feat.mean(dim=(2, 3)), feat.std(dim=(2, 3))], dim=1)
+        widths = F.softmax(self.bin_width(g), dim=1) * (self.bin_max - self.bin_min)
+        edges = self.bin_min + torch.cumsum(widths, dim=1)      # right edge of each bin
+        centres = edges - 0.5 * widths                          # (B, N), metres
+        probs = self.conv_bins(x).softmax(dim=1)                # (B, N, H, W)
+        mu = (probs * centres[:, :, None, None]).sum(dim=1, keepdim=True)
+        return mu, probs, centres
+
 
     # ------------------------------------------------------------------ convenience
 
@@ -185,7 +259,8 @@ class DepthWizard(nn.Module):
             return decay, no_decay
 
         head = nn.ModuleList([self.neck, self.conv1, self.conv2, self.conv_mu]
-                             + ([self.conv_log_var] if self.conv_log_var is not None else []))
+                             + ([self.conv_log_var] if self.conv_log_var is not None else [])
+                             + ([self.conv_bins, self.bin_width] if self.bins else []))
         bb_d, bb_n = split(self.backbone)
         hd_d, hd_n = split(head)
         groups = [
@@ -209,5 +284,33 @@ class DepthWizard(nn.Module):
         return total, train
 
 
+    def config(self) -> dict:
+        """Everything from_checkpoint needs to rebuild this model.
+
+        Kept in one place because three separate tools reconstruct a model from a
+        checkpoint and each used to hardcode the config keys it knew about. Adding the
+        binned head would have broken all three silently.
+        """
+        return {"model_id": self.model_id, "height_scale": self.height_scale,
+                "predict_uncertainty": self.conv_log_var is not None,
+                "bins": self.bins, "bin_min": self.bin_min, "bin_max": self.bin_max}
+
+
 def build(model_id: str = DEFAULT_MODEL, **kw) -> DepthWizard:
     return DepthWizard(model_id=model_id, **kw)
+
+
+def from_checkpoint(ck: dict, **overrides) -> DepthWizard:
+    """Rebuild the model a checkpoint was saved from and load its weights.
+
+    Checkpoints written before config() existed carry only model_id and height_scale at
+    the top level. Those default to the direct-regression head, which is what they are.
+    """
+    cfg = dict(ck.get("model_config") or {})
+    cfg.setdefault("model_id", ck.get("model_id") or DEFAULT_MODEL)
+    cfg.setdefault("height_scale", ck.get("height_scale", 30.0))
+    cfg.update(overrides)
+    model = DepthWizard(**cfg)
+    if "model" in ck:
+        model.load_state_dict(ck["model"])
+    return model
