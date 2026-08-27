@@ -170,6 +170,22 @@ def main():
         "n_buildings": 0}
     results["building_wise"] = bw
 
+    # Stratify by true height. A single per-building RMSE hides whether the model is good
+    # on the 4 m sheds that dominate an American suburb and useless on the tall stock that
+    # dominates an Asian city -- which is exactly the comparison we want to make.
+    bw_strata = []
+    if BP:
+        bo, bt_ = np.concatenate(BP), np.concatenate(BT)
+        np.savez_compressed(out / "per_building.npz", ours=bo, truth=bt_)
+        for lo, hi in ((0, 3), (3, 6), (6, 10), (10, 20), (20, 1e9)):
+            sel = (bt_ >= lo) & (bt_ < hi)
+            if sel.sum() < 20:
+                continue
+            st = building_wise_metrics(bo[sel], bt_[sel])
+            st["band"] = f"{lo}-{hi:g} m" if hi < 1e9 else f">{lo} m"
+            bw_strata.append(st)
+    results["building_wise_by_height"] = bw_strata
+
     base = None
     if Path(args.baseline).exists():
         base = json.loads(Path(args.baseline).read_text())
@@ -228,6 +244,18 @@ def main():
                  "building-wise figure is 2.3-2.8 m, but on a **randomly split** crop "
                  "protocol where a test crop's neighbour is in training; ours is "
                  "region-disjoint and the two are not the same measurement.\n")
+        if bw_strata:
+            L.append("\n**By true building height.** A single figure hides whether we are "
+                     "good on the low-rise stock that dominates an American suburb and "
+                     "useless on the tall stock that dominates an Asian city — which is "
+                     "exactly what a comparison against an Asia-wide number turns on.\n")
+            L.append("| true height | buildings | RMSE | bias | RMSE / median height |")
+            L.append("|---|---|---|---|---|")
+            for st in bw_strata:
+                ratio = st["rmse"] / st["truth_median_h"] if st["truth_median_h"] else float("nan")
+                L.append(f"| {st['band']} | {st['n_buildings']:,} | {st['rmse']:.2f} m | "
+                         f"{st['bias']:+.2f} m | {ratio:.2f}x |")
+
         if bw["rmse"] > 0 and bw["truth_median_h"] > 0:
             ratio = bw["rmse"] / bw["truth_median_h"]
             L.append(f"Our per-building RMSE is **{ratio:.2f}x the median building "
