@@ -58,6 +58,47 @@ def stage(force: bool = False):
     return total
 
 
+CODE_STAGE = ROOT / "data" / "kaggle_code"
+CODE_SLUG = "depthwizard-code"
+
+
+def stage_code():
+    """Copy the source the notebook needs. Small, so a plain copy is fine.
+
+    Deliberately excludes checkpoints, data, logs and .git -- a code dataset that carries a
+    900 MB checkpoint is a code dataset nobody re-uploads when the code changes.
+    """
+    src = Path(__file__).resolve().parents[1]
+    if CODE_STAGE.exists():
+        shutil.rmtree(CODE_STAGE)
+    CODE_STAGE.mkdir(parents=True)
+
+    # One archive, not a tree. The Kaggle client silently SKIPS subdirectories unless
+    # --dir-mode is set ("Skipping folder: tools"), which would have shipped train.py
+    # without the depthwizard package it imports and failed on Kaggle rather than here.
+    import zipfile
+    zpath = CODE_STAGE / "depthwizard_src.zip"
+    n = 0
+    with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in ("train.py", "infer.py"):
+            z.write(src / f, f)
+            n += 1
+        for pkg in ("depthwizard", "tools"):
+            for p in sorted((src / pkg).rglob("*")):
+                if p.is_file() and "__pycache__" not in p.parts and p.suffix != ".pyc":
+                    z.write(p, str(p.relative_to(src)))
+                    n += 1
+    print(f"zipped {n} source files -> {zpath.name} ({zpath.stat().st_size/1e6:.2f} MB)")
+    (CODE_STAGE / "dataset-metadata.json").write_text(json.dumps({
+        "title": "DepthWizard code",
+        "id": f"{USER}/{CODE_SLUG}",
+        "licenses": [{"name": "other"}],
+        "description": "Training and evaluation source for DepthWizard (SIH 2026). "
+                       "Attach alongside depthwizard-dfc2019-shards.",
+    }, indent=2))
+    print(f"staged -> {CODE_STAGE}")
+
+
 def write_metadata():
     meta = {
         "title": TITLE,
@@ -78,6 +119,9 @@ def write_metadata():
 
 def main():
     ap = argparse.ArgumentParser()
+    ap.add_argument("--code", action="store_true",
+                    help="push the source tree instead of the shards, as a second small "
+                         "dataset the notebook imports from")
     ap.add_argument("--create", action="store_true", help="first upload")
     ap.add_argument("--version", action="store_true", help="update an existing dataset")
     ap.add_argument("--notes", default="update")
@@ -92,22 +136,28 @@ def main():
     USER = api.config_values.get("username")
     print(f"authenticated as {USER}")
 
-    stage()
-    write_metadata()
+    if a.code:
+        stage_code()
+    else:
+        stage()
+        write_metadata()
     if a.stage_only:
         return
 
+    target = CODE_STAGE if a.code else STAGE
+    slug = CODE_SLUG if a.code else SLUG
     if a.create:
-        print("creating dataset and uploading -- this is 9 GB, expect a long wait")
-        api.dataset_create_new(str(STAGE), public=False, dir_mode="skip",
+        if not a.code:
+            print("creating dataset and uploading -- this is 9 GB, expect a long wait")
+        api.dataset_create_new(str(target), public=False, dir_mode="skip",
                                quiet=False)
     elif a.version:
-        api.dataset_create_version(str(STAGE), version_notes=a.notes,
+        api.dataset_create_version(str(target), version_notes=a.notes,
                                    dir_mode="skip", quiet=False)
     else:
         print("nothing to do; pass --create or --version")
         return
-    print(f"\ndone -> https://www.kaggle.com/datasets/{USER}/{SLUG}")
+    print(f"\ndone -> https://www.kaggle.com/datasets/{USER}/{slug}")
 
 
 USER = ""
