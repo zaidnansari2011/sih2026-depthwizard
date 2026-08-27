@@ -79,6 +79,7 @@ class DepthWizard(nn.Module):
         bins: int = 0,
         bin_min: float = -3.0,
         bin_max: float = 120.0,
+        htc: bool = True,
     ):
         super().__init__()
         from transformers import AutoModelForDepthEstimation
@@ -118,32 +119,57 @@ class DepthWizard(nn.Module):
         # -------------------------------------------------------- binned height head
         self.bins = int(bins)
         self.bin_min, self.bin_max = float(bin_min), float(bin_max)
+        self.htc = bool(htc) and self.bins > 0
         if self.bins > 0:
-            self.conv_bins = nn.Conv2d(self.conv_mu.in_channels, self.bins,
-                                       kernel_size=1)
-            # Bin widths are a global, per-image quantity, so they come from pooled
-            # features rather than per-pixel ones. Mean and std together carry how
-            # high the scene is and how spread out it is, which is what should decide
-            # where the bins are dense.
+            hidden = self.conv_mu.in_channels
+            # Head-tail cut (HTC-DC Net, TGRS 2023, Eqns 8-9). Foreground and background
+            # get their OWN distribution over bins, selected per pixel by a binary
+            # classifier at 1 m. One shared head has to express both a near-delta at
+            # ground level and a broad spread over roof heights using the same weights,
+            # and run03 showed what that costs: bins and soft-argmax with a loss-only
+            # constraint left buildings untouched. This is structural work a loss term
+            # cannot do. Measured on our shards, 35.6% of valid pixels sit above 1 m, so
+            # the binary problem is close to balanced.
+            self.conv_bins = nn.Conv2d(hidden, self.bins, kernel_size=1)
+            self.conv_bins_bg = (nn.Conv2d(hidden, self.bins, kernel_size=1)
+                                 if self.htc else None)
+            self.conv_htc = nn.Conv2d(hidden, 1, kernel_size=1) if self.htc else None
             self.bin_width = nn.Sequential(
                 nn.Linear(2 * self.conv1.in_channels, 256), nn.GELU(),
                 nn.Linear(256, self.bins))
-            # Start the head where the data is. Randomly initialised, the bin
-            # logits give a near-uniform distribution whose expectation is the
-            # MIDDLE of the height range -- about 99 m for [-2, 200] -- against a
-            # true median of 0. The whole first epoch would go on climbing back
-            # down. So zero the weights and shape the bias into a Gaussian over the
-            # (now uniform) bins centred on the ground, the same trick conv_log_var
-            # uses above to begin at a plausible constant.
+            # Start the head where the data is. Randomly initialised, the bin logits give
+            # a near-uniform distribution whose expectation is the MIDDLE of the height
+            # range against a true median of 0, and the first epoch goes on climbing back
+            # down. Zero the weights and shape each bias into a Gaussian over the (now
+            # uniform) bins, the same trick conv_log_var uses above.
             nn.init.zeros_(self.bin_width[-1].weight)
             nn.init.zeros_(self.bin_width[-1].bias)      # -> uniform widths
-            nn.init.zeros_(self.conv_bins.weight)
             step = (self.bin_max - self.bin_min) / self.bins
             c0 = self.bin_min + (torch.arange(self.bins) + 0.5) * step
             tau = max(self.height_scale / 4.0, 1.0)
-            self.conv_bins.bias.data.copy_(-0.5 * (c0 / tau) ** 2)
+            nn.init.zeros_(self.conv_bins.weight)
+            if self.htc:
+                # The foreground head only ever sees pixels above 1 m, so starting it at
+                # ground level would waste the head-tail split from the first step. p90 of
+                # our height distribution is 9.85 m; start it there.
+                nn.init.zeros_(self.conv_bins_bg.weight)
+                self.conv_bins.bias.data.copy_(-0.5 * ((c0 - 9.85) / tau) ** 2)
+                self.conv_bins_bg.bias.data.copy_(-0.5 * (c0 / tau) ** 2)
+                # The gate keeps its default random weights and a zero bias, on purpose.
+                # Zeroing them the way the bin heads are zeroed makes the logit a spatial
+                # CONSTANT, the hard threshold then sends every pixel down one branch, and
+                # the other head receives exactly zero gradient until the bias drifts
+                # across. Measured: with a base-rate bias of -0.594 the gate fired on 0.0%
+                # of pixels and the foreground head was dead at initialisation. A zero
+                # bias splits it near 50/50 with real spatial variation, and the head-tail
+                # cross-entropy pulls it to the measured 35.6% within a few hundred steps.
+                nn.init.zeros_(self.conv_htc.bias)
+            else:
+                self.conv_bins.bias.data.copy_(-0.5 * (c0 / tau) ** 2)
         else:
             self.conv_bins = None
+            self.conv_bins_bg = None
+            self.conv_htc = None
             self.bin_width = None
 
         if freeze_backbone:
@@ -154,7 +180,8 @@ class DepthWizard(nn.Module):
 
     # ------------------------------------------------------------------ forward
 
-    def forward(self, pixel_values: torch.Tensor, return_bins: bool = False):
+    def forward(self, pixel_values: torch.Tensor, return_bins: bool = False,
+                route_mask: torch.Tensor | None = None):
         """pixel_values: (B, 3, H, W), ImageNet-normalised. Returns (mu, log_var) in metres.
 
         return_bins additionally yields per-pixel bin probabilities and per-image bin
@@ -179,10 +206,10 @@ class DepthWizard(nn.Module):
         x = self.activation1(self.conv2(x))
 
         if self.bins:
-            mu, probs, centres = self._binned_height(feat, x)
+            mu, aux = self._binned_height(feat, x, route_mask)
         else:
             mu = self.conv_mu(x) * self.height_scale
-            probs = centres = None
+            aux = None
 
         if self.conv_log_var is None:
             log_var = None
@@ -193,11 +220,11 @@ class DepthWizard(nn.Module):
             log_var = self.conv_log_var(x) + 2.0 * math.log(self.height_scale)
 
         if return_bins:
-            return mu, log_var, probs, centres
+            return mu, log_var, aux
         return mu, log_var
 
-    def _binned_height(self, feat, x):
-        """Adaptive-bin classification head with soft-argmax.
+    def _binned_height(self, feat, x, route_mask=None):
+        """Adaptive-bin classification head with soft-argmax, plus the head-tail cut.
 
         One regressed scalar has to span a long-tailed height distribution and
         systematically loses the tail. Predicting a distribution over bins and taking its
@@ -205,20 +232,54 @@ class DepthWizard(nn.Module):
         resolution where the scene heights actually are.
 
         Widths are normalised the AdaBins way: a softmax, so they are strictly positive
-        and always sum to the full height range.
+        and always sum to the full height range. Edges are the cumulative sum, and the
+        Chamfer term in losses.py pulls those edges onto the quantiles of the truth --
+        the edges, not the centres, which is what HTC-DC Net supervises (Eqn 13).
 
-        Note the expectation is the MEAN of the distribution, which sits between the
-        modes wherever the truth is bimodal (a roof edge is roof or ground, never the
-        average). Nothing here prevents that. BinDistributionLoss supervises the shape.
-        See docs/literature.md section 5.
+        The expectation is the MEAN of the distribution, which sits between the modes
+        wherever the truth is bimodal, and a roof edge is roof or ground and never the
+        average. Two things fight that: the head-tail cut here, which gives roof and
+        ground separate distributions rather than making one head straddle both, and
+        DistributionConstraint in losses.py, which supervises the shape.
         """
         g = torch.cat([feat.mean(dim=(2, 3)), feat.std(dim=(2, 3))], dim=1)
         widths = F.softmax(self.bin_width(g), dim=1) * (self.bin_max - self.bin_min)
-        edges = self.bin_min + torch.cumsum(widths, dim=1)      # right edge of each bin
-        centres = edges - 0.5 * widths                          # (B, N), metres
-        probs = self.conv_bins(x).softmax(dim=1)                # (B, N, H, W)
+        edges = torch.cat([widths.new_full((widths.shape[0], 1), self.bin_min),
+                           self.bin_min + torch.cumsum(widths, dim=1)], dim=1)  # (B, N+1)
+        centres = 0.5 * (edges[:, :-1] + edges[:, 1:])                          # (B, N)
+
+        probs = self.conv_bins(x).softmax(dim=1)                    # (B, N, H, W)
+        htc_logit = None
+        if self.htc:
+            p_bg = self.conv_bins_bg(x).softmax(dim=1)
+            htc_logit = self.conv_htc(x)                            # (B, 1, H, W)
+            # Hard selection, as in the paper (Eqn 9). The gate is not differentiable
+            # here on purpose: it is trained directly by its own cross-entropy against
+            # (truth > 1 m), and letting height gradients also pull on it would trade
+            # classification accuracy for regression convenience.
+            # Routing by ground truth for the first steps, by the gate thereafter.
+            #
+            # The hard threshold is not optional -- a soft blend would mix a roof-peaked
+            # and a ground-peaked distribution, and the expectation of that bimodal
+            # mixture lands between the two modes, which is the exact failure the
+            # head-tail cut exists to prevent. But a hard gate driven by a single 1x1 conv
+            # is an initialisation lottery: one random projection decides the sign for
+            # nearly every pixel, and whichever branch loses gets no gradient at all.
+            # Measured both ways at init here, 0.0% and then 99.4% of pixels.
+            #
+            # So during warmup the truth does the routing. Both heads then see the right
+            # pixels from step one while the head-tail cross-entropy trains the gate on
+            # its own terms, and the handover costs nothing because the gate is already
+            # accurate by then.
+            if route_mask is not None:
+                gate = route_mask.to(probs.dtype)
+            else:
+                gate = (htc_logit.detach() > 0.0).to(probs.dtype)
+            probs = gate * probs + (1.0 - gate) * p_bg
+
         mu = (probs * centres[:, :, None, None]).sum(dim=1, keepdim=True)
-        return mu, probs, centres
+        return mu, {"probs": probs, "centres": centres, "edges": edges,
+                    "htc_logit": htc_logit}
 
 
     # ------------------------------------------------------------------ convenience
@@ -260,7 +321,8 @@ class DepthWizard(nn.Module):
 
         head = nn.ModuleList([self.neck, self.conv1, self.conv2, self.conv_mu]
                              + ([self.conv_log_var] if self.conv_log_var is not None else [])
-                             + ([self.conv_bins, self.bin_width] if self.bins else []))
+                             + ([self.conv_bins, self.bin_width] if self.bins else [])
+                             + ([self.conv_bins_bg, self.conv_htc] if self.htc else []))
         bb_d, bb_n = split(self.backbone)
         hd_d, hd_n = split(head)
         groups = [
@@ -293,7 +355,8 @@ class DepthWizard(nn.Module):
         """
         return {"model_id": self.model_id, "height_scale": self.height_scale,
                 "predict_uncertainty": self.conv_log_var is not None,
-                "bins": self.bins, "bin_min": self.bin_min, "bin_max": self.bin_max}
+                "bins": self.bins, "bin_min": self.bin_min, "bin_max": self.bin_max,
+                "htc": self.htc}
 
 
 def build(model_id: str = DEFAULT_MODEL, **kw) -> DepthWizard:
@@ -309,6 +372,9 @@ def from_checkpoint(ck: dict, **overrides) -> DepthWizard:
     cfg = dict(ck.get("model_config") or {})
     cfg.setdefault("model_id", ck.get("model_id") or DEFAULT_MODEL)
     cfg.setdefault("height_scale", ck.get("height_scale", 30.0))
+    # Any checkpoint written before the head-tail cut existed was trained without it, so
+    # this has to default to False rather than to the constructor default of True.
+    cfg.setdefault("htc", False)
     cfg.update(overrides)
     model = DepthWizard(**cfg)
     if "model" in ck:

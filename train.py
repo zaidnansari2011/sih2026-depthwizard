@@ -279,15 +279,23 @@ def main():
                          "outside it. Measured: p99.9 is 44 m and the max is 204 m, so "
                          "120 m clears p99.9 by 2.7x without spending most of the "
                          "resolution on one skyscraper")
-    ap.add_argument("--chamfer", type=float, default=0.1,
-                    help="bi-directional Chamfer on bin centres (AdaBins uses 0.1). "
-                         "Ignored without --bins")
+    ap.add_argument("--chamfer", type=float, default=0.01,
+                    help="bi-directional Chamfer on bin EDGES. HTC-DC Net uses "
+                         "mu1 = 0.01; run02-era code used AdaBins 0.1, ten times too "
+                         "hot. Ignored without --bins")
     ap.add_argument("--dist-weight", type=float, default=1.0,
-                    help="cross-entropy supervising the shape of the bin "
-                         "distribution. Without it soft-argmax averages across "
-                         "bimodal roof edges. Ignored without --bins")
-    ap.add_argument("--sigma-bins", type=float, default=1.0,
-                    help="width of the reference Gaussian, in average bin widths")
+                    help="distribution-based constraint, KL against a reference whose "
+                         "width is solved from the model own confidence (HTC-DC Net "
+                         "mu3 = 1). Ignored without --bins")
+    ap.add_argument("--htc-weight", type=float, default=1.0,
+                    help="head-tail cut cross-entropy (HTC-DC Net mu2 = 1)")
+    ap.add_argument("--no-htc", action="store_true",
+                    help="single shared bin head, i.e. what run03 did")
+    ap.add_argument("--fg-threshold", type=float, default=1.0,
+                    help="metres; the head-tail split")
+    ap.add_argument("--htc-warmup", type=int, default=500,
+                    help="steps routing by ground truth before handing over to the "
+                         "learned gate; stops one bin head starving at init")
     args = ap.parse_args()
 
     torch.manual_seed(args.seed)
@@ -337,7 +345,7 @@ def main():
                   freeze_backbone=args.freeze_backbone,
                   predict_uncertainty=not args.no_uncertainty,
                   bins=args.bins, bin_min=args.bin_min,
-                  bin_max=args.bin_max).to(device)
+                  bin_max=args.bin_max, htc=not args.no_htc).to(device)
     if args.checkpointing:
         model.enable_gradient_checkpointing()
 
@@ -349,13 +357,16 @@ def main():
     )
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda_factory(total_steps))
     head_desc = (f"binned soft-argmax, N={args.bins}, range "
-                 f"[{args.bin_min:.0f}, {args.bin_max:.0f}] m" if args.bins
-                 else "direct regression")
+                 f"[{args.bin_min:.0f}, {args.bin_max:.0f}] m"
+                 + ("" if args.no_htc else f", head-tail cut at {args.fg_threshold:.0f} m")
+                 if args.bins else "direct regression")
     loss_fn = CompositeLoss(grad_weight=args.grad_weight, beta=args.beta,
                             warmup_mse=args.warmup_mse,
                             chamfer_weight=args.chamfer if args.bins else 0.0,
                             dist_weight=args.dist_weight if args.bins else 0.0,
-                            sigma_bins=args.sigma_bins).to(device)
+                            htc_weight=(args.htc_weight if args.bins
+                                        and not args.no_htc else 0.0),
+                            fg_threshold=args.fg_threshold).to(device)
 
     start_epoch, gstep, best = 0, 0, float("inf")
     ckpt_last = out_dir / "last.pt"
@@ -383,6 +394,7 @@ DepthWizard training
   train rows    {n_train:,}  ->  {steps_per_epoch:,} steps/epoch
   total steps   {total_steps:,}  ({args.epochs} epochs, accum {args.accum})
   head          {head_desc}
+  htc warmup    {args.htc_warmup if args.bins and not args.no_htc else 0} steps routed by ground truth
   objective     NLL + {args.grad_weight} * gradient-matching, {args.warmup_mse} MSE warmup steps
   host RAM      {_ram()}
 """.rstrip())
@@ -417,16 +429,18 @@ DepthWizard training
 
             with torch.autocast("cuda", dtype=amp_dtype, enabled=amp_dtype != torch.float32):
                 if args.bins:
-                    mu, log_var, probs, centres = model(rgb, return_bins=True)
+                    route = ((agl > args.fg_threshold)
+                             if (not args.no_htc and gstep < args.htc_warmup)
+                             else None)
+                    mu, log_var, aux = model(rgb, return_bins=True, route_mask=route)
+                    aux = {k: (v.float() if torch.is_tensor(v) else v)
+                           for k, v in aux.items()}
                 else:
                     mu, log_var = model(rgb)
-                    probs = centres = None
+                    aux = None
                 if log_var is None:                       # ablation path
                     log_var = torch.zeros_like(mu)
-                loss, stats = loss_fn(
-                    mu.float(), log_var.float(), agl, mask,
-                    probs=None if probs is None else probs.float(),
-                    centres=None if centres is None else centres.float())
+                loss, stats = loss_fn(mu.float(), log_var.float(), agl, mask, aux=aux)
             loss = loss / args.accum
 
             if needs_scaler:
