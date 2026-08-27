@@ -30,6 +30,7 @@ import os
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -158,6 +159,60 @@ def cmd_search(args):
         print(f"\nwrote {args.out}")
 
 
+def cmd_download(args):
+    """Fetch one item.
+
+    The STAC assets on a Bhoonidhi item only ever expose metadata and a thumbnail, so the
+    raster itself comes from /download rather than from an asset href. The endpoint can
+    answer three different ways and they are easy to confuse: the bytes, a JSON order
+    acknowledgement for anything with Online: N, or an error. Content-Type decides which,
+    and a JSON body is NOT a failure -- it means the scene has to be staged first.
+    """
+    token = get_token()
+    url = (f"{BASE}/download?id={urllib.parse.quote(args.id)}"
+           f"&collection={urllib.parse.quote(args.collection)}")
+    req = urllib.request.Request(url, headers={"User-Agent": UA,
+                                               "Authorization": f"Bearer {token}"})
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        with urllib.request.urlopen(req, timeout=600) as r:
+            ctype = (r.headers.get("Content-Type") or "").lower()
+            disp = r.headers.get("Content-Disposition") or ""
+            name = args.name
+            if not name and "filename=" in disp:
+                name = disp.split("filename=")[-1].strip().strip('";')
+            if not name:
+                name = args.id
+
+            if "json" in ctype:
+                body = json.loads(r.read().decode(errors="replace"))
+                print("server returned JSON rather than bytes:")
+                print(json.dumps(body, indent=2)[:1500])
+                print("\nFor a scene with Online: N this is the expected reply -- it has "
+                      "to be ordered and staged before the bytes exist.")
+                return
+
+            dest = out_dir / name
+            total = int(r.headers.get("Content-Length") or 0)
+            got = 0
+            with open(dest, "wb") as fh:
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        print(f"\r  {got/1e6:.1f} / {total/1e6:.1f} MB", end="", flush=True)
+            print()
+            print(f"wrote {dest}  ({got/1e6:.1f} MB, {ctype or 'unknown type'})")
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace")[:600]
+        raise SystemExit(f"download failed: HTTP {e.code}\n{detail}")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -180,6 +235,13 @@ def main():
     s.add_argument("--limit", type=int, default=10)
     s.add_argument("--out")
     s.set_defaults(func=cmd_search)
+
+    d = sub.add_parser("download", help="fetch one item by id")
+    d.add_argument("--id", required=True)
+    d.add_argument("--collection", required=True)
+    d.add_argument("--out", default=str(ROOT / "data" / "bhoonidhi"))
+    d.add_argument("--name", help="output filename; default is the item id")
+    d.set_defaults(func=cmd_download)
 
     args = ap.parse_args()
     try:
