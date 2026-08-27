@@ -41,6 +41,65 @@ ECE 0.083 and sigma/error rank correlation +0.836, against run01's 0.163 / +0.56
 Buildings remain the whole problem: 16.37 m RMSE and -4.70 m bias, still
 underestimating, consistent with [literature.md](literature.md).
 
+## Protocol 4 - India, against Google Open Buildings 2.5D
+
+The first quantitative number DepthWizard has produced on Indian ground. Everything else
+we report is Jacksonville and Omaha.
+
+**Setup.** Maxar Open Data supplies 0.31 m RGB over the Teesta valley in Sikkim (event
+`India-Floods-Oct-2023`, but the acquisitions in it are 2022-03-14, so the matching Open
+Buildings year is 2022, not 2023). Google Open Buildings 2.5D Temporal supplies
+`building_height`, defined as height above terrain in [0, 100] m -- the same quantity we
+predict -- on the same UTM grid. `tools/open_buildings.py` pulls it as a windowed COG read;
+`tools/compare_open_buildings.py` scores it.
+
+**This is model versus model.** Open Buildings heights are inferred from Sentinel-2 at
+10 m. Agreement across many buildings is evidence our absolute scale transfers to India.
+A single-building disagreement is evidence of nothing, and we should never claim otherwise
+in front of a jury that knows the dataset.
+
+**Method choices that change the answer, so all of them get reported.** We compare per
+building, not per pixel, because their footprint edges are Sentinel-2 blurry and a pixel
+score would mostly measure their blur. Confidence intervals resample buildings, never
+pixels. A single global shift is recovered by FFT phase correlation first, because at
+26 degrees off-nadir a roof sits about 5 m from its own footprint while theirs come from
+near-nadir Sentinel-2.
+
+### First result: run02, 500 m town crop, 27.8% building coverage
+
+| | value | 95% CI |
+|---|---|---|
+| buildings scored | 89 of 108 components | |
+| bias (ours - theirs) | **-1.92 m** | [-2.50, -1.38] |
+| MAE | 2.37 m | [1.94, 2.89] |
+| RMSE | 3.29 m | [2.51, 4.20] |
+| r | +0.530 | [+0.358, +0.696] |
+
+**We under-call building heights on Indian data by about 2 m.** That is the same weakness
+DFC2019 already shows, appearing independently on another continent against another
+model -- which is worth more as corroboration than it costs us as a result.
+
+**The diagnostic that matters is the percentile sweep.** Our median inside a footprint is
+-1.92 m low, but our p90 inside the same footprint is only -0.28 m off. The model does
+reach the right roof height somewhere in each building; what it fails to do is hold that
+height flat across the roof. That is the soft-argmax over-smoothing signature, and it is
+exactly what the binned head with the head-tail cut (run03, run04) was built to fix. So
+this crop is the **before** measurement, and run04 gets scored against it unchanged.
+
+### Two things not to repeat
+
+**Erosion was my idea and it was wrong.** I expected shrinking their footprint to strip a
+blur halo and move the bias toward zero. Measured: -1.92 m at 0 m erosion, -2.72 at 2 m,
+-3.14 at 3 m -- the wrong direction, because erosion drops small components first and so
+selects for the taller buildings we under-call most. Default is 0, and the sweep prints.
+
+**The co-registration peak is weak on real data.** The synthetic self-test peaks at 0.40;
+this crop peaks at **0.041**. The recovered shift still helps (r +0.436 without, +0.537
+with) and its magnitude, 7.2 m, is the right order for a 26-degree lean on a 9 m building.
+But a peak that weak is not a confident registration, and the honest reading is that some
+of the residual disagreement is co-registration we have not removed. Report the with-shift
+and no-shift numbers together, never the better one alone.
+
 ## Test-split discipline
 
 The test split had already been scored twice before this note: once by

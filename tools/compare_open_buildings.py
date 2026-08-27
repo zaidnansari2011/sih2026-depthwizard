@@ -108,9 +108,26 @@ def shift_arr(a: np.ndarray, dy: int, dx: int):
     return out
 
 
-def per_building(pred, ob, res, min_area_m2, our_pct):
-    """One row per Open Buildings component: their median height against our robust one."""
+def per_building(pred, ob, res, min_area_m2, our_pct, erode_m=0.0):
+    """One row per Open Buildings component: their median height against ours.
+
+    `erode_m` shrinks their footprint before measuring. The theory was that their mask,
+    being Sentinel-2 derived at 4 m effective resolution, has an edge blurred outward over
+    surrounding ground; our sharp 0.3 m prediction correctly reports ground there while
+    they report building, so a shared median would drag ours down and leave theirs alone.
+    Eroding to the footprint core should then have moved the bias toward zero.
+
+    Measured on the Sikkim town crop, it does the opposite: bias -1.92 m at 0 m erosion,
+    -2.33 at 1 m, -2.72 at 2 m, -3.14 at 3 m. Erosion drops the small components first, so
+    it selects for larger and taller buildings -- which is where we under-call most. The
+    halo theory is not what is driving the gap, so the default is 0 and the sweep is
+    printed rather than a correction being silently applied.
+    """
     mask = np.isfinite(ob) & (ob > 0.5)
+    if erode_m > 0:
+        k = int(round(erode_m / res))
+        if k > 0:
+            mask = ndimage.binary_erosion(mask, np.ones((2 * k + 1, 2 * k + 1)))
     lab, n = ndimage.label(mask, structure=np.ones((3, 3)))
     if n == 0:
         raise SystemExit("no building components in the Open Buildings raster")
@@ -184,6 +201,10 @@ def main():
     ap.add_argument("--pred", required=True, help="height GeoTIFF from infer.py")
     ap.add_argument("--ob", required=True, help="height GeoTIFF from open_buildings.py")
     ap.add_argument("--min-area", type=float, default=25.0, help="m2; drop specks")
+    ap.add_argument("--erode", type=float, default=0.0,
+                    help="metres to erode their footprint before measuring. Defaults to 0 "
+                         "-- see per_building(): eroding was supposed to strip their blur "
+                         "halo, and measurably does not do what I expected.")
     ap.add_argument("--our-pct", type=float, default=50.0,
                     help="percentile of our height inside a footprint. Defaults to 50 so "
                          "it is like-for-like against their median: a self-test with a "
@@ -221,7 +242,7 @@ def main():
                       f"dy {dy/max(abs(dx)+abs(dy),1):+.2f}")
         pred = shift_arr(pred, dy, dx)
 
-    b = per_building(pred, ob, res, a.min_area, a.our_pct)
+    b = per_building(pred, ob, res, a.min_area, a.our_pct, a.erode)
     ours, obh = b["ours"], b["ob"]
     d = ours - obh
     print(f"\n{b['n_scored']:,} buildings scored of {b['n_components']:,} components "
@@ -242,6 +263,14 @@ def main():
     # How much of the bias is the summary statistic rather than the model? A percentile
     # sweep answers it in one line, and stops anyone (us included) picking the flattering
     # one after the fact.
+    print(f"\n  sensitivity to eroding their footprint (currently {a.erode:g} m):")
+    for e in (0.0, 1.0, 2.0, 3.0):
+        be = per_building(pred, ob, res, a.min_area, a.our_pct, e)
+        de = be["ours"] - be["ob"]
+        print(f"    erode {e:g} m: {be['n_scored']:4d} buildings, bias {de.mean():+6.2f} m, "
+              f"MAE {np.abs(de).mean():5.2f} m, r "
+              f"{np.corrcoef(be['ours'], be['ob'])[0, 1]:+.3f}")
+
     print("\n  sensitivity to how we summarise a footprint:")
     ok_m = np.isfinite(pred)
     safe_m = np.where(ok_m, pred, 0.0)
