@@ -451,9 +451,22 @@ flat areas, taking the metric-anchor role from SRTM/Copernicus. For a SAC jury, 
 our DSM against ISRO's own CartoDEM reads better than checking it against an American DEM
 -- provided we quote its 8 m LE90 rather than implying it arbitrates buildings.
 
+Retrieval is verified, not assumed. `tools/bhoonidhi.py download` pulled a real tile:
+42 MB zip holding a 3600x3600 float32 GeoTIFF, EPSG:4326, 30 m pixels, 100% valid,
+elevation 497.8 to 1393.7 m over north Bengaluru.
+
+**And CartoDEM measures a different quantity than we predict.** It is absolute elevation
+above sea level. Our model outputs AGL, height above the local ground, which is zero on
+the ground by construction. The two cannot be differenced directly, so CartoDEM cannot
+validate our output even at its own coarse scale. What it can do is supply the terrain
+surface that turns our AGL into an absolute DSM, which matters for output-format
+compliance (7.3) if the deliverable is specified as absolute elevation rather than AGL.
+That is a product feature, not a validation.
+
 Practical notes: LISS4 scenes come back `Online: N`, so they need ordering rather than
-direct download, and item `assets` expose only metadata and thumbnail. Search wants full
-ISO timestamps and a range of 366 days or less; both fail as HTTP 406 otherwise.
+direct download, and item `assets` expose only metadata and thumbnail, so the raster comes
+from `/download` rather than from an asset href. Search wants full ISO timestamps and a
+range of 366 days or less; both fail as HTTP 406 otherwise.
 
 ### Metric anchor — SRTM 30 m / Copernicus GLO-30
 
