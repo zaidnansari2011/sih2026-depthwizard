@@ -152,6 +152,39 @@ drift across the entire 947 m of relief**. And it is confounded -- in the Himala
 vegetation and settlement both change with altitude, so some of that association is real
 ecology rather than model error. Report it as a bounded association, not as a proven bias.
 
+### The number that actually matters: -6.94 m on confident buildings
+
+Open Buildings ships a `building_presence` confidence band alongside the height. Its
+footprint outline covers 5.61% of the 2 km crop; its confident pixels cover 1.81%. The
+outline is a dilated blob that spans the gaps between houses. Scoring inside the blob
+therefore mixes roof, ground and tree canopy, and that dilution is what produced the
+comfortable -1.15 m.
+
+Filter by their own confidence and the picture inverts:
+
+| their confidence | buildings | bias | MAE | r |
+|---|---|---|---|---|
+| > 0.00 (outline) | 585 | -1.15 m | 2.34 m | +0.269 |
+| > 0.50 | 581 | -3.94 m | 4.30 m | +0.336 |
+| > 0.70 | 392 | -5.35 m | 5.49 m | +0.418 |
+| > 0.85 | 168 | **-6.94 m** | 7.04 m | +0.452 |
+
+**The more certain they are that a pixel is a building, the more we under-call it.**
+Correlation improves at the same time, so this is not noise thinning out -- it is a real,
+monotone effect concentrated on the buildings both models actually agree exist.
+
+**-6.94 m is the honest headline, not -1.15 m.** And it lands on top of the building bias
+we already measure on DFC2019, on another continent, against a different reference. Two
+independent datasets now say the same thing: DepthWizard under-predicts tall buildings by
+roughly 7 m.
+
+That is a genuine cross-validated weakness, and it is the one the binned head with the
+head-tail cut (run03, run04) exists to fix. It also settles the question of whether the
+model is finished: it is not.
+
+**Do not quote -1.15 m as the India result.** It is the artefact of scoring inside a
+dilated footprint, and anyone who knows the dataset will ask which band we thresholded.
+
 ## Test-split discipline
 
 The test split had already been scored twice before this note: once by

@@ -59,6 +59,11 @@ def load_aligned(pred_path: Path, ob_path: Path):
     with rasterio.open(ob_path) as ob:
         prof, ob_arr = ob.profile, ob.read(1)
         ob_arr = np.where(ob_arr == ob.nodata, np.nan, ob_arr)
+        # Band 2 is their own confidence, written by newer open_buildings.py runs only.
+        pres = None
+        if ob.count > 1:
+            pres = ob.read(2)
+            pres = np.where(pres == ob.nodata, np.nan, pres)
     with rasterio.open(pred_path) as p:
         if p.crs != prof["crs"]:
             raise SystemExit(f"CRS mismatch: pred {p.crs} vs ob {prof['crs']}")
@@ -68,7 +73,7 @@ def load_aligned(pred_path: Path, ob_path: Path):
             pred = v.read(1).astype("float32")
             if p.nodata is not None:
                 pred = np.where(pred == p.nodata, np.nan, pred)
-    return pred, ob_arr.astype("float32"), prof
+    return pred, ob_arr.astype("float32"), prof, pres
 
 
 def phase_shift(a: np.ndarray, b: np.ndarray, max_px: int, coarse: int = 4):
@@ -108,7 +113,8 @@ def shift_arr(a: np.ndarray, dy: int, dx: int):
     return out
 
 
-def per_building(pred, ob, res, min_area_m2, our_pct, erode_m=0.0):
+def per_building(pred, ob, res, min_area_m2, our_pct, erode_m=0.0,
+                 pres=None, min_presence=0.0):
     """One row per Open Buildings component: their median height against ours.
 
     `erode_m` shrinks their footprint before measuring. The theory was that their mask,
@@ -124,6 +130,8 @@ def per_building(pred, ob, res, min_area_m2, our_pct, erode_m=0.0):
     printed rather than a correction being silently applied.
     """
     mask = np.isfinite(ob) & (ob > 0.5)
+    if pres is not None and min_presence > 0:
+        mask &= np.isfinite(pres) & (pres > min_presence)
     if erode_m > 0:
         k = int(round(erode_m / res))
         if k > 0:
@@ -214,12 +222,16 @@ def main():
     ap.add_argument("--no-shift", action="store_true", help="skip co-registration")
     ap.add_argument("--off-nadir", type=float, help="degrees, for the lean prediction")
     ap.add_argument("--sat-azimuth", type=float, help="degrees clockwise from north")
+    ap.add_argument("--min-presence", type=float, default=0.0,
+                    help="keep only pixels their own confidence band scores above this. "
+                         "Their footprint outline spans the gaps between houses; their "
+                         "confidence does not. 0 disables.")
     ap.add_argument("--boot", type=int, default=2000)
     ap.add_argument("--seed", type=int, default=1337)
     ap.add_argument("--out")
     a = ap.parse_args()
 
-    pred, ob, prof = load_aligned(Path(a.pred), Path(a.ob))
+    pred, ob, prof, pres = load_aligned(Path(a.pred), Path(a.ob))
     res = abs(prof["transform"].a)
     print(f"grid {prof['width']} x {prof['height']} at {res} m  ({prof['crs']})")
     print(f"our coverage {100*np.isfinite(pred).mean():.1f}%   "
@@ -242,7 +254,8 @@ def main():
                       f"dy {dy/max(abs(dx)+abs(dy),1):+.2f}")
         pred = shift_arr(pred, dy, dx)
 
-    b = per_building(pred, ob, res, a.min_area, a.our_pct, a.erode)
+    b = per_building(pred, ob, res, a.min_area, a.our_pct, a.erode,
+                     pres, a.min_presence)
     ours, obh = b["ours"], b["ob"]
     d = ours - obh
     print(f"\n{b['n_scored']:,} buildings scored of {b['n_components']:,} components "
@@ -265,11 +278,24 @@ def main():
     # one after the fact.
     print(f"\n  sensitivity to eroding their footprint (currently {a.erode:g} m):")
     for e in (0.0, 1.0, 2.0, 3.0):
-        be = per_building(pred, ob, res, a.min_area, a.our_pct, e)
+        be = per_building(pred, ob, res, a.min_area, a.our_pct, e,
+                          pres, a.min_presence)
         de = be["ours"] - be["ob"]
         print(f"    erode {e:g} m: {be['n_scored']:4d} buildings, bias {de.mean():+6.2f} m, "
               f"MAE {np.abs(de).mean():5.2f} m, r "
               f"{np.corrcoef(be['ours'], be['ob'])[0, 1]:+.3f}")
+
+    if pres is not None:
+        print("\n  sensitivity to their own confidence threshold:")
+        for t in (0.0, 0.5, 0.7, 0.85):
+            bt = per_building(pred, ob, res, a.min_area, a.our_pct, a.erode, pres, t)
+            if bt["n_scored"] < 20:
+                print(f"    presence > {t:.2f}: only {bt['n_scored']} buildings, skipped")
+                continue
+            dt = bt["ours"] - bt["ob"]
+            print(f"    presence > {t:.2f}: {bt['n_scored']:4d} buildings, "
+                  f"bias {dt.mean():+6.2f} m, MAE {np.abs(dt).mean():5.2f} m, r "
+                  f"{np.corrcoef(bt['ours'], bt['ob'])[0, 1]:+.3f}")
 
     print("\n  sensitivity to how we summarise a footprint:")
     ok_m = np.isfinite(pred)
