@@ -34,18 +34,29 @@ OUT = WORK / "checkpoints" / "run05"
 # the queue wait rather than now. Searching costs nothing and removes the whole class of
 # "it didn't work" round-trips.
 INPUT = Path("/kaggle/input")
+_present = sorted(p.name for p in INPUT.glob("*"))
+
+# The source may arrive either way and both are normal: Kaggle unpacks an uploaded .zip
+# into a real tree, but a dataset created another way can still hold the archive. Look for
+# the extracted tree first, fall back to the zip.
+_trees = sorted({p.parent for p in INPUT.glob("*/train.py")})
 _zips = sorted(INPUT.glob("*/depthwizard_src.zip"))
 _shard_dirs = sorted({p.parent for p in INPUT.glob("*/train_*.npz")})
-if not _zips:
-    raise SystemExit(f"no depthwizard_src.zip under {INPUT}. Attach the "
-                     f"'depthwizard-code' dataset. Present: {[p.name for p in INPUT.glob('*')]}")
+
 if not _shard_dirs:
-    raise SystemExit(f"no train_*.npz under {INPUT}. Attach the "
-                     f"'depthwizard-dfc2019-shards' dataset. Present: "
-                     f"{[p.name for p in INPUT.glob('*')]}")
-CODE_ZIP = str(_zips[0])
+    raise SystemExit(f"no train_*.npz under {INPUT}. Attach 'depthwizard-dfc2019-shards'. "
+                     f"Present: {_present}")
 SHARDS = str(_shard_dirs[0])
-print(f"code   -> {CODE_ZIP}")
+
+if _trees:
+    CODE = str(_trees[0])            # already a usable tree; nothing to extract
+    CODE_ZIP = None
+elif _zips:
+    CODE_ZIP = str(_zips[0])
+else:
+    raise SystemExit(f"no train.py and no depthwizard_src.zip under {INPUT}. Attach "
+                     f"'depthwizard-code'. Present: {_present}")
+print(f"code   -> {CODE if CODE_ZIP is None else CODE_ZIP}")
 print(f"shards -> {SHARDS}")
 
 os.environ["HF_HOME"] = str(WORK / "hf")          # cache the backbone across sessions
@@ -59,21 +70,22 @@ print(f"torch {torch.__version__}  cuda {torch.cuda.is_available()}  "
       f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-'}")
 print(f"bf16 supported: {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}"
       "   (expect False on T4/P100 -> fp16 + GradScaler)")
-for p in (CODE_ZIP, SHARDS):  # already discovered above; belt and braces
-    if not Path(p).exists():
-        raise SystemExit(f"missing dataset: {p}. Attach it in the notebook sidebar.")
-
-# The source ships as one archive because the Kaggle client silently skips
-# subdirectories on upload -- shipping a tree would have delivered train.py without the
-# package it imports. Re-extract each session; /kaggle/input is read-only.
-import zipfile
-shutil_target = Path(CODE)
-if shutil_target.exists():
+if CODE_ZIP is not None:
+    # /kaggle/input is read-only, so unpack into working space each session.
     import shutil as _sh
-    _sh.rmtree(shutil_target)
-with zipfile.ZipFile(CODE_ZIP) as z:
-    z.extractall(CODE)
-print(f"extracted {len(list(Path(CODE).rglob('*.py')))} source files -> {CODE}")
+    import zipfile
+    if Path(CODE).exists():
+        _sh.rmtree(CODE)
+    with zipfile.ZipFile(CODE_ZIP) as z:
+        z.extractall(CODE)
+    print(f"extracted {len(list(Path(CODE).rglob('*.py')))} source files -> {CODE}")
+else:
+    print(f"using source tree in place ({len(list(Path(CODE).rglob('*.py')))} .py files)")
+
+for need in ("train.py", "depthwizard/model.py", "depthwizard/dataset.py"):
+    if not (Path(CODE) / need).exists():
+        raise SystemExit(f"source is incomplete: {need} missing under {CODE}. "
+                         f"Found: {sorted(p.name for p in Path(CODE).glob('*'))}")
 n_train = len(list(Path(SHARDS).glob("train_*.npz")))
 n_val = len(list(Path(SHARDS).glob("val_*.npz")))
 n_test = len(list(Path(SHARDS).glob("test_*.npz")))
