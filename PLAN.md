@@ -424,6 +424,37 @@ LISS-IV is free and genuinely Indian, but at 5.8 m a building spans 2–3 pixels
 
 **Not a blocker either way.** `meanOffNadirViewAngle` spans 4.8°–28.9° across the 67 DFC scenes (§6.2), so we can already measure accuracy degradation vs look angle on data we hold. Cartosat strengthens the domain story; its absence does not sink it.
 
+### Bhoonidhi, resolved 27 Aug 2026 -- and it is not what section 8 wanted
+
+Access works, and needed no email. Despite the Applications page saying to contact NRSC for
+access, ordinary portal credentials authenticate at `/auth/token`. `tools/bhoonidhi.py`
+wraps auth, collections and search, with credentials kept outside the git tree.
+
+**The ceiling is the problem.** All 64 live collections, checked against the API rather
+than the docs: the only CartoSat entry is `CartoSat-1_PAN_CartoDEM_30m`, a 30 m **DEM**
+rather than imagery. The best optical is ResourceSat LISS4-MX70 at **5.8 m**, then LISS3 at
+23.5 m and AWiFS at 56 m. Everything else is SAR, ocean colour or NISAR. There is no
+sub-metre optical imagery in this API at all.
+
+Two consequences, both of which shrink what section 7.1 can claim:
+
+- **LISS4 at 5.8 m against our 0.3 m training data is a 19x GSD gap.** That is a different
+  problem, not a domain gap. Using it would mean retraining at that scale rather than
+  testing transfer to it.
+- **CartoDEM cannot validate building heights.** Its own metadata reports 30 m posting and
+  a vertical accuracy of **8 m LE90 / 15 m CE90**. A building footprint is sub-pixel at
+  30 m, and 8 m LE90 is *worse than our ground RMSE of 1.92 m*. It cannot referee the one
+  thing we are weakest at.
+
+What it is genuinely good for is a coarse **absolute-scale and bias anchor** over large
+flat areas, taking the metric-anchor role from SRTM/Copernicus. For a SAC jury, checking
+our DSM against ISRO's own CartoDEM reads better than checking it against an American DEM
+-- provided we quote its 8 m LE90 rather than implying it arbitrates buildings.
+
+Practical notes: LISS4 scenes come back `Online: N`, so they need ordering rather than
+direct download, and item `assets` expose only metadata and thumbnail. Search wants full
+ISO timestamps and a range of 366 days or less; both fail as HTTP 406 otherwise.
+
 ### Metric anchor — SRTM 30 m / Copernicus GLO-30
 
 Public, free, named in the problem statement. *Not* CartoDEM (see §5 Stage 02).

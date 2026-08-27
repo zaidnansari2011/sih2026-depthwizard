@@ -16,7 +16,11 @@ say plainly "Do not fetch a new token for each API request you make." Search is 
     python tools/bhoonidhi.py collections
     python tools/bhoonidhi.py collections --grep Carto
     python tools/bhoonidhi.py search --collection CartoSat-1_PAN_CartoDEM_30m \\
-        --bbox 77.4 12.8 77.8 13.2 --datetime 2020-01-01/2026-08-27 --limit 10
+        --bbox 77.4 12.8 77.8 13.2 --limit 10
+
+Two date rules the API enforces that the spec does not spell out: datetime needs
+full ISO timestamps ("2025-09-01T00:00:00Z/2026-08-25T00:00:00Z", not bare dates),
+and the range must be 366 days or less. Both come back as HTTP 406.
 """
 from __future__ import annotations
 
