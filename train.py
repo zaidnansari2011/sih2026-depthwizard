@@ -32,7 +32,7 @@ from depthwizard.dataset import Augment, HeightShardDataset, ShardStream
 from depthwizard.losses import CompositeLoss
 from depthwizard.metrics import height_metrics, calibration_curve, \
     expected_calibration_error, uncertainty_error_correlation
-from depthwizard.model import build, check_input_size
+from depthwizard.model import build, check_input_size, DEFAULT_MODEL
 
 
 def pick_precision(requested: str):
@@ -234,6 +234,13 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--shards", default="D:/sih2026/data/shards")
+    ap.add_argument("--model-id", default=DEFAULT_MODEL,
+                    help="backbone. Default is Depth-Anything-V2-Small (Apache-2.0, "
+                         "24.8 M). V2's Base and Large are CC-BY-NC so they cannot ship; "
+                         "V1 is Apache-2.0 at every size. Measured zero-shot correlation "
+                         "with per-building height on 40 val tiles: V2-Small +0.351, "
+                         "LiheYoung/depth-anything-base-hf +0.470, "
+                         "LiheYoung/depth-anything-large-hf +0.659.")
     ap.add_argument("--out", default="D:/sih2026/checkpoints")
     ap.add_argument("--epochs", type=int, default=3)
     ap.add_argument("--batch", type=int, default=8)
@@ -341,7 +348,8 @@ def main():
     total_steps = args.max_steps or steps_per_epoch * args.epochs
 
     # ---------------------------------------------------------------- model
-    model = build(height_scale=height_scale, init_sigma_m=args.init_sigma,
+    model = build(model_id=args.model_id,
+                  height_scale=height_scale, init_sigma_m=args.init_sigma,
                   freeze_backbone=args.freeze_backbone,
                   predict_uncertainty=not args.no_uncertainty,
                   bins=args.bins, bin_min=args.bin_min,
