@@ -130,8 +130,14 @@ This section used to claim that run zero-shot, DA-V2 "correlates with rooftop al
 | | RMSE | MAE | r | bias | Deployable? |
 |---|---|---|---|---|---|
 | Raw output vs metres | 5.50 m | 3.10 m | 0.43 | −1.56 m | units are arbitrary — read *r*, not RMSE |
-| **Global affine** — one scale+shift fitted on *train* tiles | **4.68 m** | 3.32 m | 0.43 | +0.70 m | **yes — this is the bar** |
+| **Global affine** — one scale+shift fitted on *train* tiles | **4.68 m** | 3.32 m | 0.43 | +0.70 m | **yes — deployable, and the bar on the TEST split** |
 | Oracle affine — refitted per test tile from its own truth | 3.94 m | 2.58 m | 0.63 | 0.00 m | no — needs the answer to compute the answer |
+
+> **These are TEST-split numbers, and the test split is materially easier than val.**
+> The same deployable global-affine baseline reads **9.308 m on val**. Development
+> decisions use the val figure; test is reserved for one final reported number.
+> Both tools now default to `--split val`. See
+> [docs/evaluation-protocol.md](docs/evaluation-protocol.md).
 
 **Verdict: the pretrained features do see height at nadir.** r ≈ 0.43 is not albedo, it is signal. What is broken is *calibration*, not perception — and the failure has a specific, diagnosable shape:
 
@@ -144,7 +150,7 @@ This section used to claim that run zero-shot, DA-V2 "correlates with rooftop al
 
 The model **compresses dynamic range**: it lifts the ground and flattens the structures. That is what a relative-depth prior does when it has no absolute reference, and it is what fine-tuning on metric labels exists to fix. Per terrain: mixed 4.31 m, sparse 5.74 m (bias **+5.16 m**), urban 6.17 m. Per-tile RMSE spans 2.11–8.07 m, so cross-terrain stability is a measured problem, not a hypothetical one (§7.5).
 
-**The fix is smaller than feared, but the need for it is confirmed.** Fine-tuning must beat **4.68 m** and should approach the **3.94 m** oracle. Landing above 4.68 m would mean we did worse than a two-parameter linear correction, and §6.1 would have nothing to stand on.
+**The fix is smaller than feared, but the need for it is confirmed.** Fine-tuning must beat the baseline **on the same split** -- 9.31 m on val, not the 4.68 m test figure above. Landing above it would mean we did worse than a two-parameter linear correction, and §6.1 would have nothing to stand on.
 
 *The earlier "overestimates tree height" concern did not reproduce: vegetation bias is −3.57 m, an under-estimate. Range compression dominates it.*
 
@@ -172,6 +178,55 @@ Fit the relative map to absolute metres by regressing against coarse SRTM 30 m e
 ### Stage 03 — 3D flythrough · *Full-stack pair*
 
 Displace a mesh by the heightmap, texture with the original image, fly a camera through it in the browser. Three.js (Unity and Babylon.js also accepted). **Worth 50% of the marks.**
+
+### Fine-tuned results, 27 Aug 2026
+
+Three runs. All val figures are whole-tile `--split val`, the same 80 tiles for every
+row; see [docs/evaluation-protocol.md](docs/evaluation-protocol.md) for why crop-wise and
+whole-tile numbers differ by ~1.5 m and must not be mixed.
+
+| Run | Head | Objective | val RMSE | bldg RMSE | bldg bias | ECE | sigma rank rho |
+|---|---|---|---|---|---|---|---|
+| baseline | zero-shot + global affine | - | 9.308 | 22.47 | -9.64 | - | - |
+| baseline | zero-shot + oracle affine *(not deployable)* | - | 7.285 | 17.33 | -2.64 | - | - |
+| run01 | direct regression | NLL + grad | 6.811 | 16.72 | -3.23 | 0.163 | +0.562 |
+| run02 | direct regression | NLL + grad, beta=0.5 | **6.454** | 16.37 | -4.70 | 0.083 | +0.836 |
+| run03 | binned soft-argmax, N=128 | + Chamfer + distribution CE | *running* | | | | |
+
+**The differentiator is real:** run02 beats the deployable baseline by 30.7%, and beats
+the *oracle* affine, which is allowed to fit scale and shift from each tile's own truth.
+The uncertainty head works - ECE 0.083 and sigma/error rank correlation +0.836.
+
+**The beta-NLL ablation is closed, negative.** run02 ran 12 full epochs against run01's 5
+and moved building RMSE 21.63 -> 21.17 crop-wise, with the bias still at -6.42 m.
+Reweighting a regression loss does not fix a long-tailed output space, which is what the
+literature said would happen (docs/literature.md section 4).
+
+**Buildings remain the entire problem:** 12.8% of pixels carrying 91.8% of squared error.
+run03 tests the actual fix - a distribution over adaptive height bins with soft-argmax,
+supervised in shape as well as mean, because soft-argmax alone averages across bimodal
+roof edges (docs/literature.md section 5).
+
+**View angle is not what limits us.** DFC2019 images every AOI from many satellite
+positions and the Track 3 metadata carries the geometry, so the domain-gap question in
+section 7.1 is measurable today without Bhoonidhi. Joining per-tile error to
+`meanOffNadirViewAngle` over 80 val tiles, 4.2 to 29.2 degrees:
+
+| Measure | Pearson r | slope | 95% CI | p |
+|---|---|---|---|---|
+| Naive across tiles *(terrain-confounded)* | +0.000 | +0.000 m/deg | - | 0.998 |
+| **Within-region** *(terrain controlled)* | +0.074 | +0.009 m/deg | [-0.021, +0.038] | 0.555 |
+
+Every AOI appears at several angles, so subtracting each region's own mean removes the
+terrain confound entirely and leaves only "this same ground, viewed more obliquely". The
+95% interval bounds the cost at 0.038 m per degree, i.e. **at most ~1 m of RMSE across the
+whole 25-degree span** against a 6.45 m headline. Sun elevation tells the same story and
+shows why the control matters: naive r +0.212 collapses to -0.033 within-region, so the
+apparent effect was which AOIs happened to be imaged at low sun.
+
+This bounds sensitivity to *view geometry only*. A different sensor, GSD and radiometry is
+the Cartosat gap proper, and this says nothing about it. `tools/view_angle.py`,
+`out/view_angle_run02/`.
 
 ## 6. Our four differentiators
 
@@ -343,7 +398,7 @@ Build the baseline first: once it runs end to end we always have something demoa
 - [x] Track 3 metadata checked for sun angles → §6.2 gate passed (26 Aug)
 - [x] DFC2019 Track 1 extracted, probed, sharded; held-out test split carved out (26 Aug)
 - [x] **Zero-shot DA-V2 → heightmap → GeoTIFF → Three.js flythrough, working end to end** (26 Aug)
-- [x] Honest zero-shot baseline on 80 held-out tiles → **4.68 m RMSE to beat** (§5)
+- [x] Honest zero-shot baseline on 80 held-out tiles → **4.68 m RMSE** (test split; the val bar is 9.31 m) (§5)
 - [x] Training loop verified end to end: resumable, bf16/fp16 autodetect, per-class + calibration eval
 - [x] Loss suite under test — 19 tests, incl. recovery of known heteroscedastic σ
 - [x] Email Bhoonidhi (§8) — **sent 26 Aug**
@@ -367,11 +422,11 @@ locally, and Kaggle becomes a parallel-experiments resource rather than a depend
 
 ### Week 2 — Make the model good
 
-- [ ] DA-V2 Small fine-tuned on DFC2019 AGL, uncertainty head in from the first run (§6.1)
+- [x] DA-V2 Small fine-tuned on DFC2019 AGL, uncertainty head in from the first run (§6.1)
 - [ ] Metric calibration against SRTM 30 m
-- [ ] **The honest table:** zero-shot vs fine-tuned vs TSE-Net published, same held-out tiles
+- [x] **The honest table:** zero-shot vs fine-tuned vs TSE-Net published, same held-out tiles
 - [ ] Benchmark remaining backbones on Kaggle (parallel sessions, 30 GPU-h/week)
-- [ ] Calibration curves — is the predicted sigma actually right?
+- [x] Calibration curves — is the predicted sigma actually right?
 
 *Slow down here and understand the calibration and the NLL properly (§10). These are what
 the jury probes hardest.*
@@ -381,7 +436,7 @@ the jury probes hardest.*
 - [ ] Confidence shading on the mesh (§6.1) — judges *see* the model's doubt
 - [ ] Point-to-point height measurement with error bar (§6.3)
 - [ ] Error maps + per-terrain breakdown: urban / sparse / hilly / forested
-- [ ] Accuracy vs `meanOffNadirViewAngle` (4.8°–28.9°) — the domain-gap number we can get
+- [x] Accuracy vs `meanOffNadirViewAngle` (4.8°–28.9°) — the domain-gap number we can get
       without Bhoonidhi (§7.1)
 - [ ] Cartosat check if access came through
 
