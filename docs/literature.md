@@ -166,3 +166,48 @@ Sources: [AdaBins (arXiv 2011.14141)](https://arxiv.org/abs/2011.14141) ·
 [IEBins (arXiv 2309.14137)](https://arxiv.org/html/2309.14137) ·
 [Sampling-Gaussian for stereo matching (arXiv 2410.06527)](https://arxiv.org/pdf/2410.06527) ·
 [Adaptive Multi-Modal Cross-Entropy Loss for Stereo Matching](https://arxiv.org/pdf/2407.07816)
+
+---
+
+## 6. Outcome: the binned head lost, and the failure section 5 warned about is the likely reason
+
+run03, 27 Aug 2026. Built exactly what section 5 prescribed: adaptive bins normalised the
+AdaBins way, N = 128 over a measured [-3, 120] m range, soft-argmax, bi-directional Chamfer
+on bin centres at 0.1, and a cross-entropy term supervising the shape of the per-pixel
+distribution. Eight epochs. Scored on the same 80 whole val tiles as everything else.
+
+| | RMSE | bldg RMSE | bldg bias | grnd RMSE | ECE | sigma rank rho |
+|---|---|---|---|---|---|---|
+| run02 direct regression | **6.454** | **16.37** | **-4.70** | 1.92 | **0.083** | **+0.836** |
+| run03 binned soft-argmax | 6.950 | 17.81 | -5.50 | **1.75** | 0.106 | +0.784 |
+
+**7.7% worse overall and 8.8% worse on buildings**, which is the thing it was built to fix.
+Calibration got worse too.
+
+**The one metric that improved says what happened.** Ground RMSE fell to 1.75 m, the best
+of any run, while buildings degraded. Smoothing helps homogeneous terrain and hurts tall
+discontinuous structure. That is the over-smoothing signature of soft-argmax described in
+section 5 — and the distribution supervision added specifically to prevent it did not.
+
+Either the cross-entropy against a Gaussian is too weak a constraint at `--dist-weight 1.0`,
+or the reference width (one average bin, 0.96 m) is too broad to force mass onto a single
+mode at a roof edge, or the constraint is the wrong shape and HTC-DC Net's head-tail cut —
+separate token sets for foreground and background, split at 1 m — is doing structural work
+that a loss term cannot. All three are untested.
+
+**A protocol note that matters.** Crop-wise validation disagreed in *direction*: run03 best
+7.894 against run02 best 7.980, i.e. crop-wise says run03 won. Whole-tile says it lost by
+7.7%. Same checkpoints, opposite conclusions. Anyone reading only `train_log.jsonl` would
+have shipped the worse model. See [evaluation-protocol.md](evaluation-protocol.md).
+
+**One hypothesis raised and not settled.** Bin widths are predicted per image, so a scene
+assembled by sliding window is stitched from windows that each quantised height
+differently. Running inference as a single 1022 window to remove the seams made things
+worse, not better (RMSE 7.425), but that also moves the backbone off the 518 resolution it
+trained at, so the test confounds two variables and settles nothing. Testing it properly
+means computing bin widths once per scene and reusing them across windows.
+
+**Not pursued further for now.** run02 remains the model of record at 6.454 m. The binned
+head cost about two hours of GPU and is recorded as a negative result rather than deleted:
+the code is behind `--bins 0` by default, it exports to ONNX cleanly, and it is the right
+starting point if the head-tail cut is tried later on the finale runway.

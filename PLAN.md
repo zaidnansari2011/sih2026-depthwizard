@@ -191,7 +191,7 @@ whole-tile numbers differ by ~1.5 m and must not be mixed.
 | baseline | zero-shot + oracle affine *(not deployable)* | - | 7.285 | 17.33 | -2.64 | - | - |
 | run01 | direct regression | NLL + grad | 6.811 | 16.72 | -3.23 | 0.163 | +0.562 |
 | run02 | direct regression | NLL + grad, beta=0.5 | **6.454** | 16.37 | -4.70 | 0.083 | +0.836 |
-| run03 | binned soft-argmax, N=128 | + Chamfer + distribution CE | *running* | | | | |
+| run03 | binned soft-argmax, N=128 | + Chamfer + distribution CE | 6.950 | 17.81 | -5.50 | 0.106 | +0.784 |
 
 **The differentiator is real:** run02 beats the deployable baseline by 30.7%, and beats
 the *oracle* affine, which is allowed to fit scale and shift from each tile's own truth.
@@ -209,10 +209,18 @@ CPU. Soft-argmax, cumsum bin edges and the pooled width predictor all survive th
 export. Still fixed at 518x518, which is what sliding-window inference uses anyway.
 Section 6.4 is not at risk from the architecture change.
 
-**Buildings remain the entire problem:** 12.8% of pixels carrying 91.8% of squared error.
-run03 tests the actual fix - a distribution over adaptive height bins with soft-argmax,
-supervised in shape as well as mean, because soft-argmax alone averages across bimodal
-roof edges (docs/literature.md section 5).
+**The binned head is a negative result.** run03 came in 7.7% worse overall and 8.8% worse
+on buildings, with worse calibration. The one metric that improved tells the story: ground
+RMSE fell to 1.75 m, the best of any run, while buildings degraded. Smoothing helps flat
+terrain and hurts tall discontinuous structure, which is the over-smoothing failure of
+soft-argmax that docs/literature.md section 5 predicted -- and the distribution
+supervision added to prevent it did not. **run02 remains the model of record at 6.454 m.**
+
+Crop-wise validation disagreed in direction on this, calling run03 the winner. Anyone
+reading only train_log.jsonl would have shipped the worse model.
+
+**Buildings remain the entire problem:** 12.8% of pixels carrying 89-92% of squared error,
+and two architectures have now failed to move it.
 
 **View angle is not what limits us.** DFC2019 images every AOI from many satellite
 positions and the Track 3 metadata carries the geometry, so the domain-gap question in
