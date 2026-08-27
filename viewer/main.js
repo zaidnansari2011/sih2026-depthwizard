@@ -416,6 +416,44 @@ function addMarker(worldPoint) {
   markers.add(g);
 }
 
+// ------------------------------------------------- error-bar calibration (6.1, 6.3)
+
+// hypot(sigma_a, sigma_b) is only right if the two pixels' errors are independent, and
+// measured they are not: correlation is +0.94 across a metre and only reaches zero past
+// about 60 m. So the raw bar is roughly 3.5x too wide on a single rooftop, honest at
+// 3-15 m, and too narrow across a neighbourhood. This is the measured correction from
+// tools/pair_calibration.py, refit per checkpoint. Absent the file the tool still works
+// and says plainly that the bar is uncalibrated.
+let calib = null;
+
+async function loadCalibration() {
+  try {
+    const r = await fetch('./calibration.json');
+    if (!r.ok) return;
+    const j = await r.json();
+    if (Array.isArray(j.curve) && j.curve.length) calib = j;
+  } catch { calib = null; }
+}
+
+function barScale(sepM) {
+  if (!calib) return null;
+  // Interpolated in log separation. The buckets are log-spaced and the effect tracks
+  // spatial error correlation, which decays over scale rather than over metres.
+  const pts = calib.curve
+    .map((c) => ({ x: Math.log(Math.max(0.3, (c.sep_m[0] + c.sep_m[1]) / 2)), y: c.scale }))
+    .sort((p, q) => p.x - q.x);
+  const x = Math.log(Math.max(0.3, sepM));
+  if (x <= pts[0].x) return pts[0].y;
+  if (x >= pts[pts.length - 1].x) return pts[pts.length - 1].y;
+  for (let i = 1; i < pts.length; i++) {
+    if (x <= pts[i].x) {
+      const t = (x - pts[i - 1].x) / (pts[i].x - pts[i - 1].x);
+      return pts[i - 1].y + t * (pts[i].y - pts[i - 1].y);
+    }
+  }
+  return pts[pts.length - 1].y;
+}
+
 function sigmaAt(p) {
   if (!state.sigma) return null;
   const m = state.manifest, gsd = state.gsd || 1;
@@ -437,12 +475,19 @@ function report(a, b) {
 
   const sa = sigmaAt(a), sb = sigmaAt(b);
   if (sa != null && sb != null) {
-    // Independent per-pixel errors, so the uncertainty on a height DIFFERENCE adds in
-    // quadrature. Quoting a single sigma here would understate it, and the whole point
-    // of 6.1 is that our error bars are honest.
-    $('m-unc').textContent = `± ${Math.hypot(sa, sb).toFixed(2)} m on Δh`;
+    const raw = Math.hypot(sa, sb);
+    const k = barScale(ground);
+    if (k != null) {
+      $('m-unc').textContent = `± ${(raw * k).toFixed(2)} m on Δh`;
+      $('m-note').textContent =
+        `calibrated ×${k.toFixed(2)} at ${ground.toFixed(0)} m separation`;
+    } else {
+      $('m-unc').textContent = `± ${raw.toFixed(2)} m on Δh`;
+      $('m-note').textContent = 'uncalibrated — assumes independent errors';
+    }
   } else {
     $('m-unc').textContent = '—';
+    $('m-note').textContent = '';
   }
   $('readout').style.display = 'block';
 }
@@ -509,4 +554,5 @@ function frame(now) {
 }
 
 $('vexv').textContent = `${state.vex.toFixed(1)}×`;
+loadCalibration();
 loadScenes().then((ok) => { if (ok) requestAnimationFrame(frame); });

@@ -50,6 +50,10 @@ SHARDS = ROOT / "data" / "shards"
 # 60-300 m: a rooftop, a building, a block, a neighbourhood.
 BUCKETS = [(2, 10), (10, 50), (50, 200), (200, 1000)]
 KS = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0]
+# median |z| of a standard normal. Scaling the quoted bar by measured/this lands the
+# median where a calibrated bar would put it, which is a far more robust target than the
+# standard deviation when the tails are heavy -- and here they are.
+GAUSS_MEDIAN_ABS_Z = 0.6744897501960817
 
 
 def read_tif(p: Path) -> np.ndarray:
@@ -217,10 +221,22 @@ def main():
             **tail_stats(single_all),
         },
         "by_separation": rows,
+        # What the viewer should multiply hypot(sigma_a, sigma_b) by, as a function of
+        # how far apart the two clicked points are. Refit per checkpoint on val; it is a
+        # property of this model, not a universal constant.
+        "calibration_curve": [
+            {"sep_m": r["bucket_m"],
+             "scale": r["median_abs_z"] / GAUSS_MEDIAN_ABS_Z}
+            for r in rows
+        ],
     }
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     (out / "pair_calibration.json").write_text(json.dumps(result, indent=2))
+    (out / "calibration_curve.json").write_text(json.dumps({
+        "checkpoint": str(args.ckpt), "epoch": ck.get("epoch"), "split": args.split,
+        "n_tiles": len(tiles), "curve": result["calibration_curve"],
+    }, indent=2))
 
     L = ["# Calibration of the error bar on a height difference\n",
          f"`{len(tiles)}` whole `{args.split}` tiles, checkpoint "
