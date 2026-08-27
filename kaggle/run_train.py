@@ -72,7 +72,19 @@ OUT.mkdir(parents=True, exist_ok=True)
 import torch
 print(f"torch {torch.__version__}  cuda {torch.cuda.is_available()}  "
       f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-'}")
-print(f"bf16 supported: {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}"
+
+# Refuse to start without a GPU. Kaggle will happily commit a notebook with the accelerator
+# named but `isGpuEnabled: false`, and the first attempt did exactly that -- a 335 M model
+# would have ground away on CPU for days without ever raising an error. Printing the state
+# was not enough; the only safe behaviour is to stop.
+if not torch.cuda.is_available():
+    raise SystemExit(
+        "no GPU. Kaggle records the accelerator and whether it is ENABLED separately, and "
+        "this session has cuda unavailable. In the notebook: Session options -> Accelerator "
+        "-> GPU T4 x2, wait for the session to restart and show the GPU, then commit again. "
+        "Check the saved version's metadata says isGpuEnabled: true."
+    )
+print(f"bf16 supported: {torch.cuda.is_bf16_supported()}"
       "   (expect False on T4/P100 -> fp16 + GradScaler)")
 if CODE_ZIP is not None:
     # /kaggle/input is read-only, so unpack into working space each session.
