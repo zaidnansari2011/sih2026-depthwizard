@@ -100,6 +100,58 @@ But a peak that weak is not a confident registration, and the honest reading is 
 of the residual disagreement is co-registration we have not removed. Report the with-shift
 and no-shift numbers together, never the better one alone.
 
+### Wider area: 2 km crop, 585 buildings
+
+| | 500 m town (27.8% built) | 2 km incl. rural (5.6% built) |
+|---|---|---|
+| buildings | 89 | 585 |
+| bias | -1.92 m [-2.50, -1.38] | **-1.15 m** [-1.40, -0.91] |
+| MAE | 2.37 m | 2.34 m |
+| r | +0.530 [+0.358, +0.696] | **+0.269** [+0.186, +0.355] |
+
+The bias story holds and tightens. The correlation does not: it halves once the window
+stops being a town and becomes scattered hamlets on 30-degree slopes. Do not average these
+two into one number.
+
+### What the side-by-side render shows, and why it changes the reading
+
+`out/sikkim_compare_500m.png` puts Maxar RGB, our height and theirs on one shared scale.
+Three things are visible that no summary statistic above conveys:
+
+1. **Our 0.31 m output resolves individual rooftops; the 4 m reference does not.** Their
+   field is smooth blobs, and it misses buildings that are unambiguous in the RGB and
+   clearly recovered by us. We are being scored against a coarser instrument.
+2. **The scene is forest.** On pixels Open Buildings calls not-building, our median is
+   **4.51 m** -- higher than the **2.44 m** we read on pixels it calls building. That is
+   not a failure: Sikkim non-building is tree canopy, and AGL includes trees. But it means
+   their footprints are not a clean substrate, because a blob spanning a gap between two
+   houses covers canopy, not ground.
+3. Combined with a co-registration peak of 0.017-0.041, the conclusion is that this is a
+   sound **absolute-scale** check and a poor **building-by-building** benchmark. Quote the
+   bias; do not quote r as if it were an accuracy score against truth.
+
+### Terrain leakage on 30-degree slopes: tested, and we are clean
+
+The reason hilly terrain matters is that AGL is terrain-removed by definition, so a correct
+model reads the same on a rooftop at 1200 m as on one at 400 m. Flat Jacksonville and Omaha
+can never test that. Copernicus GLO-30 over this crop gives 947 m of relief at a median
+slope of 31.4 degrees, which is far outside anything in DFC2019.
+
+Correlating the low-frequency component of our prediction against that terrain:
+
+| | r | effect size |
+|---|---|---|
+| AGL@400m vs **slope** | -0.044 | -0.005 m per degree |
+| AGL@400m vs **elevation** | +0.538 | +0.0026 m per metre |
+
+**No slope leakage.** The ground's tilt is not being read as height, which is the failure
+we most feared and the one that would have invalidated the whole hilly-terrain claim.
+
+The elevation term correlates but is tiny in effect: 0.0026 m per metre is **2.5 m of
+drift across the entire 947 m of relief**. And it is confounded -- in the Himalaya
+vegetation and settlement both change with altitude, so some of that association is real
+ecology rather than model error. Report it as a bounded association, not as a proven bias.
+
 ## Test-split discipline
 
 The test split had already been scored twice before this note: once by
