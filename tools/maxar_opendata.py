@@ -146,6 +146,14 @@ def cmd_download(args):
     rows = [r for r in rows if r.get("visual")]
     if args.max_off_nadir:
         rows = [r for r in rows if (r.get("off_nadir") or 99) <= args.max_off_nadir]
+    if args.id:
+        rows = [r for r in rows if any(i in r["id"] for i in args.id)]
+        if not rows:
+            raise SystemExit(f"no item matched {args.id}")
+    elif args.min_lat is not None:
+        rows = [r for r in rows if r["bbox"][1] >= args.min_lat]
+    if args.max_lat is not None:
+        rows = [r for r in rows if r["bbox"][1] <= args.max_lat]
     rows = rows[: args.top]
     print(f"downloading {len(rows)} visual tiles to {OUT_DIR / args.event}")
     for r in rows:
@@ -179,6 +187,10 @@ def main():
     d.add_argument("--event", required=True)
     d.add_argument("--top", type=int, default=4)
     d.add_argument("--max-off-nadir", type=float, default=None)
+    d.add_argument("--id", nargs="+", help="substring match on item id")
+    d.add_argument("--min-lat", type=float, help="southern tiles sit lower and carry "
+                                                 "settlement; northern ones are glacier")
+    d.add_argument("--max-lat", type=float)
     d.add_argument("--items", help="items json; defaults to the cached survey")
     d.set_defaults(func=cmd_download)
 

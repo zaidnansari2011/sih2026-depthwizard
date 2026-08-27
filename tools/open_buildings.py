@@ -42,7 +42,12 @@ BUCKET = "open-buildings-temporal-data"
 API = f"https://storage.googleapis.com/storage/v1/b/{BUCKET}/o"
 MEDIA = f"https://storage.googleapis.com/{BUCKET}/"
 NODATA = -99.0
-HEIGHT_BAND = 2      # 1-based: fractional_count, building_height, building_presence
+# 1-based source bands: fractional_count, building_height, building_presence.
+# We keep height and presence. Presence is their own model confidence, and it gives a
+# tighter footprint than thresholding height does -- worth having when the alternative is
+# scoring ourselves inside a blob that spans the gap between two houses.
+HEIGHT_BAND = 2
+PRESENCE_BAND = 3
 
 
 def list_manifests() -> list[str]:
@@ -122,7 +127,7 @@ def cmd_fetch(args):
     W, H = c1 - c0, r1 - r0
     left, top = ox + c0 * res, oy - r0 * res
     transform = rasterio.transform.from_origin(left, top, res, res)
-    out = np.full((H, W), NODATA, dtype="float32")
+    out = np.full((2, H, W), NODATA, dtype="float32")
     print(f"output grid {W} x {H} at {res} m  ({W*res/1000:.1f} x {H*res/1000:.1f} km)")
 
     for t in hit:
@@ -132,37 +137,45 @@ def cmd_fetch(args):
             w = from_bounds(*ix, transform=s.transform).round_offsets().round_lengths()
             if w.width < 1 or w.height < 1:
                 continue
-            a = s.read(HEIGHT_BAND, window=w)
+            a = s.read([HEIGHT_BAND, PRESENCE_BAND], window=w)
             wt = s.window_transform(w)
             dc, dr = int(round((wt.c - left) / res)), int(round((top - wt.f) / res))
-            hh = min(a.shape[0], H - dr)
-            ww = min(a.shape[1], W - dc)
+            hh = min(a.shape[1], H - dr)
+            ww = min(a.shape[2], W - dc)
             if hh < 1 or ww < 1:
                 continue
-            dst = out[dr:dr + hh, dc:dc + ww]
-            src = a[:hh, :ww]
+            dst = out[:, dr:dr + hh, dc:dc + ww]
+            src = a[:, :hh, :ww]
             np.copyto(dst, src, where=(src != NODATA) & (dst == NODATA))
             print(f"  {Path(t['url']).name}  read {a.shape} -> paste at ({dr}, {dc})")
 
     outp = Path(args.out) if args.out else (
         ROOT / "data" / "open_buildings" / f"{ref.stem}_obheight_{args.year}.tif")
     outp.parent.mkdir(parents=True, exist_ok=True)
-    with rasterio.open(outp, "w", driver="GTiff", height=H, width=W, count=1,
+    with rasterio.open(outp, "w", driver="GTiff", height=H, width=W, count=2,
                        dtype="float32", crs=f"EPSG:{epsg}", transform=transform,
                        nodata=NODATA, compress="deflate", tiled=True) as d:
-        d.write(out, 1)
+        d.write(out)
+        d.set_band_description(1, "building_height_m_agl")
+        d.set_band_description(2, "building_presence")
         d.update_tags(source="Google Open Buildings 2.5D Temporal v1",
-                      band="building_height (AGL, metres)", year=str(args.year),
+                      band1="building_height (AGL, metres)",
+                      band2="building_presence (uncalibrated confidence)",
+                      year=str(args.year),
                       note="model output from Sentinel-2, 4 m effective resolution; "
                            "an independent second opinion, not ground truth")
 
-    v = out[out > 0]
-    cov = 100.0 * v.size / out.size
+    hgt, pres = out[0], out[1]
+    v = hgt[hgt > 0]
     print(f"\nwrote {outp}")
-    print(f"  building pixels {v.size:,} ({cov:.2f}% of footprint)")
+    print(f"  building pixels {v.size:,} ({100.0*v.size/hgt.size:.2f}% of footprint)")
     if v.size:
         print(f"  height median {np.median(v):.1f} m  p95 {np.percentile(v, 95):.1f} m  "
               f"max {v.max():.1f} m")
+    ok = pres != NODATA
+    if ok.any():
+        for thr in (0.5, 0.7):
+            print(f"  presence > {thr}: {100.0*(pres[ok] > thr).mean():.2f}% of pixels")
 
 
 def main():
