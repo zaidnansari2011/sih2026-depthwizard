@@ -3,8 +3,13 @@
 The viewer's measurement tool (PLAN 6.3) reports `dh +/- hypot(sigma_a, sigma_b)`. That
 quadrature is correct only if the two pixels' errors are independent. They are not:
 neighbouring pixels come from the same patch of the same forward pass and their errors are
-strongly correlated, which makes the quoted bar too WIDE at short range. At long range the
-assumption is reasonable.
+strongly correlated, which makes the quoted bar too WIDE at short range.
+
+Measuring it does not then vindicate the long range either. Independence does arrive --
+error correlation falls to about +0.05 by 60 m -- but coverage keeps falling straight
+past the Gaussian expectation, so out there the bar is too NARROW. Both ends are
+miscalibrated in opposite directions, and only the crossover between them is honest.
+Too narrow is the dangerous direction for an instrument someone trusts.
 
 Nothing had checked this. Our calibration evidence -- ECE, the sigma/error rank
 correlation -- is all PER PIXEL, while the number a user actually reads off the screen is a
@@ -14,8 +19,9 @@ Method: for each of several separation buckets, sample many random point pairs a
 separation, and compare the predicted difference against the true one in units of the
 quoted bar. If the bar is honest, |z| <= k should hold for a Gaussian fraction of pairs.
 The measured error correlation in each bucket is reported alongside, because it is the
-mechanism: coverage above the Gaussian expectation and correlation above zero are the same
-fact seen twice.
+mechanism behind the short-range half of the story. Coverage carries a bootstrap interval
+over tiles: a 3-tile pilot of this measurement said 68.1% where 20 tiles said 51.7%, so
+the interval is not decoration.
 
     python tools/pair_calibration.py --ckpt checkpoints/run02/best.pt --tiles 20
 """
@@ -54,6 +60,37 @@ def read_tif(p: Path) -> np.ndarray:
 
 def gaussian_coverage(k: float) -> float:
     return math.erf(k / math.sqrt(2.0))
+
+
+def bootstrap_pooled(per_tile_hits, per_tile_n, rng, n_boot: int = 2000):
+    """95% interval on a pooled fraction, resampling TILES rather than pairs.
+
+    Tiles are the unit of variation here. A 3-tile pilot of this same measurement put
+    long-range coverage at 68.1%, and 20 tiles put it at 51.7% -- because pairs drawn
+    inside one tile are anything but independent, and a handful of flat tiles is not the
+    val set. Resampling pairs would have reported a tight interval around the wrong
+    number.
+    """
+    h = np.asarray(per_tile_hits, dtype=np.float64)
+    n = np.asarray(per_tile_n, dtype=np.float64)
+    t = len(h)
+    if t < 2:
+        return float("nan"), float("nan")
+    idx = rng.integers(0, t, (n_boot, t))
+    frac = h[idx].sum(1) / np.maximum(n[idx].sum(1), 1.0)
+    return float(np.percentile(frac, 2.5)), float(np.percentile(frac, 97.5))
+
+
+def tail_stats(z: np.ndarray) -> dict:
+    """The core and the tail tell different stories, so report both.
+
+    A distribution can cover well at 1 sigma while having far too much mass past 3, which
+    is a peaked core with heavy tails rather than a calibrated Gaussian. Standard
+    deviation alone hides that; median |z| against its Gaussian value of 0.674 exposes it.
+    """
+    az = np.abs(z)
+    return {"z_std": float(z.std()), "median_abs_z": float(np.median(az)),
+            "frac_beyond_3": float(np.mean(az > 3.0))}
 
 
 def sample_pairs(valid: np.ndarray, rmin: float, rmax: float, n: int, rng):
@@ -142,7 +179,17 @@ def main():
             errs[b][1].append(err[by, bx].astype(np.float32))
         print(f"  [{n+1}/{len(tiles)}] {t}", flush=True)
 
-    single = np.concatenate(single)
+    def cov_and_ci(per_tile):
+        n = [int(zz.size) for zz in per_tile]
+        cov, ci = {}, {}
+        for k in KS:
+            hits = [int((np.abs(zz) <= k).sum()) for zz in per_tile]
+            cov[str(k)] = float(sum(hits) / max(sum(n), 1))
+            ci[str(k)] = list(bootstrap_pooled(hits, n, rng))
+        return cov, ci
+
+    single_cov, single_ci = cov_and_ci(single)
+    single_all = np.concatenate(single)
     rows = []
     for b in BUCKETS:
         if not acc[b]:
@@ -150,13 +197,14 @@ def main():
         z = np.concatenate(acc[b])
         ea, eb = np.concatenate(errs[b][0]), np.concatenate(errs[b][1])
         rho = float(np.corrcoef(ea, eb)[0, 1]) if ea.size > 2 else float("nan")
+        cov, ci = cov_and_ci(acc[b])
         rows.append({
             "bucket_px": list(b),
             "bucket_m": [b[0] * args.gsd, b[1] * args.gsd],
-            "n_pairs": int(z.size),
+            "n_pairs": int(z.size), "n_tiles": len(acc[b]),
             "error_corr": rho,
-            "coverage": {str(k): float(np.mean(np.abs(z) <= k)) for k in KS},
-            "z_std": float(z.std()),
+            "coverage": cov, "coverage_ci95": ci,
+            **tail_stats(z),
         })
 
     result = {
@@ -164,8 +212,9 @@ def main():
         "n_tiles": len(tiles), "gsd_m": args.gsd,
         "expected_coverage": {str(k): gaussian_coverage(k) for k in KS},
         "single_pixel": {
-            "n": int(single.size), "z_std": float(single.std()),
-            "coverage": {str(k): float(np.mean(np.abs(single) <= k)) for k in KS},
+            "n": int(single_all.size),
+            "coverage": single_cov, "coverage_ci95": single_ci,
+            **tail_stats(single_all),
         },
         "by_separation": rows,
     }
@@ -190,6 +239,23 @@ def main():
         lab = f"{r['bucket_m'][0]:.0f}-{r['bucket_m'][1]:.0f} m"
         L.append(f"| {lab} | {r['n_pairs']:,} | {r['error_corr']:+.3f} | "
                  + " | ".join(f"{r['coverage'][str(k)]*100:.1f}%" for k in KS) + " |")
+    L += ["", "## How firm are those percentages\n",
+          "95% bootstrap intervals, resampling tiles, because tiles are the unit of",
+          "variation. A 3-tile pilot of this measurement said 68.1% where 20 tiles say",
+          f"{rows[-1]['coverage']['1.0']*100:.1f}%, so the interval matters.\n",
+          "| separation | +/-1s coverage | 95% CI | median |z| | beyond 3s |",
+          "|---|---|---|---|---|",
+          f"| *Gaussian* | 68.3% | - | 0.674 | 0.3% |",
+          f"| single pixel | {result['single_pixel']['coverage']['1.0']*100:.1f}% | "
+          f"[{result['single_pixel']['coverage_ci95']['1.0'][0]*100:.1f}, "
+          f"{result['single_pixel']['coverage_ci95']['1.0'][1]*100:.1f}]% | "
+          f"{result['single_pixel']['median_abs_z']:.3f} | "
+          f"{result['single_pixel']['frac_beyond_3']*100:.1f}% |"]
+    for r in rows:
+        lab = f"{r['bucket_m'][0]:.0f}-{r['bucket_m'][1]:.0f} m"
+        L.append(f"| {lab} | {r['coverage']['1.0']*100:.1f}% | "
+                 f"[{r['coverage_ci95']['1.0'][0]*100:.1f}, {r['coverage_ci95']['1.0'][1]*100:.1f}]% | "
+                 f"{r['median_abs_z']:.3f} | {r['frac_beyond_3']*100:.1f}% |")
     L += ["",
           "## Reading it\n",
           "Coverage **above** the Gaussian row means the quoted bar is too wide -- the tool is",
@@ -206,11 +272,14 @@ def main():
     print(f"{'expected':>14}  {0.0:>7.3f}  "
           + "  ".join(f"{gaussian_coverage(k)*100:5.1f}%" for k in KS))
     print(f"{'single px':>14}  {'-':>7}  "
-          + "  ".join(f"{result['single_pixel']['coverage'][str(k)]*100:5.1f}%" for k in KS))
+          + "  ".join(f"{result['single_pixel']['coverage'][str(k)]*100:5.1f}%" for k in KS)
+          + f"   med|z| {result['single_pixel']['median_abs_z']:.2f}")
     for r in rows:
         lab = f"{r['bucket_m'][0]:.0f}-{r['bucket_m'][1]:.0f} m"
         print(f"{lab:>14}  {r['error_corr']:>+7.3f}  "
-              + "  ".join(f"{r['coverage'][str(k)]*100:5.1f}%" for k in KS))
+              + "  ".join(f"{r['coverage'][str(k)]*100:5.1f}%" for k in KS)
+              + f"   med|z| {r['median_abs_z']:.2f}"
+              + f"   1s CI [{r['coverage_ci95']['1.0'][0]*100:.1f}, {r['coverage_ci95']['1.0'][1]*100:.1f}]%")
     print(f"\nwrote {out/'pair_calibration.json'} and {out/'pair_calibration.md'}")
 
 

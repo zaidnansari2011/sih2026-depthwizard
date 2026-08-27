@@ -244,6 +244,32 @@ Single-view height is mathematically ill-posed: no unique 3D solution exists for
 - **Scores in both halves:** shade the flythrough by confidence and judges *see* the model's doubt over water, shadow, dense canopy.
 - Also defuses the "don't oversell accuracy" risk in §7.4.
 
+**The error bar is honest only inside a window, and we now know which one.** The viewer
+quotes `dh +/- hypot(sigma_a, sigma_b)`, but every calibration number we had was per pixel,
+while the thing a user reads is a difference. Measured on run02 over 20 val tiles, with
+bootstrap intervals over tiles:
+
+| separation | error corr | +/-1 sigma coverage | 95% CI | median abs z |
+|---|---|---|---|---|
+| *Gaussian expectation* | 0.000 | 68.3% | - | 0.674 |
+| single pixel | - | 64.5% | - | 0.62 |
+| 1-3 m | +0.944 | 88.4% | [86.8, 90.3] | 0.19 |
+| **3-15 m** | +0.802 | **71.4%** | **[67.9, 74.8]** | 0.47 |
+| 15-60 m | +0.312 | 56.5% | [51.6, 61.3] | 0.78 |
+| 60-300 m | +0.051 | 51.7% | [46.1, 57.8] | 0.94 |
+
+68.3% sits inside the interval at 3-15 m and outside it everywhere else. Below that the
+two errors are nearly the same error (corr +0.94), they cancel in the difference, and the
+quoted bar is far too wide. Above it independence arrives but coverage keeps falling, so
+the bar is too narrow -- the dangerous direction. Tails are heavy throughout: +/-3 sigma
+covers 84.8% on single pixels, not 99.7%, so a 3-sigma bound from this model must never be
+presented as one.
+
+Two consequences. Measuring a single roof against adjacent ground is the *most* reliable
+use of the tool and the bar there is conservative. And the bar wants an empirical
+separation-dependent scale factor, roughly 0.28x at 1 m rising to 1.39x at 100 m, refit per
+checkpoint on val. `tools/pair_calibration.py`, `out/pair_calibration_run02/`.
+
 ### 6.2 Shadow as a physical prior — *the novel-ish one*
 
 `height = shadow_length × tan(sun_elevation)`. This is how photointerpreters measured building heights before computers. Sun azimuth and elevation ship in satellite metadata.
