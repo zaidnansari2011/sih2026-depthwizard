@@ -25,11 +25,28 @@ import subprocess
 import sys
 from pathlib import Path
 
-CODE_ZIP = "/kaggle/input/depthwizard-code/depthwizard_src.zip"
-SHARDS = "/kaggle/input/depthwizard-dfc2019-shards"
 WORK = Path("/kaggle/working")
 CODE = str(WORK / "code")
 OUT = WORK / "checkpoints" / "run05"
+
+# Find the inputs rather than hardcoding their mount points. Kaggle derives the directory
+# from the dataset slug, and a slug that differs by one character would fail the run after
+# the queue wait rather than now. Searching costs nothing and removes the whole class of
+# "it didn't work" round-trips.
+INPUT = Path("/kaggle/input")
+_zips = sorted(INPUT.glob("*/depthwizard_src.zip"))
+_shard_dirs = sorted({p.parent for p in INPUT.glob("*/train_*.npz")})
+if not _zips:
+    raise SystemExit(f"no depthwizard_src.zip under {INPUT}. Attach the "
+                     f"'depthwizard-code' dataset. Present: {[p.name for p in INPUT.glob('*')]}")
+if not _shard_dirs:
+    raise SystemExit(f"no train_*.npz under {INPUT}. Attach the "
+                     f"'depthwizard-dfc2019-shards' dataset. Present: "
+                     f"{[p.name for p in INPUT.glob('*')]}")
+CODE_ZIP = str(_zips[0])
+SHARDS = str(_shard_dirs[0])
+print(f"code   -> {CODE_ZIP}")
+print(f"shards -> {SHARDS}")
 
 os.environ["HF_HOME"] = str(WORK / "hf")          # cache the backbone across sessions
 os.environ["PYTHONIOENCODING"] = "utf-8"
@@ -42,7 +59,7 @@ print(f"torch {torch.__version__}  cuda {torch.cuda.is_available()}  "
       f"{torch.cuda.get_device_name(0) if torch.cuda.is_available() else '-'}")
 print(f"bf16 supported: {torch.cuda.is_bf16_supported() if torch.cuda.is_available() else False}"
       "   (expect False on T4/P100 -> fp16 + GradScaler)")
-for p in (CODE_ZIP, SHARDS):
+for p in (CODE_ZIP, SHARDS):  # already discovered above; belt and braces
     if not Path(p).exists():
         raise SystemExit(f"missing dataset: {p}. Attach it in the notebook sidebar.")
 
