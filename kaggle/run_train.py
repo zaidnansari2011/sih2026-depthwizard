@@ -34,18 +34,22 @@ OUT = WORK / "checkpoints" / "run05"
 # the queue wait rather than now. Searching costs nothing and removes the whole class of
 # "it didn't work" round-trips.
 INPUT = Path("/kaggle/input")
-_present = sorted(p.name for p in INPUT.glob("*"))
+_present = sorted(str(p.relative_to(INPUT)) for p in INPUT.rglob("*") if p.is_dir())[:20]
 
+# Search RECURSIVELY. Kaggle does not guarantee the mount depth: the first attempt assumed
+# /kaggle/input/<slug>/ and the datasets actually landed under /kaggle/input/datasets/...,
+# which failed with "Present: ['datasets']". Depth is an implementation detail of theirs,
+# so stop predicting it and just look.
+#
 # The source may arrive either way and both are normal: Kaggle unpacks an uploaded .zip
-# into a real tree, but a dataset created another way can still hold the archive. Look for
-# the extracted tree first, fall back to the zip.
-_trees = sorted({p.parent for p in INPUT.glob("*/train.py")})
-_zips = sorted(INPUT.glob("*/depthwizard_src.zip"))
-_shard_dirs = sorted({p.parent for p in INPUT.glob("*/train_*.npz")})
+# into a real tree, but a dataset created another way can still hold the archive.
+_trees = sorted({p.parent for p in INPUT.rglob("train.py")})
+_zips = sorted(INPUT.rglob("depthwizard_src.zip"))
+_shard_dirs = sorted({p.parent for p in INPUT.rglob("train_*.npz")})
 
 if not _shard_dirs:
-    raise SystemExit(f"no train_*.npz under {INPUT}. Attach 'depthwizard-dfc2019-shards'. "
-                     f"Present: {_present}")
+    raise SystemExit(f"no train_*.npz anywhere under {INPUT}. Attach "
+                     f"'depthwizard-dfc2019-shards'. Directories present: {_present}")
 SHARDS = str(_shard_dirs[0])
 
 if _trees:
@@ -54,8 +58,8 @@ if _trees:
 elif _zips:
     CODE_ZIP = str(_zips[0])
 else:
-    raise SystemExit(f"no train.py and no depthwizard_src.zip under {INPUT}. Attach "
-                     f"'depthwizard-code'. Present: {_present}")
+    raise SystemExit(f"no train.py and no depthwizard_src.zip anywhere under "
+                     f"{INPUT}. Attach 'depthwizard-code'. Directories present: {_present}")
 print(f"code   -> {CODE if CODE_ZIP is None else CODE_ZIP}")
 print(f"shards -> {SHARDS}")
 
