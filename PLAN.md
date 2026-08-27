@@ -202,6 +202,13 @@ and moved building RMSE 21.63 -> 21.17 crop-wise, with the bias still at -6.42 m
 Reweighting a regression loss does not fix a long-tailed output space, which is what the
 literature said would happen (docs/literature.md section 4).
 
+**The binned head still deploys.** Checked before trusting it: ONNX export of a binned
+checkpoint agrees with PyTorch to 0.0014 cm on height and 0.0006 cm on sigma against a
+5 cm tolerance, at 101.0 MB versus 100.7 for the regression head, 1125 ms per tile on
+CPU. Soft-argmax, cumsum bin edges and the pooled width predictor all survive the
+export. Still fixed at 518x518, which is what sliding-window inference uses anyway.
+Section 6.4 is not at risk from the architecture change.
+
 **Buildings remain the entire problem:** 12.8% of pixels carrying 91.8% of squared error.
 run03 tests the actual fix - a distribution over adaptive height bins with soft-argmax,
 supervised in shape as well as mean, because soft-argmax alone averages across bimodal
