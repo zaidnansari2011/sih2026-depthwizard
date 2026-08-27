@@ -472,7 +472,110 @@ range of 366 days or less; both fail as HTTP 406 otherwise.
 
 Public, free, named in the problem statement. *Not* CartoDEM (see §5 Stage 02).
 
-## 9. Schedule
+## 9. State of play — 27 Aug 2026
+
+24 days to the 20 Sep idea submission. Written after a long model day so the next session
+does not have to reconstruct it.
+
+### The model is in better shape than it felt, and our own metric was the problem
+
+**Best model today: run02 + TTA.** Region-disjoint, 80 whole val tiles, 3,090 buildings.
+
+| | run02 | run02 + TTA | run04 |
+|---|---|---|---|
+| whole-tile RMSE | 6.456 m | **6.369 m** | 7.031 m |
+| **per-building RMSE** | 3.771 m | **3.616 m** | 3.991 m |
+| ground RMSE | 1.92 m | — | 2.09 m |
+| ECE | 0.084 | 0.078 | **0.048** |
+
+TTA is a free 4% on the headline metric and it never cost a training run. run04 wins only
+on calibration.
+
+**Per-building is the metric the field reports and we were not computing it.** Our
+per-pixel building RMSE of 16.37 m is dominated by roof edges, where the prediction crosses
+from ground to roof and is briefly wrong by the whole building height. It is not comparable
+to any published figure and it made the model look far worse than it is.
+
+### Where the error actually lives, and why more training will not fix it
+
+| true height | buildings | RMSE | bias |
+|---|---|---|---|
+| 0-3 m | 166 | 1.47 m | +0.26 |
+| 3-6 m | 2,305 | **1.45 m** | +0.21 |
+| 6-10 m | 443 | 1.90 m | -0.75 |
+| 10-20 m | 116 | 4.61 m | -1.17 |
+| **> 20 m** | **60** | **24.04 m** | **-17.26** |
+
+**79% of the squared error comes from 1.9% of the buildings.** Under 10 m — 94% of the
+stock — we are at 1.45 m, which is genuinely good.
+
+The tail is a **data** problem, proven rather than assumed (`docs/probe-01-tall-buildings.md`):
+train holds 166 buildings above 30 m and tops out at 82.8 m while val reaches 155.3 m, and
+fine-tuning hard on those tall buildings moved transfer bias the *wrong* way, -18.22 to
+-19.10 m, while fit improved. Classic overfitting of a tiny sample. This rules out run05 as
+tall-enriched training and rules out re-splitting DFC2019 — rearranging 341 tall buildings
+creates no information.
+
+**Also note: the held-out test split contains ONE building above 30 m** (max 34.0 m). It
+will flatter us relative to val. Say so when reporting it.
+
+### There is no target number, and the criterion we under-weighted
+
+ISRO specifies **no threshold**. The brief says: *"RMSE, MAE and correlation against LiDAR
+or reference data — with stability required across urban, sparse, hilly and forested
+landscapes."* Judging is comparative and validation-quality driven. The 5.9 m
+GlobalBuildingAtlas figure is a **credibility anchor we chose**, not a requirement.
+
+The scored thing we have been under-weighting is **stability across the four named terrain
+types**. `evaluate.py` already breaks results down that way; Sikkim now covers *hilly* with
+947 m of relief at 31 degrees median slope and slope leakage measured at r -0.044.
+
+And the register the brief asks for, quoted: *"A centimetre-accuracy claim gets dismantled
+in questions"*; *"Relative DSM is solid, absolute scaling is +/-8% against SRTM, here is the
+error map"* reads as competent. Our honest tail story is therefore an asset, not a hole.
+
+### Remaining work, in priority order
+
+**Blocking, gated to Zaid**
+- [ ] **Six names registered for SIH.** Overdue since week 1. Nothing else matters without it.
+
+**Half the marks, at week-one state**
+- [ ] **Viewer.** Currently three scenes and they are `zeroshot` and `truth` — it demos our
+      *worst* model. Load a real run02+TTA scene, verify navigation, standalone deployment.
+- [ ] **Demo video.** Explicitly required by the submission.
+
+**Evidence pack — mostly measured, needs assembling**
+- [ ] Benchmark table with the per-height breakdown and the honest tail explanation
+- [ ] Error maps, calibration curve
+- [ ] Per-terrain stability across urban / sparse / hilly / forested
+- [ ] The India story: Sikkim + Open Buildings cross-check (`docs/evaluation-protocol.md`)
+
+**Cheap model wins, no training needed**
+- [ ] Apply TTA in the shipping path (already measured: 3.771 -> 3.616 m)
+- [ ] Ensemble run02 + run04 (+run05) — different error profiles, ~30 min of inference
+- [ ] ONNX export + int8, verified — differentiator 6.4, explicitly scored
+- [ ] **Score the held-out test split ONCE**, at the very end, and report whatever it says
+
+**In flight**
+- [ ] **run05 — V1-Large (335 M, Apache-2.0) on Kaggle.** Only the backbone changes from
+      run02's recipe, so the result is attributable. Probe 02 measured zero-shot per-building
+      correlation +0.351 (V2-Small) -> +0.470 (V1-Base) -> +0.659 (V1-Large).
+      `kaggle/run_train.py`, resumable, fp16.
+
+**Deferred, and worth marks as stated next steps rather than gaps**
+- FDS / LDS for the long tail (Yang et al., ICML 2021) — a 30-minute probe would test it
+- Indian weak-supervision training (Chen et al. 2025) — Maxar gives 410 km2 of sub-0.5 m
+  Indian imagery and Open Buildings labels it; four times our current training area, in the
+  target domain
+
+### Process rule earned the hard way
+
+run03 and run04 both spent 3.5 hours testing a hypothesis that a 30-minute probe would have
+killed. From here: **predict the outcome in writing, state what would falsify it, probe
+cheaply, then decide.** If you cannot say what result would prove you wrong, do not start
+the run.
+
+## 9b. Schedule
 
 Build the baseline first: once it runs end to end we always have something demoable, and every later improvement becomes optional rather than critical-path.
 
@@ -588,7 +691,14 @@ those are what a SAC jury probes hardest.
       normally including at least one female member. Carrying the build alone is fine and
       common; having no registered team means nothing gets submitted. **Resolve in week 1.**
 - [ ] Commit to SIH26175 or hedge to SIH26143 — **decide by 10 Sep on live counts**
-- [ ] Bhoonidhi access tier — awaiting reply (§8)
+- [x] Bhoonidhi access tier — **resolved 27 Aug**: works with portal credentials, but
+      the ceiling is 5.8 m LISS4 and a 30 m CartoDEM. Cannot referee buildings.
+      Replaced by Maxar Open Data + Google Open Buildings 2.5D (§9).
+- [x] Backbone — **decided 27 Aug**: Depth-Anything-V1 is Apache-2.0 at every size,
+      so capacity was never licence-blocked as previously assumed. run05 tests
+      V1-Large (335 M) on Kaggle.
+- [ ] **Ship run02+TTA or run05?** Decide on measured per-building RMSE, not
+      crop-wise val, which has picked the wrong winner three times.
 
 ## 12. Standing rules
 
