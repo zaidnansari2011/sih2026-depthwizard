@@ -103,6 +103,15 @@ def main():
     ap.add_argument("--terrain", help="landscape label for the scene picker: urban, sparse, "
                                       "hilly, forested, mixed. ISRO names the first four.")
     ap.add_argument("--place", help="human place name, e.g. Omaha or Sikkim")
+    ap.add_argument("--model", default="",
+                    help="which model produced this height map, e.g. 'run02 + TTA'. Recorded "
+                         "in the manifest and shown in the viewer. A scene that cannot say "
+                         "where its heights came from is not evidence of anything.")
+    ap.add_argument("--default-scene", action="store_true",
+                    help="open the viewer on this scene. The picker's ORDER still mirrors "
+                         "the problem statement, but the landing scene should be a "
+                         "representative one rather than whichever landscape they name "
+                         "first. Setting this clears the flag on every other scene.")
     ap.add_argument("--out", required=True, help="output scene directory")
     ap.add_argument("--name", help="display name (default: height filename stem)")
     ap.add_argument("--max-size", type=int, default=2048,
@@ -131,6 +140,13 @@ def main():
         fill = float(np.median(height[~bad])) if (~bad).any() else 0.0
         height = np.where(bad, fill, height)
 
+    # Per-building scoring needs the native grid. Connected components cannot be recovered
+    # from a thinned array -- decimating merges neighbouring roofs and splits long ones --
+    # so keep the full-resolution surface even when the shipped mesh is downsampled.
+    height_full = height
+    native_gsd = float(args.gsd) if args.gsd else (
+        hmeta.get("px_size_x") if hmeta.get("px_units") == "metres" else None)
+
     H, W = height.shape
     scale = 1.0
     if max(H, W) > args.max_size:
@@ -157,6 +173,8 @@ def main():
         "files": {"height": "height.bin"},
         "geo": hmeta,
     }
+    if args.model:
+        manifest["model"] = args.model
 
     # Ground sample distance, corrected for any downsampling we just did. Everything the
     # measurement tool reports is derived from this one number, so it is worth being
@@ -233,6 +251,11 @@ def main():
         # scenes give no guarantee of that.
         tru, _ = _load_raster(Path(args.truth))
         tru = np.asarray(tru, np.float32)
+        tru_full = tru
+        if tru_full.shape != height_full.shape:
+            fy = np.linspace(0, tru_full.shape[0] - 1, height_full.shape[0]).astype(np.int32)
+            fx = np.linspace(0, tru_full.shape[1] - 1, height_full.shape[1]).astype(np.int32)
+            tru_full = tru_full[np.ix_(fy, fx)]
         if tru.shape != (H, W):
             ys = np.linspace(0, tru.shape[0] - 1, H).astype(np.int32)
             xs = np.linspace(0, tru.shape[1] - 1, W).astype(np.int32)
@@ -284,6 +307,32 @@ def main():
                 ge = (height - tru)[gmask]
                 manifest["error_ground_px_rmse_m"] = float(np.sqrt(np.mean(ge ** 2)))
 
+            # The comparable number. One height per building on both sides, median of each
+            # component -- the same function `tools/evaluate.py` uses for the headline
+            # figure, so the viewer and the benchmark table cannot drift apart. Computed on
+            # the native grid for the reason given at `height_full`.
+            if native_gsd:
+                import sys
+                sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+                from depthwizard.metrics import building_instances, building_wise_metrics
+
+                cls_full = np.asarray(_load_raster(Path(args.cls))[0])
+                if cls_full.shape != height_full.shape:
+                    fy = np.linspace(0, cls_full.shape[0] - 1,
+                                     height_full.shape[0]).astype(np.int32)
+                    fx = np.linspace(0, cls_full.shape[1] - 1,
+                                     height_full.shape[1]).astype(np.int32)
+                    cls_full = cls_full[np.ix_(fy, fx)]
+                bo, bt = building_instances(height_full, tru_full, cls_full, gsd=native_gsd)
+                bw = building_wise_metrics(bo, bt)
+                if bw.get("n_buildings"):
+                    manifest["building_wise"] = bw
+                    manifest["building_wise_note"] = (
+                        "one height per building, median on both sides, components under "
+                        "25 m2 dropped. This is the figure HTC-DC Net and "
+                        "GlobalBuildingAtlas report, and the only one comparable to them."
+                    )
+
     if args.texture:
         from PIL import Image
         tex, _ = _load_raster(Path(args.texture))
@@ -302,7 +351,10 @@ def main():
     known = []
     if index.exists():
         try:
-            known = json.loads(index.read_text())
+            # Explicit UTF-8: this file is WRITTEN as UTF-8 below, but read_text() defaults
+            # to the locale encoding, which is cp1252 on Windows. Any scene name carrying
+            # an em-dash therefore crashed the next export that touched the index.
+            known = json.loads(index.read_text(encoding="utf-8"))
         except json.JSONDecodeError:
             known = []
     # Drop this scene's old entry, and any entry whose directory has since been deleted.
@@ -310,11 +362,16 @@ def main():
     # tries to fetch a manifest that is not there.
     known = [k for k in known
              if k.get("dir") != out.name and (scenes_root / k.get("dir", "")).is_dir()]
+    # Exactly one landing scene, or the viewer's choice depends on dict order.
+    if args.default_scene:
+        for k in known:
+            k.pop("default", None)
     known.append({"dir": out.name, "name": manifest["name"],
                   "width": W, "height": H, "gsd_m": manifest["gsd_m"],
                   "terrain": manifest.get("terrain"), "place": manifest.get("place"),
                   "has_truth": "truth" in manifest["files"],
-                  "has_sigma": "sigma" in manifest["files"]})
+                  "has_sigma": "sigma" in manifest["files"],
+                  **({"default": True} if args.default_scene else {})})
     # Order by landscape, in the order the problem statement names them -- "stability
     # across urban, sparse, hilly and forested landscapes" -- so the picker answers their
     # criterion on sight. Sorting by directory name instead put Forested first and, worse,
