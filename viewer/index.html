@@ -164,6 +164,9 @@
 
     <label for="scene">Scene</label>
     <select id="scene"></select>
+    <!-- Which model produced these heights. A demo that cannot name its own model is
+         not evidence, and the answer must be visible without asking. -->
+    <div class="note" id="s-model"></div>
 
     <label for="mode">Show</label>
     <select id="mode">
@@ -234,7 +237,9 @@
       <div class="sect">Checked against LiDAR</div>
       <div class="row"><span>Tallest we found</span><span id="s-ourmax">—</span></div>
       <div class="row"><span>Tallest really there</span><span id="s-trumax">—</span></div>
-      <div class="row"><span>Typical error</span><span id="s-err">—</span></div>
+      <div class="row"><span>Error per building</span><span id="s-errb">—</span></div>
+      <div class="row sub"><span id="s-errbnote"></span></div>
+      <div class="row"><span>Error per pixel</span><span id="s-err">—</span></div>
       <div class="row"><span>On the ground</span><span id="s-errg">—</span></div>
       <div class="row sub"><span id="s-errnote"></span></div>
     </div>

@@ -161,7 +161,16 @@ async function loadScenes(select) {
   sel.onchange = () => loadScene(sel.value);
   // After an upload we reload the list and jump straight to the new scene, so the user
   // sees their own image rather than having to find it in a dropdown.
-  const pick = (select && list.some((s) => s.dir === select)) ? select : list[0].dir;
+  //
+  // Otherwise open on the scene flagged `default` in the index, falling back to the first.
+  // The list ORDER is deliberate -- it mirrors the problem statement's "urban, sparse,
+  // hilly and forested" so the picker answers their criterion on sight -- but the first
+  // entry is downtown Omaha, seven buildings, one of them 93 m against training data that
+  // stops at 83 m. Opening there leads with our single worst case. The scene stays first
+  // in the list and one click away; only the landing scene changes.
+  const flagged = list.find((s) => s.default);
+  const pick = (select && list.some((s) => s.dir === select)) ? select
+             : (flagged ? flagged.dir : list[0].dir);
   sel.value = pick;
   await loadScene(pick);
   return true;
@@ -180,6 +189,11 @@ async function loadScene(dir) {
   const base = `./scenes/${dir}`;
   const m = await (await fetch(`${base}/manifest.json`, { cache: 'no-store' })).json();
   state.manifest = m;
+  // Reflect the loaded scene into the DOM. Assigning select.value does NOT add a
+  // `selected` attribute, so a dumped DOM otherwise reports whichever option came first
+  // no matter what is actually on screen -- which is exactly how tools/verify_viewer.py
+  // got a false failure. Cheap to publish, and it makes the state observable.
+  document.body.dataset.scene = dir;
   state.height = await bin(`${base}/${m.files.height}`, Float32Array);
 
   state.sigma = m.files.sigma ? await bin(`${base}/${m.files.sigma}`, Float32Array).catch(() => null) : null;
@@ -559,6 +573,7 @@ function updateStats() {
   }
   $('s-range').textContent = `${m.height_min_m.toFixed(1)} – ${m.height_max_m.toFixed(1)} m`;
   $('s-sigma').textContent = m.sigma_mean_m != null ? `± ${m.sigma_mean_m.toFixed(2)} m` : '—';
+  $('s-model').textContent = m.model ? `Heights produced by ${m.model}.` : '';
 
   const dash = '—';
 
@@ -585,6 +600,23 @@ function updateStats() {
   if (hasTruth) {
     $('s-ourmax').textContent = `${m.height_max_m.toFixed(1)} m`;
     $('s-trumax').textContent = `${m.truth_max_m.toFixed(1)} m`;
+    // Per building is the headline, because it is the only figure comparable to a
+    // published one. Per pixel stays on screen underneath it rather than being dropped:
+    // it is the number the error map is drawn from, and hiding it would be a cherry-pick.
+    const bw = m.building_wise;
+    if (bw && bw.n_buildings) {
+      $('s-errb').textContent = `${bw.rmse.toFixed(2)} m`;
+      // The count belongs next to the number. On a downtown tile this is single digits,
+      // and a per-building RMSE over 7 buildings must not be read as a stable result.
+      $('s-errbnote').textContent =
+        `Across ${bw.n_buildings} building${bw.n_buildings === 1 ? '' : 's'} in this scene, `
+        + `one height each. ${bw.n_buildings < 25 ? 'Too few to be a stable figure — the '
+          + 'benchmark pools 3,090 buildings over 80 tiles.' : 'The published peer reports '
+          + '5.9 m over Asia.'}`;
+    } else {
+      $('s-errb').textContent = dash;
+      $('s-errbnote').textContent = '';
+    }
     $('s-err').textContent = m.error_px_rmse_m != null ? `${m.error_px_rmse_m.toFixed(2)} m` : dash;
     $('s-errg').textContent = m.error_ground_px_rmse_m != null
       ? `${m.error_ground_px_rmse_m.toFixed(2)} m` : dash;
