@@ -57,7 +57,16 @@ def _load_raster(path: Path):
         if src.transform:
             meta["px_size_x"] = abs(src.transform.a)
             meta["px_size_y"] = abs(src.transform.e)
-            meta["px_units"] = "degrees" if (src.crs and src.crs.is_geographic) else "metres"
+            if src.crs is None:
+                # No CRS at all. rasterio still hands back an identity transform, so the
+                # old test -- "not geographic, therefore metres" -- called a plain PNG
+                # 1 m/px and the viewer reported a 700 px image as 700 x 700 metres.
+                # An unreferenced raster is measured in pixels; say so.
+                meta["px_units"] = "pixels"
+            elif src.crs.is_geographic:
+                meta["px_units"] = "degrees"
+            else:
+                meta["px_units"] = "metres"
     return arr, meta
 
 
@@ -81,6 +90,19 @@ def main():
     ap.add_argument("--height", required=True, help="height map: .tif or .npy, metres AGL")
     ap.add_argument("--texture", help="orthoimage to drape: .tif or .npy")
     ap.add_argument("--sigma", help="per-pixel uncertainty, metres (differentiator 6.1)")
+    ap.add_argument("--truth", help="LiDAR reference height on the same grid, metres AGL. "
+                                    "Ships inside the scene so the viewer can drag-compare "
+                                    "and difference the two surfaces.")
+    ap.add_argument("--cls", help="semantic class raster, for building/ground error splits")
+    ap.add_argument("--terrain-base", help="bare-earth elevation raster on the same grid. "
+                                           "Our model predicts height ABOVE GROUND, so a "
+                                           "mountain scene renders flat without this. The "
+                                           "viewer stacks our heights on top of it.")
+    ap.add_argument("--terrain-source", default="",
+                    help="provenance string for the terrain base, shown in the viewer")
+    ap.add_argument("--terrain", help="landscape label for the scene picker: urban, sparse, "
+                                      "hilly, forested, mixed. ISRO names the first four.")
+    ap.add_argument("--place", help="human place name, e.g. Omaha or Sikkim")
     ap.add_argument("--out", required=True, help="output scene directory")
     ap.add_argument("--name", help="display name (default: height filename stem)")
     ap.add_argument("--max-size", type=int, default=2048,
@@ -171,6 +193,97 @@ def main():
         manifest["sigma_max_m"] = float(sig.max())
         manifest["sigma_mean_m"] = float(sig.mean())
 
+    if args.terrain:
+        manifest["terrain"] = args.terrain
+    if args.place:
+        manifest["place"] = args.place
+
+    if args.terrain_base:
+        # Bare-earth elevation to stand our heights on. Without this a Himalayan scene is a
+        # flat plane with 18 m buildings, because AGL is exactly the quantity that has the
+        # mountain removed -- and "stability across hilly terrain" is one of the four
+        # landscapes ISRO names, so a flat hill scene answers nothing.
+        ter, _ = _load_raster(Path(args.terrain_base))
+        ter = np.asarray(ter, np.float32)
+        if ter.shape != (H, W):
+            ys = np.linspace(0, ter.shape[0] - 1, H).astype(np.int32)
+            xs = np.linspace(0, ter.shape[1] - 1, W).astype(np.int32)
+            ter = ter[np.ix_(ys, xs)]
+        ter = np.where(np.isfinite(ter), ter, np.nanmedian(ter))
+
+        # Stored relative to the scene's lowest point, with the datum kept in the manifest.
+        # Absolute metres above sea level would put the mesh 1.4 km from the origin and
+        # every camera default -- all of which are derived from scene extent -- would aim
+        # at empty sky.
+        datum = float(ter.min())
+        (ter - datum).astype("<f4").tofile(out / "terrain.bin")
+        manifest["files"]["terrain"] = "terrain.bin"
+        manifest["terrain_datum_m"] = datum
+        manifest["terrain_relief_m"] = float(ter.max() - datum)
+        manifest["terrain_source"] = args.terrain_source or "unspecified"
+        gy, gx = np.gradient(ter, manifest.get("gsd_m") or 1.0)
+        manifest["terrain_mean_slope_deg"] = float(
+            np.degrees(np.arctan(np.hypot(gx, gy))).mean())
+
+    if args.truth:
+        # LiDAR reference on the same grid, so the viewer can put our surface and the real
+        # one side by side and subtract them. Shipping truth INSIDE the scene rather than as
+        # a separate scene is deliberate: the drag-to-compare divider and the error map both
+        # need the surfaces registered pixel-for-pixel, and two independently exported
+        # scenes give no guarantee of that.
+        tru, _ = _load_raster(Path(args.truth))
+        tru = np.asarray(tru, np.float32)
+        if tru.shape != (H, W):
+            ys = np.linspace(0, tru.shape[0] - 1, H).astype(np.int32)
+            xs = np.linspace(0, tru.shape[1] - 1, W).astype(np.int32)
+            tru = tru[np.ix_(ys, xs)]
+        # Voids are real in DFC2019 AGL and they are NOT zero height. Filling keeps the
+        # truth mesh watertight, but the error map must grey them out rather than report a
+        # fabricated error, so the validity mask ships alongside.
+        tvalid = np.isfinite(tru)
+        n_tbad = int((~tvalid).sum())
+        if n_tbad:
+            fill_t = float(np.median(tru[tvalid])) if tvalid.any() else 0.0
+            tru = np.where(tvalid, tru, fill_t)
+        tru.astype("<f4").tofile(out / "truth.bin")
+        manifest["files"]["truth"] = "truth.bin"
+        manifest["truth_min_m"] = float(tru.min())
+        manifest["truth_max_m"] = float(tru.max())
+        manifest["truth_void_pixels"] = n_tbad
+        if n_tbad:
+            tvalid.astype(np.uint8).tofile(out / "truth_valid.bin")
+            manifest["files"]["truth_valid"] = "truth_valid.bin"
+
+        # Error stats over valid truth only. These are per-PIXEL and therefore NOT the
+        # numbers we quote as headline: per-pixel building error is dominated by roof edges
+        # where the prediction crosses from ground to roof (docs/evaluation-protocol.md).
+        # They exist so the viewer can label its own error map honestly.
+        err = (height - tru)[tvalid]
+        if err.size:
+            manifest["error_px_rmse_m"] = float(np.sqrt(np.mean(err ** 2)))
+            manifest["error_px_mae_m"] = float(np.mean(np.abs(err)))
+            manifest["error_px_bias_m"] = float(np.mean(err))
+            manifest["error_px_p95_abs_m"] = float(np.percentile(np.abs(err), 95))
+            manifest["error_note"] = ("per-pixel, whole tile. Roof edges dominate; "
+                                      "per-building error is the comparable figure.")
+
+        if args.cls:
+            cls, _ = _load_raster(Path(args.cls))
+            cls = np.asarray(cls)
+            if cls.shape != (H, W):
+                ys = np.linspace(0, cls.shape[0] - 1, H).astype(np.int32)
+                xs = np.linspace(0, cls.shape[1] - 1, W).astype(np.int32)
+                cls = cls[np.ix_(ys, xs)]
+            bmask = (cls == 6) & tvalid          # CLS_BUILDING = 6
+            gmask = (cls == 2) & tvalid          # ground
+            if bmask.any():
+                be = (height - tru)[bmask]
+                manifest["error_building_px_rmse_m"] = float(np.sqrt(np.mean(be ** 2)))
+                manifest["building_pixels"] = int(bmask.sum())
+            if gmask.any():
+                ge = (height - tru)[gmask]
+                manifest["error_ground_px_rmse_m"] = float(np.sqrt(np.mean(ge ** 2)))
+
     if args.texture:
         from PIL import Image
         tex, _ = _load_raster(Path(args.texture))
@@ -192,10 +305,24 @@ def main():
             known = json.loads(index.read_text())
         except json.JSONDecodeError:
             known = []
-    known = [k for k in known if k.get("dir") != out.name]
+    # Drop this scene's old entry, and any entry whose directory has since been deleted.
+    # Without the second check a removed scene stays in the index forever and the viewer
+    # tries to fetch a manifest that is not there.
+    known = [k for k in known
+             if k.get("dir") != out.name and (scenes_root / k.get("dir", "")).is_dir()]
     known.append({"dir": out.name, "name": manifest["name"],
-                  "width": W, "height": H, "gsd_m": manifest["gsd_m"]})
-    index.write_text(json.dumps(sorted(known, key=lambda k: k["dir"]), indent=2))
+                  "width": W, "height": H, "gsd_m": manifest["gsd_m"],
+                  "terrain": manifest.get("terrain"), "place": manifest.get("place"),
+                  "has_truth": "truth" in manifest["files"],
+                  "has_sigma": "sigma" in manifest["files"]})
+    # Order by landscape, in the order the problem statement names them -- "stability
+    # across urban, sparse, hilly and forested landscapes" -- so the picker answers their
+    # criterion on sight. Sorting by directory name instead put Forested first and, worse,
+    # every upload re-sorted the list and destroyed the curated order.
+    ORDER = ["urban", "sparse", "hilly", "forested", "mixed", "detail", "upload"]
+    known.sort(key=lambda k: (ORDER.index(k.get("terrain")) if k.get("terrain") in ORDER
+                              else len(ORDER), k.get("name") or k["dir"]))
+    index.write_text(json.dumps(known, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print(f"scene '{manifest['name']}' -> {out}")
     print(f"  {W} x {H}   height {manifest['height_min_m']:.1f} .. {manifest['height_max_m']:.1f} m")

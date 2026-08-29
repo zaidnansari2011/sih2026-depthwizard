@@ -5,71 +5,144 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>DepthWizard — 3D terrain viewer</title>
 <style>
+  /* Light instrument theme.
+     The register to aim at is QGIS / ArcGIS Pro, not a game engine: near-neutral chrome,
+     hairline borders, one accent, and every saturated pixel belonging to the data rather
+     than the interface. No blur, no gradients, no oversized radii -- those read as
+     decoration, and decoration is what makes a tool look generated instead of built. */
   :root {
-    --bg: #0b0f14;
-    --panel: rgba(16, 22, 30, 0.88);
-    --line: rgba(255, 255, 255, 0.10);
-    --text: #e6edf3;
-    --dim: #8b98a5;
-    --accent: #4da3ff;
-    --warn: #ffb454;
+    --bg:      #eef1f4;   /* 3D canvas ground: light, but never pure white, or the
+                             surface edges glare and the mesh loses its silhouette */
+    --panel:   #ffffff;
+    --line:    #d8dee5;
+    --line-sw: #e8ecf0;
+    --text:    #1a2027;
+    --dim:     #5b6672;
+    --accent:  #0b5cab;
+    --accent-w:#e7f0fa;
+    --warn:    #a8442a;
+    --shadow:  0 1px 2px rgba(16,24,40,.06), 0 2px 6px rgba(16,24,40,.06);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); }
   body {
     color: var(--text);
     font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
   canvas { display: block; }
 
   .panel {
     position: absolute;
     background: var(--panel);
-    backdrop-filter: blur(12px);
     border: 1px solid var(--line);
-    border-radius: 10px;
+    border-radius: 6px;
+    box-shadow: var(--shadow);
     padding: 12px 14px;
   }
-  #hud { top: 12px; left: 12px; width: 268px; }
-  #stats { top: 12px; right: 12px; width: 232px; }
-  #help { bottom: 12px; left: 12px; color: var(--dim); }
-  #readout {
-    bottom: 12px; right: 12px; width: 232px; display: none;
+  #hud { top: 14px; left: 14px; width: 274px; }
+  #stats { top: 14px; right: 14px; width: 246px; }
+  #help { bottom: 14px; left: 14px; color: var(--dim); padding: 8px 12px; }
+  #readout { bottom: 14px; right: 14px; width: 246px; display: none; }
+
+  h1 { margin: 0 0 1px; font-size: 14px; font-weight: 600; letter-spacing: -.1px; }
+  .sub { color: var(--dim); font-size: 11px; }
+  #hud > .sub { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid var(--line-sw); }
+
+  .row { display: flex; justify-content: space-between; gap: 10px; padding: 2.5px 0; }
+  .row span:first-child { color: var(--dim); }
+  /* Numbers are monospace and tabular so columns line up and nothing jitters while the
+     camera moves. Every value carries its unit. */
+  .row span:last-child {
+    color: var(--text); font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+    font-size: 12px; font-variant-numeric: tabular-nums;
+  }
+  .row.sub span { color: var(--dim); font-size: 11px; font-family: inherit; }
+  .sect { color: var(--dim); font-size: 10px; text-transform: uppercase;
+          letter-spacing: .06em; margin: 12px 0 5px; font-weight: 600; }
+
+  label { display: block; color: var(--dim); font-size: 11px; margin: 10px 0 4px; }
+  label b { color: var(--text); font-family: ui-monospace, Consolas, monospace;
+            font-weight: 500; font-variant-numeric: tabular-nums; }
+  select, button {
+    width: 100%; padding: 6px 8px; border-radius: 5px; font: inherit;
+    background: #fff; color: var(--text); border: 1px solid var(--line); cursor: pointer;
+  }
+  select:hover, button:hover { background: #f4f6f8; border-color: #c4ccd5; }
+  select:focus-visible, button:focus-visible, input:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  button:disabled, select:disabled {
+    color: #a3adb8; background: #f7f8fa; cursor: not-allowed; border-color: var(--line-sw);
+  }
+  /* The accent exists to say "this is on". It is used for nothing else. */
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button.on:hover { background: #094c8f; }
+  input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
+  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
+  .note { color: var(--dim); font-size: 10.5px; margin-top: 3px; line-height: 1.35; }
+  kbd {
+    background: #f4f6f8; border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 3px; padding: 1px 5px; font: 11px ui-monospace, Consolas, monospace;
+    color: var(--text);
   }
 
-  h1 { margin: 0 0 2px; font-size: 14px; letter-spacing: .2px; }
-  .sub { color: var(--dim); font-size: 11px; margin-bottom: 12px; }
-  .row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
-  .row span:last-child { color: var(--text); font-variant-numeric: tabular-nums; }
-  .row span:first-child { color: var(--dim); }
-  label { display: block; color: var(--dim); font-size: 11px; margin: 10px 0 4px; }
-  select, button {
-    width: 100%; padding: 6px 8px; border-radius: 6px; font: inherit;
-    background: rgba(255,255,255,.06); color: var(--text);
-    border: 1px solid var(--line); cursor: pointer;
+  .bar-outer { height: 4px; background: var(--line-sw); border-radius: 2px; margin-top: 5px;
+               overflow: hidden; }
+  .bar-inner { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+  /* Drop target feedback. One inset outline, no overlay -- an overlay that covers the
+     scene while you are dragging hides the thing you are dropping onto. */
+  body.dragging::after {
+    content: "Drop to estimate heights";
+    position: fixed; inset: 8px; border: 2px dashed var(--accent); border-radius: 8px;
+    display: grid; place-items: start center; padding-top: 24px; pointer-events: none;
+    color: var(--accent); font-weight: 600; font-size: 13px; z-index: 20;
   }
-  button:hover, select:hover { background: rgba(255,255,255,.12); }
-  button.on { background: var(--accent); color: #06121f; border-color: transparent; }
-  input[type=range] { width: 100%; accent-color: var(--accent); }
-  .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
-  kbd {
-    background: rgba(255,255,255,.08); border: 1px solid var(--line);
-    border-radius: 4px; padding: 1px 5px; font: 11px ui-monospace, monospace;
+  #legend { margin-top: 12px; display: none; }
+  #legend .bar { height: 9px; border-radius: 2px; border: 1px solid var(--line-sw); }
+  #legend .ends {
+    display: flex; justify-content: space-between; color: var(--dim);
+    font-size: 10px; font-family: ui-monospace, Consolas, monospace; margin-top: 3px;
   }
-  #legend { margin-top: 10px; display: none; }
-  #legend .bar { height: 8px; border-radius: 4px; margin-bottom: 3px; }
-  #legend .ends { display: flex; justify-content: space-between; color: var(--dim); font-size: 10px; }
+  #legend .cap { color: var(--dim); font-size: 10.5px; margin-top: 4px; line-height: 1.35; }
+
+  /* Drag-to-compare. The divider is screen-space so it survives the camera orbiting;
+     the world-space clip plane is rebuilt from the camera each frame in main.js. */
+  #cmp { position: absolute; inset: 0; display: none; pointer-events: none; }
+  #cmp .line {
+    position: absolute; top: 0; bottom: 0; width: 1px; background: var(--text);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.55);
+  }
+  #cmp .grip {
+    position: absolute; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+    border-radius: 50%; background: #fff; border: 1px solid var(--line);
+    box-shadow: var(--shadow); cursor: ew-resize; pointer-events: auto;
+    display: grid; place-items: center; color: var(--dim); font-size: 11px;
+  }
+  #cmp .tag {
+    position: absolute; top: 14px; font-size: 11px; font-weight: 600; color: var(--text);
+    background: rgba(255,255,255,.92); border: 1px solid var(--line);
+    border-radius: 4px; padding: 3px 8px; white-space: nowrap;
+  }
+  #cmp .tag.l { transform: translateX(-100%); margin-left: -10px; }
+  #cmp .tag.r { margin-left: 10px; }
+
   #loading {
     position: absolute; inset: 0; display: grid; place-items: center;
-    background: var(--bg); z-index: 10; text-align: center;
+    background: var(--bg); z-index: 10; text-align: center; color: var(--dim);
   }
-  .err { color: var(--warn); max-width: 520px; }
+  .err { color: var(--warn); max-width: 560px; text-align: left; line-height: 1.6; }
+  .err code { background: #fff; border: 1px solid var(--line); border-radius: 3px;
+              padding: 1px 5px; font-size: 11.5px; color: var(--text); }
+
+  /* Dark crosshair, because the surface underneath is light. */
   #crosshair {
     position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
-    margin: -7px 0 0 -7px; pointer-events: none; display: none;
+    margin: -7px 0 0 -7px; pointer-events: none; display: none; z-index: 5;
   }
   #crosshair:before, #crosshair:after {
-    content: ""; position: absolute; background: rgba(255,255,255,.7);
+    content: ""; position: absolute; background: rgba(26,32,39,.75);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.6);
   }
   #crosshair:before { left: 6px; top: 0; width: 2px; height: 14px; }
   #crosshair:after { top: 6px; left: 0; height: 2px; width: 14px; }
@@ -78,60 +151,116 @@
 <body>
   <div id="crosshair"></div>
 
+  <div id="cmp">
+    <div class="line"></div>
+    <div class="tag l">Our model</div>
+    <div class="tag r">Real LiDAR</div>
+    <div class="grip">◀▶</div>
+  </div>
+
   <div id="hud" class="panel">
     <h1>DepthWizard</h1>
-    <div class="sub">Single-image DSM · 3D flythrough</div>
+    <div class="sub">Height from a single satellite image</div>
 
     <label for="scene">Scene</label>
     <select id="scene"></select>
 
-    <label for="mode">Surface</label>
+    <label for="mode">Show</label>
     <select id="mode">
-      <option value="texture">Satellite drape</option>
-      <option value="height">Height (colour ramp)</option>
-      <option value="sigma">Uncertainty (± metres)</option>
-      <option value="slope">Slope</option>
+      <option value="texture">Satellite image</option>
+      <option value="height">Height above ground</option>
+      <option value="sigma">How sure we are</option>
+      <option value="error">Where we're wrong</option>
+      <option value="slope">Steepness</option>
     </select>
 
-    <label for="vex">Vertical exaggeration · <span id="vexv">1.0×</span></label>
+    <label for="vex">Height boost · <b id="vexv">1.5×</b></label>
     <input id="vex" type="range" min="0.5" max="6" step="0.1" value="1.5" />
+    <div class="note">Heights are stretched to make the shape readable. The numbers
+      stay true.</div>
 
+    <label for="sun">Sun direction · <b id="sunv">315°</b></label>
+    <input id="sun" type="range" min="0" max="360" step="5" value="315" />
+
+    <div class="sect">Tools</div>
+    <button id="compare">Compare with real LiDAR</button>
     <div class="btns">
-      <button id="tour">Auto tour</button>
+      <button id="tour">Fly-through</button>
       <button id="measure">Measure</button>
     </div>
     <div class="btns">
-      <button id="wire">Wireframe</button>
+      <button id="wire">Mesh lines</button>
       <button id="reset">Reset view</button>
+    </div>
+
+    <!-- Hidden unless a server is behind the page. The single-file build has no process
+         to run the model, so offering an upload there would be a button that lies. -->
+    <div id="upload-block" style="display:none">
+      <div class="sect">Your own image</div>
+      <button id="pick">Upload a satellite image</button>
+      <input id="file" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" hidden />
+      <div class="note">Drop a file anywhere on the page. A GeoTIFF gives real heights
+        above sea level; a PNG or JPG gives relative heights only.</div>
+      <div id="upprog" style="display:none">
+        <div class="row"><span id="up-step">working…</span><span id="up-pct">0%</span></div>
+        <div class="bar-outer"><div class="bar-inner" id="up-bar"></div></div>
+      </div>
     </div>
 
     <div id="legend">
       <div class="bar"></div>
       <div class="ends"><span id="legmin"></span><span id="legmax"></span></div>
+      <div class="cap" id="legcap"></div>
     </div>
   </div>
 
   <div id="stats" class="panel">
-    <div class="row"><span>Extent</span><span id="s-extent">—</span></div>
-    <div class="row"><span>Resolution</span><span id="s-res">—</span></div>
-    <div class="row"><span>GSD</span><span id="s-gsd">—</span></div>
+    <div class="sect" style="margin-top:0">This scene</div>
+    <div class="row"><span>Area covered</span><span id="s-extent">—</span></div>
+    <div class="row"><span>Each pixel</span><span id="s-gsd">—</span></div>
+    <div class="row"><span>Grid size</span><span id="s-res">—</span></div>
     <div class="row"><span>Height range</span><span id="s-range">—</span></div>
-    <div class="row"><span>Mean σ</span><span id="s-sigma">—</span></div>
-    <div class="row"><span>Mesh</span><span id="s-mesh">—</span></div>
-    <div class="row"><span>FPS</span><span id="s-fps">—</span></div>
+    <div class="row"><span>Typical confidence</span><span id="s-sigma">—</span></div>
+
+    <div id="terrain-block" style="display:none">
+      <div class="sect">The ground underneath</div>
+      <div class="row"><span>Height above sea</span><span id="s-elev">—</span></div>
+      <div class="row"><span>Rise across scene</span><span id="s-relief">—</span></div>
+      <div class="row"><span>Steepness</span><span id="s-slope">—</span></div>
+      <div class="row sub"><span id="s-terrnote"></span></div>
+    </div>
+
+    <div id="lidar-block">
+      <div class="sect">Checked against LiDAR</div>
+      <div class="row"><span>Tallest we found</span><span id="s-ourmax">—</span></div>
+      <div class="row"><span>Tallest really there</span><span id="s-trumax">—</span></div>
+      <div class="row"><span>Typical error</span><span id="s-err">—</span></div>
+      <div class="row"><span>On the ground</span><span id="s-errg">—</span></div>
+      <div class="row sub"><span id="s-errnote"></span></div>
+    </div>
+
+    <div id="notruth-block" style="display:none">
+      <div class="sect">No LiDAR here</div>
+      <div class="row sub"><span id="s-notruth"></span></div>
+    </div>
+
+    <div class="sect">Display</div>
+    <div class="row"><span>Detail</span><span id="s-mesh">—</span></div>
+    <div class="row"><span>Frames per second</span><span id="s-fps">—</span></div>
   </div>
 
   <div id="readout" class="panel">
-    <div class="row"><span>Ground distance</span><span id="m-ground">—</span></div>
+    <div class="sect" style="margin-top:0">Measurement</div>
+    <div class="row"><span>Distance on ground</span><span id="m-ground">—</span></div>
     <div class="row"><span>Height difference</span><span id="m-dh">—</span></div>
-    <div class="row"><span>Slope distance</span><span id="m-slope">—</span></div>
-    <div class="row"><span>Uncertainty</span><span id="m-unc">—</span></div>
+    <div class="row"><span>Straight-line distance</span><span id="m-slope">—</span></div>
+    <div class="row"><span>How sure we are</span><span id="m-unc">—</span></div>
     <div class="row sub"><span id="m-note"></span></div>
   </div>
 
   <div id="help" class="panel">
     <kbd>Click</kbd> look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
-    <kbd>Q</kbd><kbd>E</kbd> down/up · <kbd>Shift</kbd> sprint · <kbd>Esc</kbd> release
+    <kbd>Q</kbd><kbd>E</kbd> down/up · <kbd>Shift</kbd> faster · <kbd>Esc</kbd> release
   </div>
 
   <div id="loading"><div>Loading…</div></div>
