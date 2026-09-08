@@ -63,3 +63,6 @@ viewer_standalone.html
 docs/SIH25039-*.pdf
 SIH2025-*.pptx
 docs/SIH2025-*.pptx
+
+# editor/tool backups
+*.bak
