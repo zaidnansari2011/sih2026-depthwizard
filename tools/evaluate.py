@@ -67,15 +67,35 @@ def main():
     ap.add_argument("--precision", default="auto")
     ap.add_argument("--tta", action="store_true",
                     help="D4 test-time augmentation; ~8x slower")
+    ap.add_argument("--fuse-zoom", type=int, default=1,
+                    help="evaluate the fused shipping path (probe 04): accuracy from a "
+                         "zoom-1 pass, edge detail from a zoomed one")
+    ap.add_argument("--fuse-sigma", type=float, default=8.0)
     ap.add_argument("--baseline", default=None,
                     help="zero-shot json to compare against; defaults to the one "
                          "matching --split")
     ap.add_argument("--out", default=str(ROOT / "out" / "eval"))
     ap.add_argument("--seed", type=int, default=1337)
-    ap.add_argument("--split", default="val", choices=["val", "test"],
-                    help="region split to score. val for development; test only for a "
-                         "final reported number (see module docstring)")
+    ap.add_argument("--split", default="val",
+                    help="split to score. val for development; test only for a final "
+                         "reported number (see module docstring); gdc for the GAMUS "
+                         "held-out DC block, which needs --corpus gamus")
+    # Corpus overrides. Defaulting to dfc2019 leaves the module constants untouched, so
+    # every existing invocation -- and therefore every number already reported -- is
+    # bit-identical to before this argument existed.
+    ap.add_argument("--corpus", default="dfc2019", choices=["dfc2019", "gamus"],
+                    help="gamus points the paths at data/extracted_gamus")
     args = ap.parse_args()
+
+    global RGB_DIR, TRUTH_DIR
+    split_json = SHARDS / "split.json"
+    if args.corpus == "gamus":
+        g = ROOT / "data" / "extracted_gamus"
+        RGB_DIR, TRUTH_DIR, split_json = g / "RGB", g / "Truth", g / "split.json"
+        print(f"corpus gamus:  RGB {RGB_DIR}\n               truth {TRUTH_DIR}")
+        if not split_json.exists():
+            sys.exit(f"{split_json} missing. Run: "
+                     "python tools/prepare_gamus.py holdout")
     if args.baseline is None:
         cand = ROOT / "out" / f"zero_shot_baseline_{args.split}.json"
         if not cand.exists() and args.split == "test":
@@ -88,8 +108,11 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    assign = json.loads((SHARDS / "split.json").read_text())
+    assign = json.loads(split_json.read_text())
     eval_regions = {r for r, v in assign.items() if v == args.split}
+    if not eval_regions:
+        sys.exit(f"split '{args.split}' matches no region in {split_json}. "
+                 f"Available: {sorted(set(assign.values()))}")
     tiles = [p.stem[:-4] for p in sorted(RGB_DIR.glob("*_RGB.tif"))
              if p.stem[:-4].rsplit("_", 1)[0] in eval_regions
              and (TRUTH_DIR / f"{p.stem[:-4]}_AGL.tif").exists()]
@@ -112,11 +135,28 @@ def main():
     # One height per building, accumulated at full resolution before subsampling --
     # connected components cannot be recovered from a thinned array.
     BP, BT = [], []
+    # Which tile each building came from. Needed because a Ground Control Point is placed
+    # in ONE scene and can only calibrate that scene, so any honest GCP experiment has to
+    # fit and test within a tile. Pooling buildings across tiles, which per_building.npz
+    # did until now, silently makes calibration look better than a user could achieve.
+    BN = []
 
     for i, t in enumerate(tiles):
         rgb = load_image(RGB_DIR / f"{t}_RGB.tif")
         pred, sigma = infer_scene(model, rgb, args.tile_size, args.overlap, device,
                                   amp_dtype, args.batch, verbose=False, tta=args.tta)
+        if args.fuse_zoom > 1:
+            # Score what we ship. The shipping path fuses a zoom-1 pass (calibration) with
+            # a zoomed pass (edge detail) -- see docs/probe-04-resolution.md. Reporting
+            # zoom-1 numbers for a fused product would be quoting a metric from something
+            # we do not show.
+            from scipy.ndimage import gaussian_filter
+            detail, _ = infer_scene(model, rgb, args.tile_size, args.overlap, device,
+                                    amp_dtype, args.batch, verbose=False, tta=False,
+                                    zoom=args.fuse_zoom)
+            g = float(args.fuse_sigma)
+            pred = (gaussian_filter(pred, g) + (detail - gaussian_filter(detail, g))
+                    ).astype(np.float32)
         truth = read_tif(TRUTH_DIR / f"{t}_AGL.tif").astype(np.float32)
         cls_p = TRUTH_DIR / f"{t}_CLS.tif"
         cls = read_tif(cls_p) if cls_p.exists() else None
@@ -136,6 +176,7 @@ def main():
             if bp.size:
                 BP.append(bp)
                 BT.append(bt)
+                BN.append(np.full(bp.shape[0], i, dtype=np.int32))
 
         e = pred[mask] - truth[mask]
         per_tile.append({"tile": t, "rmse": float(np.sqrt((e ** 2).mean())),
@@ -176,7 +217,9 @@ def main():
     bw_strata = []
     if BP:
         bo, bt_ = np.concatenate(BP), np.concatenate(BT)
-        np.savez_compressed(out / "per_building.npz", ours=bo, truth=bt_)
+        np.savez_compressed(out / "per_building.npz", ours=bo, truth=bt_,
+                            tile_idx=np.concatenate(BN),
+                            tiles=np.array([str(x) for x in tiles]))
         for lo, hi in ((0, 3), (3, 6), (6, 10), (10, 20), (20, 1e9)):
             sel = (bt_ >= lo) & (bt_ < hi)
             if sel.sum() < 20:

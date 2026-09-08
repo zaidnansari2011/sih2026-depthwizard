@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en" data-theme="light"><head><meta charset="utf-8">
+<title>DepthWizard Technical Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap">
+<style>
+  :root{
+    color-scheme:light;
+    --paper:#FFFFFF; --surface:#FAFCFC; --raised:#F2F6F7;
+    --ink:#0E1A20; --ink-2:#3A4C55; --ink-3:#6D7E88;
+    --rule:#D6DFE2; --rule-soft:#E7EDEF;
+    --accent:#0E6B7A; --accent-ink:#0A505C; --accent-soft:#E4F1F3;
+    --warn:#9C4A16; --warn-soft:#F9EEE6;
+    --good:#1F6B4A; --good-soft:#E6F2EC;
+    --serif:"IBM Plex Serif",Georgia,serif;
+    --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);
+       font:400 10.9px/1.58 var(--sans);-webkit-font-smoothing:antialiased;margin:0}
+  @page{size:A4;margin:16mm 15mm 14mm}
+
+  /* ---------------------------------------------------------------- cover */
+  .cover{height:246mm;display:flex;flex-direction:column;page-break-after:always}
+  .cover .rule{height:4px;background:var(--ink);margin:0 0 30px}
+  .cover .eyebrow{font:600 10.5px/1 var(--mono);letter-spacing:.16em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:16px}
+  .cover h1{font:600 46px/1.05 var(--serif);margin:0 0 16px;letter-spacing:-.018em}
+  .cover .standfirst{font-size:14px;line-height:1.62;color:var(--ink-2);margin:0;max-width:76ch}
+  .cover .cmeta{margin-top:auto;padding-top:22px;border-top:1px solid var(--rule);
+    display:flex;flex-wrap:wrap;gap:18px 34px;color:var(--ink-2)}
+  .cover .cmeta div{flex:0 0 45%;font-size:11px;line-height:1.5}
+  .cover .cmeta b{display:block;color:var(--ink-3);font:600 9px/1 var(--mono);
+    letter-spacing:.13em;text-transform:uppercase;margin-bottom:5px}
+
+  /* ------------------------------------------------------------ structure */
+  .parthead{page-break-before:always;break-inside:avoid;border-bottom:3px solid var(--ink);
+    padding-bottom:11px;margin:0 0 22px}
+  .parthead .pn{font:600 10px/1 var(--mono);letter-spacing:.15em;
+    text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+  .parthead h2{font:600 27px/1.1 var(--serif);margin:0 0 7px;letter-spacing:-.012em}
+  .parthead p{margin:0;color:var(--ink-2);font-size:11.2px;line-height:1.55}
+
+  h3{font:600 16.5px/1.25 var(--serif);margin:22px 0 9px;break-after:avoid}
+  h4{font:600 12.2px/1.35 var(--sans);margin:16px 0 7px;break-after:avoid;color:var(--ink)}
+  h5{font:600 9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;
+     color:var(--ink-3);margin:15px 0 7px;break-after:avoid}
+  p{margin:0 0 9px}
+  ul,ol{margin:0 0 10px;padding-left:18px}
+  li{margin-bottom:5px}
+  strong{font-weight:600}
+  section{margin-bottom:4px}
+
+  /* ---------------------------------------------------------------- atoms */
+  .t{font:500 .92em/1 var(--mono);background:var(--raised);padding:2px 4px;border-radius:2px;
+     word-break:break-word}
+  .num{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
+  a{color:var(--accent-ink);text-decoration:none;word-break:break-word}
+
+  table{border-collapse:collapse;width:100%;font-size:10.1px;margin:0 0 12px}
+  th,td{padding:5px 8px;text-align:left;border-bottom:1px solid var(--rule-soft);
+        vertical-align:top}
+  th{font:600 8.8px/1.3 var(--mono);letter-spacing:.07em;text-transform:uppercase;
+     color:var(--ink-3);background:var(--raised);border-bottom:1px solid var(--rule)}
+  td{font-variant-numeric:tabular-nums}
+  td.n,td .n{font-family:var(--mono)}
+  tr{break-inside:avoid}
+  tr.hi td{background:var(--accent-soft);font-weight:600}
+  tr.bad td{background:var(--warn-soft)}
+  tr.ok td{background:var(--good-soft)}
+  .tw{border:1px solid var(--rule);margin:0 0 12px;break-inside:auto}
+
+  .fact{border-left:3px solid var(--accent);background:var(--accent-soft);
+        padding:10px 14px;margin:0 0 12px;break-inside:avoid}
+  .fact b{display:block;font:600 8.8px/1 var(--mono);letter-spacing:.13em;
+    text-transform:uppercase;color:var(--accent-ink);margin-bottom:6px}
+  .fact p:last-child{margin-bottom:0}
+  .warn{border-left:3px solid var(--warn);background:var(--warn-soft);
+        padding:10px 14px;margin:0 0 12px;break-inside:avoid}
+  .warn b{display:block;font:600 8.8px/1 var(--mono);letter-spacing:.13em;
+    text-transform:uppercase;color:var(--warn);margin-bottom:6px}
+  .warn p:last-child{margin-bottom:0}
+
+  pre{font:500 9.4px/1.5 var(--mono);background:var(--raised);border-left:3px solid var(--ink-3);
+      padding:9px 12px;margin:0 0 12px;overflow-x:auto;white-space:pre-wrap;
+      word-break:break-word;break-inside:avoid}
+
+  .dl{border:1px solid var(--rule);background:var(--surface);margin:0 0 12px}
+  .di{display:flex;gap:14px;padding:7px 11px;border-bottom:1px solid var(--rule-soft);
+      font-size:10.2px;break-inside:avoid}
+  .di:last-child{border-bottom:none}
+  .di dt{flex:0 0 152px;font:600 9.6px/1.5 var(--mono);color:var(--accent-ink);margin:0}
+  .di dd{flex:1 1 auto;min-width:0;margin:0;color:var(--ink-2)}
+  .di.w dt{flex:0 0 200px}
+
+  .toc .row{display:flex;gap:12px;padding:5px 0;border-bottom:1px solid var(--rule-soft);
+    font-size:11px;break-inside:avoid}
+  .toc .row span:first-child{flex:0 0 30px;font:600 9.5px/1.5 var(--mono);color:var(--accent)}
+  .toc .row span:last-child{flex:1 1 auto;min-width:0}
+  .toc .grp{font:600 9px/1 var(--mono);letter-spacing:.15em;text-transform:uppercase;
+    color:var(--ink-3);margin:16px 0 3px}
+  .toc .grp:first-child{margin-top:0}
+
+  footer{border-top:2px solid var(--ink);margin-top:20px;padding-top:14px;
+         font-size:9.8px;color:var(--ink-3)}
+</style>
+</head><body>
+
+<header class="cover">
+  <div class="rule"></div>
+  <div class="eyebrow">Smart India Hackathon 2026 &middot; SIH26175 &middot; Team Dev Up &middot; Team ID 47</div>
+  <h1>DepthWizard<br>Complete Technical Reference</h1>
+  <p class="standfirst">Every component of the system, written down in one place: the problem
+  statement verbatim, the full technology stack with versions, the model architecture down to
+  individual layers, every dataset, every hyperparameter, every measured result with the
+  protocol it was measured under, the deployment, the repository map, the negative results,
+  the limitations, and the literature. Nothing summarised away.</p>
+  <p class="standfirst" style="margin-top:14px"><strong>This document is a knowledge base.</strong>
+  It is written to be read by a person or fed to an assistant and questioned. Facts are stated
+  with their source and their measurement conditions, so an answer drawn from this document can
+  always be traced back to how it was obtained.</p>
+  <div class="cmeta">
+    <div><b>Problem statement</b>SIH26175 &mdash; DepthWizard: Single-View Height Estimation and 3D Flythrough</div>
+    <div><b>Organisation</b>Indian Space Research Organisation &mdash; Space Applications Centre</div>
+    <div><b>Theme &amp; category</b>Disaster Management &middot; Software</div>
+    <div><b>Live deployment</b>https://project5.zaidansari.tech &mdash; verified HTTP 200 on 6 Sep 2026</div>
+    <div><b>Shipping model</b>run02 / best.pt, epoch 11, Depth Anything V2 Small, 24.79 M parameters</div>
+    <div><b>Headline accuracy</b>3.667 m per-building RMSE against airborne LiDAR, 80 held-out tiles</div>
+    <div><b>Repository</b>D:\sih2026\depthwizard &mdash; 19,713 lines of Python across 62 modules</div>
+    <div><b>Compiled</b>6 September 2026 &mdash; every figure re-verified against the repository on that date</div>
+  </div>
+</header>
+
+<div class="parthead" style="page-break-before:auto">
+  <div class="pn">Contents</div>
+  <h2>Sixteen parts</h2>
+  <p>Parts 1&ndash;3 are what the project is. Parts 4&ndash;8 are how it works.
+  Parts 9&ndash;11 are what it produces and where it runs. Parts 12&ndash;16 are the
+  supporting record: the code map, what failed, what is broken, the sources, and the words.</p>
+</div>
+
+<div class="toc">
+  <div class="grp">What it is</div>
+  <div class="row"><span>1</span><span>The problem statement, verbatim from the SIH portal</span></div>
+  <div class="row"><span>2</span><span>What the system does, end to end</span></div>
+  <div class="row"><span>3</span><span>The complete technology stack, with versions and reasons</span></div>
+  <div class="grp">How it works</div>
+  <div class="row"><span>4</span><span>The model &mdash; architecture, parameters, heads, initialisation</span></div>
+  <div class="row"><span>5</span><span>The loss functions and what each term buys</span></div>
+  <div class="row"><span>6</span><span>The data &mdash; every dataset, every split, every measured statistic</span></div>
+  <div class="row"><span>7</span><span>Training &mdash; hyperparameters, all six runs, thermals</span></div>
+  <div class="row"><span>8</span><span>Inference &mdash; sliding window, TTA, fusion, auto-zoom, DEM anchoring, GCP</span></div>
+  <div class="grp">What it produces</div>
+  <div class="row"><span>9</span><span>Results &mdash; every measured number with its protocol</span></div>
+  <div class="row"><span>10</span><span>The 3D viewer &mdash; design rules, features, standalone build</span></div>
+  <div class="row"><span>11</span><span>Deployment &mdash; Azure, DNS, limits, and the constraints that shaped it</span></div>
+  <div class="grp">The record</div>
+  <div class="row"><span>12</span><span>Repository map &mdash; every file and what it is for</span></div>
+  <div class="row"><span>13</span><span>Negative results &mdash; everything that was tried and failed</span></div>
+  <div class="row"><span>14</span><span>Limitations, known bugs, and unfinished work</span></div>
+  <div class="row"><span>15</span><span>References, licences, and command reference</span></div>
+  <div class="row"><span>16</span><span>Glossary &mdash; every term and abbreviation</span></div>
+</div>
+
+<div class="fact" style="margin-top:20px">
+  <b>How to read the numbers in this document</b>
+  <p>Every accuracy figure carries the protocol that produced it, because figures from
+  different protocols are not comparable and mixing them is the most common way to state
+  something false about this project. There are four protocols in use and they are defined in
+  Part 9. Where a number has no protocol attached, it is a property of the code or the
+  hardware rather than a measurement of accuracy.</p>
+</div>

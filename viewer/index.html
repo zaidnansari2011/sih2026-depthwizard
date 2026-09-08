@@ -43,7 +43,19 @@
   #hud { top: 14px; left: 14px; width: 274px; }
   #stats { top: 14px; right: 14px; width: 246px; }
   #help { bottom: 14px; left: 14px; color: var(--dim); padding: 8px 12px; }
+  /* Bottom left, above the key hints, where a desktop GIS puts it. */
+  #scalebar { left: 14px; bottom: 58px; padding: 6px 9px 7px; display: none; }
+  #sb-label { font: 11px ui-monospace, Consolas, monospace; color: var(--text);
+              font-variant-numeric: tabular-nums; text-align: center; }
+  /* Open-topped box: the classic bar with a tick down at each end. */
+  #sb-bar { height: 6px; margin-top: 3px; border: 1px solid var(--text); border-top: none; }
   #readout { bottom: 14px; right: 14px; width: 246px; display: none; }
+  /* Follows the cursor, so it is fixed rather than absolute, and must never swallow the
+     pointer events the mesh needs to receive. */
+  #hover {
+    position: fixed; display: none; pointer-events: none;
+    width: 188px; padding: 8px 10px; z-index: 5;
+  }
 
   h1 { margin: 0 0 1px; font-size: 14px; font-weight: 600; letter-spacing: -.1px; }
   .sub { color: var(--dim); font-size: 11px; }
@@ -186,6 +198,22 @@
     <input id="sun" type="range" min="0" max="360" step="5" value="315" />
 
     <div class="sect">Tools</div>
+    <!-- Only appears where absolute elevation exists, i.e. a scene with a CRS and a
+         terrain band. On the DFC2019 scenes the tool is absent and #flood-why says so,
+         the same way the compare tool disables itself on Sikkim. -->
+    <button id="flood">Flood the valley</button>
+    <div id="flood-why" class="note" style="display:none"></div>
+    <div id="flood-ctl" style="display:none">
+      <label for="water">Water level · <b id="waterv">—</b></label>
+      <input id="water" type="range" min="0" max="1" step="1" value="0" />
+      <div class="row"><span>Ground under water</span><span id="f-area">—</span></div>
+      <div class="row"><span>Buildings flooded</span><span id="f-in">—</span></div>
+      <div class="row"><span>Too close to call</span><span id="f-unc">—</span></div>
+      <div class="note">Water fills only what connects to the edge of the scene, so
+        enclosed hollows stay dry. A flat water surface — no flow, no time.
+        <span id="f-src"></span></div>
+    </div>
+
     <button id="compare">Compare with real LiDAR</button>
     <div class="btns">
       <button id="tour">Fly-through</button>
@@ -261,6 +289,21 @@
     <div class="row"><span>Straight-line distance</span><span id="m-slope">—</span></div>
     <div class="row"><span>How sure we are</span><span id="m-unc">—</span></div>
     <div class="row sub"><span id="m-note"></span></div>
+  </div>
+
+  <!-- Calibrated where the centre of the view meets the surface; see updateScaleBar(). -->
+  <div id="scalebar" class="panel">
+    <div id="sb-label">—</div>
+    <div id="sb-bar"></div>
+  </div>
+
+  <!-- Follows the cursor. The brief asks for analysis of structural heights and slopes
+       "from arbitrary aerial perspectives"; the two-click tool answers that only once a
+       juror has found it, whereas this answers it on the first mouse movement. -->
+  <div id="hover" class="panel">
+    <div class="row"><span>Height above ground</span><span id="h-height">—</span></div>
+    <div class="row"><span>How sure we are</span><span id="h-sigma">—</span></div>
+    <div class="row"><span>Slope</span><span id="h-slope">—</span></div>
   </div>
 
   <div id="help" class="panel">

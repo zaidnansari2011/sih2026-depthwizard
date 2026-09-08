@@ -1,0 +1,91 @@
+[
+  {
+    "dir": "urban_oma_288_042",
+    "name": "Urban — Omaha",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": 0.3,
+    "terrain": "urban",
+    "place": "Omaha",
+    "has_truth": true,
+    "has_sigma": true
+  },
+  {
+    "dir": "sparse_oma_258_005",
+    "name": "Sparse — Omaha",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": 0.3,
+    "terrain": "sparse",
+    "place": "Omaha",
+    "has_truth": true,
+    "has_sigma": true
+  },
+  {
+    "dir": "hilly_sikkim_valley",
+    "name": "Hilly — Sikkim, India",
+    "width": 2048,
+    "height": 2047,
+    "gsd_m": 0.9766221046447754,
+    "terrain": "hilly",
+    "place": "Sikkim",
+    "has_truth": false,
+    "has_sigma": true
+  },
+  {
+    "dir": "forested_jax_203_010",
+    "name": "Forested — Jacksonville",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": 0.3,
+    "terrain": "forested",
+    "place": "Jacksonville",
+    "has_truth": true,
+    "has_sigma": true
+  },
+  {
+    "dir": "mixed_jax_020_020",
+    "name": "Mixed — Jacksonville",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": 0.3,
+    "terrain": "mixed",
+    "place": "Jacksonville",
+    "has_truth": true,
+    "has_sigma": true,
+    "default": true
+  },
+  {
+    "dir": "hilly_sikkim_town",
+    "name": "Detail — Sikkim town",
+    "width": 1638,
+    "height": 1637,
+    "gsd_m": 0.30517578125,
+    "terrain": "detail",
+    "place": "Sikkim",
+    "has_truth": false,
+    "has_sigma": true
+  },
+  {
+    "dir": "upload_ok_956162",
+    "name": "Uploaded — ok",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": null,
+    "terrain": "upload",
+    "place": "your image",
+    "has_truth": false,
+    "has_sigma": true
+  },
+  {
+    "dir": "upload_ok2_123b14",
+    "name": "Uploaded — ok2",
+    "width": 1024,
+    "height": 1024,
+    "gsd_m": null,
+    "terrain": "upload",
+    "place": "your image",
+    "has_truth": false,
+    "has_sigma": true
+  }
+]

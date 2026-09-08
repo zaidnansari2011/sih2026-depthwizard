@@ -575,6 +575,357 @@ killed. From here: **predict the outcome in writing, state what would falsify it
 cheaply, then decide.** If you cannot say what result would prove you wrong, do not start
 the run.
 
+## 9c. State of play — end of 28 Aug 2026
+
+23 days to submission. Written at the end of the day so tomorrow starts from facts.
+
+> **Recovered 28 Aug after an accidental truncation of this file** (a bad write in a
+> tooling script emptied PLAN.md; everything up to the last commit came back from git,
+> and this section was rebuilt from the session transcript). The wording may differ in
+> small ways from what was originally typed; the numbers are the measured ones.
+
+### The finding that reframes the model work
+
+**We compress every height toward the median** (`docs/probe-06-compression.md`). Spotted by
+Zaid in the viewer's drag-to-compare before it was measured:
+
+    ours = 0.473 * truth + 2.66 m
+
+Short buildings come out 14-20% **too tall**, buildings over 40 m at **half** height. This is
+regression to the mean: with a long-tailed target whose median is 4.2 m, the loss-minimising
+answer under uncertainty is always "about four metres".
+
+**The per-height RMSE table was hiding it**, and I had been quoting that table. "94% of
+buildings are under 10 m and we are at 1.4 m" is true in metres and conceals a systematic
+15% over-call in ratio.
+
+### Three things this rules out
+
+1. **Inference-time correction - measured, not shipped.** Fitted on TRAIN, tested on VAL:
+   RMSE 3.667 -> 3.543 (-3.4%) but MAE 1.498 -> 1.578 (+5.3%) and **correlation unchanged**,
+   as it must be under a linear map. No information added, only error redistributed. It also
+   cannot be calibrated: train holds 7 buildings above 20 m, val holds 60, so the fit applies
+   1.24x where 2.1x is needed. **The data needed to calibrate it is the data we do not have.**
+2. **More epochs.** run03 and run04 both plateau at epoch 4-5 of 12 and oscillate in a 0.15 m
+   band for the rest. run04 spent 107 minutes and 819 thermal cool-downs learning nothing.
+3. **More data of the same kind.** The compression follows the distribution's *shape*, not
+   its size. Ten times more 4 m buildings gives the model the same reason to hedge.
+
+### Still open, in priority order
+
+- [ ] **Ordinal / binned head, revisited.** The best-founded experiment we have: a head that
+      *picks a bin* cannot average two answers into a wrong middle one, which is the
+      mechanism now measured. Code already exists from run03 (`--bins`, head-tail cut). run03
+      was dropped on whole-tile RMSE 6.950 vs 6.456 - too quick a judgement, since its
+      **ground RMSE improved (1.75 vs 1.92)** and crop-wise scoring put it ahead.
+- [ ] **run05 (V1-Large) - still training on Kaggle.** Read it first. If a 13x bigger backbone
+      also plateaus near 7.9, that confirms the ceiling is the loss, not capacity.
+- [ ] **Tall-building data.** The correct long-term fix and a multi-day project: open city
+      LiDAR plus open imagery. Belongs in "next steps" for the submission, not in the 23 days.
+- [ ] **Demo video.** Everything it needs now exists.
+- [ ] **Score the held-out test split ONCE**, at the very end.
+- [ ] **BLOCKING: six names registered for SIH.** Outstanding since week 1.
+
+### Deliberately not doing
+
+- **Depth Anything 3.** DA3MONO-LARGE is Apache-2.0 at 0.35B and genuinely the right next
+  backbone, but the package pulls ~90 transitive dependencies including xformers and a numpy
+  downgrade, and our head is built on the transformers DPT interface. Architecture migration,
+  not a probe. Write it up as identified future work.
+- **Indian Open Buildings weak supervision.** Would help domain adaptation and **hurt** the
+  height scale: OB under-calls tall buildings by -6.94 m, the same bias we are trying to fix.
+
+### Shipped today
+
+Six viewer scenes with real terrain, drag-to-compare, error map, upload
+(`tools/serve_viewer.py`), absolute DSM via Copernicus GLO-30 (`--dem auto`), GCP anchoring,
+`--auto-zoom` for evaluation resolution, single-file standalone build, evidence pack with
+five figures, probes 03-06.
+
+## 9d. Measured 28 Aug, later session — five hypotheses closed, one reopened
+
+Every line here carries the measurement it rests on. Five hypotheses were tested and came
+back negative. This section originally concluded from that "every lever internal to the
+model is now spent". **That conclusion was too broad and is withdrawn** — see 9h. The five
+results below stand; what does not stand is generalising them to levers never tested.
+
+### run05 (V1-Large) is VOID — nine GPU-hours, zero information
+
+It ran 543.6 min to exit 0 and printed "best val RMSE 28.057 m", which is misleading.
+Crop-wise epoch 0 was **70.8 m at r -0.046** where healthy run04 epoch 0 is **8.24 m at
+r 0.660**. `sigma` sat at exactly **33.115 m = exp(7/2)** in every logged step and `ECE` at
+**0.1881** in all 12 epochs: `log_var` was railed against `log_var_max=7.0` (`losses.py`)
+from the first step, and `clamp` zeroes the gradient there, so the variance head was dead on
+arrival. Loss went NaN at `e6 s6066/11532` (289.6 min) and stayed NaN for the remaining
+4.2 h — 218 of 455 logged steps. If ever rerun: raise `log_var_max`, raise the LR (peak was
+2.77e-06), and add a NaN guard that aborts instead of burning half the run.
+
+**Superseded 29 Aug: the cause was found, and it is a bug in `model.py`, not the backbone.**
+See 9h. "Bigger backbone" was listed under "ruled out" on the strength of this void run,
+which is precisely backwards — a run that produced zero information cannot rule anything
+out. It has been removed from that list.
+
+### No head design moves the compression
+
+`tools/analysis/compression_compare.py`, per-building on the same region-disjoint val split:
+
+| run | head | slope | per-building RMSE | r |
+|---|---|---|---|---|
+| run02 | regression | 0.471 | 3.771 m | 0.755 |
+| run02+TTA | regression | 0.483 | **3.616 m** | **0.787** |
+| run03 | bins + soft-argmax | 0.429 | 4.050 m | 0.717 |
+| run04 | bins + **HTC** | 0.491 | 3.991 m | 0.711 |
+
+**run04 IS the head-tail-cut run** — its checkpoint carries `conv_bins_bg` and `conv_htc`
+weights with `no_htc=False, htc_weight=1.0`. (Reading `args['htc']` returns None because the
+stored key is `no_htc`; that misread briefly put a redundant run06 on the schedule.) So the
+field's prescribed fix has been tested. Every head lands at slope 0.43–0.49.
+
+### The decode is not the fix either
+
+`tools/analysis/bin_mode_probe.py`, 3.65 M building pixels from 48 val crops each containing
+a building above 20 m:
+
+| true band | n | truth | expectation | argmax bin | P(h>20 m) |
+|---|---|---|---|---|---|
+| 20-40 m | 733,129 | 25.6 m | 21.6 m | 23.8 m | 0.779 |
+| 40 m+ | 561,653 | **75.6 m** | **24.9 m** | **26.4 m** | 0.907 |
+
+On pixels truly above 20 m the argmax sits only **+1.86 m** from the expectation. There is no
+tall mode being averaged away. HTC also works as advertised (91% of mass above 20 m), so
+roof-vs-ground was never the failure. **The model knows a building is tall and cannot tell
+26 m from 76 m.**
+
+Secondary defect logged: the adaptive bins starve the tail — typically 32 bins over 0–10 m
+and ~88 over 10–40 m, but only **3–6 bins for all of 40–110 m**, with adjacent-centre gaps of
+17.8–24.2 m. Two of ten images collapse outright. run04 cut `--chamfer` 10x from run03
+(0.1 -> 0.01), and Chamfer is what pulls bin edges onto the truth quantiles.
+
+### LDS/FDS is ruled out — its premise does not hold
+
+`tools/lds_probe.py`, 801,233 building pixels. LDS assumes the tail is *under*-weighted:
+
+| band | % of building pixels | % of squared error |
+|---|---|---|
+| 3-6 m | 36.57% | 2.01% |
+| 20-40 m | 6.10% | 33.82% |
+| 40 m+ | 1.36% | **44.96%** |
+
+**Pixels above 20 m are 7.47% of building pixels and already carry 78.78% of the squared
+error.** Nearly four fifths of the building-pixel gradient already points at them. LDS at
+alpha=0.5 would upweight 40 m+ by a further **78x**, past 95% of the loss, wrecking the
+1.45 m short-building accuracy. (A first pass over ALL pixels was misleading — median AGL
+0.23 m because 63.6% of pixels are ground. That imbalance is the one HTC already solves.)
+
+### Ensembling is ruled out — zero inference spent
+
+Both evals cover the same 3,090 buildings in the same order, so the mix was computed
+directly. `corr(err_run02, err_run04) = 0.9248` — they make the same mistakes. No weighting
+beats run02+TTA's 3.616 m (best mix 0.7/0.3 = 3.647 m); tall RMSE 23.32 -> 23.29 m, noise.
+PLAN had costed this at "~30 min of inference".
+
+### Shadow: taken to its ceiling, and it is below what we have
+
+`tools/shadow_probe.py` (corridor occupancy) and `tools/shadow_ceiling.py` (oracle shadows
+ray-cast from the truth DSM). The cue is real — marching anti-sun on OMA_288_012's tallest
+building gives luminance 166 (roof) -> 93–113 held ~120 px -> 254 (lit ground); marching
+sunward leaves the tile at once. Three findings closed it:
+
+1. **Even perfect segmentation is not enough.** Oracle shadows give overall **r 0.503,
+   slope 0.583, RMSE 2.61 m** (675 unoccluded buildings). The network already achieves
+   **r 0.787** per building.
+2. **Real detection is nowhere near the oracle.** Luminance+Otsu scores **IoU 0.187**
+   (precision 0.204, recall 0.689); Otsu picks thresholds from 76 to 154 across tiles.
+3. **The target population barely exists.** Across the ten tiles with the most tall stock in
+   the dataset there are **10 building components above 20 m out of 766**, and their shadow
+   paths are *unobstructed* (0%). Occlusion is not the limiter — sample size is. ~60 such
+   buildings exist in the whole validation set.
+
+Two real bugs were found and fixed on the way: a p22 luminance cut that landed INSIDE the
+shadow (every building came back ~2 m), and a corridor starting from one far CORNER of a
+building rather than each column's own far edge, which silently dropped every large
+irregular footprint — i.e. exactly the tall ones. Fixing it raised the yield 616 -> 732.
+
+## 9e. GCP calibration — the PS milestone, implemented and measured
+
+`evaluate.py` now tags each building with its tile (`per_building.npz` gained `tile_idx`),
+because a control point calibrates one scene and pooling across tiles flatters the result.
+Sanity: the retagged eval reproduces per-building RMSE 3.616 m exactly.
+
+**A selection trap worth remembering.** The first probe required 25 buildings per tile and
+looked clean. It was worthless: those 36 tiles contain **zero** buildings above 20 m
+(RMSE 1.381 m), while all 60 tall buildings sit in tiles with fewer (RMSE 8.487 m). Dense
+suburbs have many small buildings, downtowns few large ones, so a threshold chosen for
+sample size excluded 100% of the problem.
+
+**Affine is the wrong functional form, and the right one is a power law.** The error is a
+height-dependent RATIO (1.20x at 0–3 m, 0.52x above 40 m); no straight line can be above 1 at
+one end and below it at the other. Measured head to head on held-out buildings, per tile,
+over the 10 validation tiles containing a building above 20 m
+(`tools/analysis/calibration_form.py`):
+
+| form | k | RMSE | vs uncalibrated | MAE | tiles worse |
+|---|---|---|---|---|---|
+| uncalibrated | - | 7.248 m | - | 4.013 m | - |
+| affine | 8 | 6.154 m | -15.1% | 4.477 m | 8 of 10 |
+| power | 5 | 5.730 m | **-20.9%** | 4.202 m | **4 of 10** |
+| power | 8 | **5.442 m** | **-24.9%** | **4.038 m** | 5 of 10 |
+
+Affine buys RMSE by spending MAE (+11.6%); the power law takes more RMSE and leaves MAE where
+it found it (+0.6%). Over all 57 usable tiles it is the only form that beats doing nothing
+(-4.4% vs affine's +0.1%).
+
+Shipped as `fit_gcp_power` in `dem.py` with `--gcp-scale` and `--gcp-form power` (default) in
+`infer.py`. `fit_gcp_offset` fitted an offset only, justified by "our heights are already
+metric" — which the compression measurement falsifies.
+
+**Guards calibrated against the measurement, not chosen.** Requiring 2 control points in the
+upper HALF of their span would refuse 24.6% of the k=8 draws that produced the gain; the
+upper 60% refuses 6.3%, so that is the threshold. The exponent must be >= 0.95, which is what
+catches "would compress further". Control values are read as a STRUCTURE median (region-grown
+from the point), not a fixed patch, because the gain was measured with per-building estimates
+and a 5x5 patch is a noisier quantity — on OMA_288_012 point samples returned 0.59 m where
+truth was 5.6 m.
+
+`tests/test_gcp_affine.py` — 9 tests, all passing, including exact recovery of a known ratio
+error (exponent 1.3889 against a true 1.3889, residual 7.7e-07 m). Existing suite 19/0.
+
+**Honest end-to-end status: on the real tiles tested the guards DECLINE and it falls back to
+offset-only.** On OMA_288_012 the fitted exponent is 0.40–0.57 because that tile
+under-predicts everything (offset-only RMSE 22.82 m against a 6.4 m whole-tile average); on
+JAX_165_018 it is 0.505 because the model is already good there (tall bias -4.55 m). Both
+refusals are correct. **It never degrades a result** — it helps only when control points
+carry building-level heights and the scene genuinely spans a height range.
+
+## 9f. Banked 28 Aug — deployment and evidence
+
+- **ONNX export of the SHIPPING model.** Only run01 — our worst checkpoint, epoch 1 — had
+  ever been exported. run02 now exports self-contained at 100.7 MB with max divergence
+  **0.0010 cm** against PyTorch over 804,972 inputs (PASS at 5 cm), int8 at **36.8 MB, 63%
+  smaller**, costing 0.161 m. CPU inference **509 ms per 518x518 tile**, so it runs with no
+  GPU. Export is FIXED at 518x518 — dynamic shapes raise a runtime exception — fine for
+  sliding-window inference but stated rather than implied.
+- **Standalone verified by loading it.** Headless Chrome on `file://viewer_standalone.html`
+  (15.2 MB): no external refs, 0 leftover ES imports, built from **run02** with zero
+  `zeroshot` mentions. Proof it runs rather than parses: the source has **0** `<canvas>` tags
+  and the rendered DOM has **1**, `data-engine="three.js r169"` at 764x429.
+- **TTA was already shipped** — `serve_viewer.py:72` passes `--tta`. The old checkbox was
+  stale.
+- **Per-terrain stability** (run02+TTA), the PS criterion verbatim: sparse **1.819 m**, mixed
+  **2.676 m**, forested **3.250 m**, urban **13.809 m**, r +0.575 to +0.829. Three of four
+  terrains are strong and the entire height problem is the urban row. Already written up in
+  `docs/evidence-pack.md`, which also states plainly that DFC2019 has no hills and carries
+  Sikkim separately.
+
+## 9g. Remaining work — do not divert
+
+**Blocking, gated to Zaid**
+- [x] Six names registered — Zaid Ansari, Hassaan Shaikh, Justin Fernandes, Gracian Lopes,
+      Karan Patel, Riya Gholap. Done 28 Aug.
+- [x] Renders reviewed by Zaid, 27 Aug.
+
+**Open**
+- [ ] **Demo video.** Explicitly required by the submission. Not started.
+- [ ] **GCP calibration as a click-to-place viewer control** with visible before/after. The
+      backend is done and tested; only the UI remains.
+- [ ] **Raise `--chamfer` and revisit bin allocation** if any further training happens — the
+      tail is starved of bins (3–6 for 40–110 m).
+- [ ] **Score the held-out test split ONCE, at the very end.** It holds ONE building above
+      30 m, so it will flatter us; say so when reporting.
+
+**Ruled out with evidence — do not revisit**
+Head architecture (slope 0.43–0.49 across three heads), decode
+change (+1.86 m, no tall mode), LDS reweighting (tail already carries 78.78% of the error),
+ensembling (error correlation 0.925), shadow (oracle ceiling r 0.503 below our 0.787),
+inference-time global de-compression (correlation unchanged by construction).
+
+## 9h. Measured 29 Aug — run05 did not fail because V1-Large is too big
+
+Zaid, 28 Aug: *"I find it hard to believe that it isn't fixable."* He was right. The
+capacity hypothesis was never tested; run05 was broken before it started, by a bug.
+
+### The bug: the pretrained readout is not calibrated for a V1 backbone
+
+`conv_mu` is `base.head.conv3`, reused from the checkpoint. It emits DISPARITY, and its
+output scale is a property of that checkpoint's feature magnitudes. Measured on real train
+crops with `tools/preflight.py`:
+
+| backbone | median abs(truth - mu) at init | conv3 abs(w) |
+|---|---|---|
+| DA-V2-Small | **16.53 m** | 0.088 |
+| DA-V1-Large | **666 m** | 0.100 |
+
+The head weights are comparable; the necks are not. Nothing rescaled the readout when the
+backbone family changed.
+
+### Why a large initial residual is fatal, measured
+
+`tools/nll_deadlock_probe.py` measures the gradients directly, at a fixed state:
+
+| log_var | sigma | beta | gradient reaching mu |
+|---|---|---|---|
+| 0.0 | 1.000 m | 0.0 | 1.0000x |
+| 3.0 | 4.482 m | 0.0 | 0.0498x |
+| **7.0** | **33.115 m** | 0.0 | **0.0009x** |
+| 7.0 | 33.115 m | 1.0 | 1.0000x |
+
+And `d loss / d log_var` is negative — pushing log_var UP toward the clamp — whenever the
+residual exceeds sigma: -0.0029 at 5 m, -0.0487 at 20 m, -0.4393 at 60 m. So a 666 m
+residual drives log_var into `log_var_max=7.0`, where `clamp` zeroes its gradient while
+suppressing mu's by ~1100x. Deadlock. That is run05's `sigma = 33.115 m` in every step.
+
+Note the beta column: beta-NLL removes the sigma dependence from mu's gradient entirely.
+run02, our best model, was trained with `--beta 0.5`; the default is 0.0.
+
+**It is a race, not a certainty.** An 80-step probe with a fast LR ramp recovered from the
+666 m start on its own (val RMSE 6.366 m, r 0.749) — the head lr pulled mu down before
+log_var railed. run05 lost that race because its schedule warmed over 576 steps to a peak
+of only 2.77e-06 while NLL activated at step 100. Whether the run dies is a function of the
+LR schedule, which is why this was never reproducible from the hyperparameters alone.
+
+### The fix, and what it does
+
+`init_mu="constant"` zeroes `conv_mu.weight` and sets its bias to a constant height —
+exactly the argument `conv_log_var` already made for itself. It discards a 32->1 linear
+readout of disparity that has to be relearned as height regardless; backbone, neck, conv1
+and conv2 are untouched. Default stays `"pretrained"`, so run01-run04 remain reproducible.
+
+Measured, V1-Large, everything else held at run02's recipe:
+
+| | pretrained head | constant head | run04 reference |
+|---|---|---|---|
+| residual at init | 666 m | **0.02 m** | 16.53 m |
+| median grad-norm | 3.1e+06 (exploding) | **6.9e+03** | 1.3e+03 |
+| train RMSE at step 60 | 164 m | **3.255 m** | 3.887 m |
+| preflight verdict | DO NOT LAUNCH | **GO** | GO |
+
+At step 60 V1-Large is already ahead of V2-Small. That is not a result yet, but it is the
+first evidence the capacity question has an answer worth having.
+
+Also measured: **V1-Large OOMs at batch 8** on the 12 GB 3060 (wants 16.77 GB). Batch 2
+fits at 9.51 GB and runs 0.59-0.62 s/step. Batch 4 "fits" at 13.36 GB only by spilling to
+shared memory and is 12x slower per step (7.28 s) — a silent trap.
+
+### Nothing long-running is launched unwatched again
+
+`tools/preflight.py` runs the REAL config — same model, loss, optimiser and shards — for
+60 steps and returns GO or DO NOT LAUNCH against eight checks. Calibrated on the known-good
+V2-Small config, where it passes and its ETA reproduces run04's actual 107 min.
+
+Three tripwires now abort `train.py` mid-run: non-finite loss, sigma railed at the clamp
+for `--rail-patience` steps, and an epoch-0 val gate (`--gate-rmse 25`, `--gate-corr 0.20`;
+run04 reached 8.239 m / +0.660). `tools/tripwire_selftest.py` exercises all three plus a
+control, and all four behave as specified — critically the control, a healthy run with
+tripwires armed, is NOT aborted. Against run05's recorded numbers all four would have
+fired; the epoch-0 gate alone caps the loss at roughly 45 min instead of 543.6 min.
+
+### run06 — the experiment run05 was supposed to be
+
+V1-Large, `--init-mu constant`, run02's recipe otherwise (`--beta 0.5 --lr 5e-6
+--warmup-mse 200 --clip 1.0 --grad-weight 0.5`), effective batch 8 as `--batch 2 --accum 4`,
+6 epochs (~3.9 h) because run03 and run04 both plateaued at epoch 4-5 of 12. Preflight GO.
+Only the backbone and the head init differ from run02, so the result is attributable.
+
 ## 9b. Schedule
 
 Build the baseline first: once it runs end to end we always have something demoable, and every later improvement becomes optional rather than critical-path.
