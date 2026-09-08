@@ -1,0 +1,531 @@
+<div class="parthead">
+  <div class="pn">Part 12</div>
+  <h2>Repository map</h2>
+  <p>Every file, what it is for, and how big it is. 19,713 lines of Python across 62 modules,
+  plus the viewer.</p>
+</div>
+
+<section>
+<h3>12.1 Layout</h3>
+<p>The repository is <span class="t">D:\sih2026\depthwizard</span>. Data, weights, logs, outputs
+and the virtual environment live <em>outside</em> it, under <span class="t">D:\sih2026\</span>.</p>
+<div class="tw"><table>
+<tr><th>Path</th><th>Contents</th></tr>
+<tr><td><span class="t">D:\sih2026\depthwizard\</span></td><td>The git repository &mdash; all source code and documentation</td></tr>
+<tr><td><span class="t">D:\sih2026\data\</span></td><td>Shards, extracted archives, Maxar and Open Buildings caches, uploads, GAMUS shards</td></tr>
+<tr><td><span class="t">D:\sih2026\checkpoints\</span></td><td>run01 through run06 &mdash; <span class="t">best.pt</span>, <span class="t">last.pt</span>, <span class="t">train_log.jsonl</span></td></tr>
+<tr><td><span class="t">D:\sih2026\out\</span></td><td>Inference outputs, evaluation reports, ONNX exports</td></tr>
+<tr><td><span class="t">D:\sih2026\testkit\</span></td><td>10 verified test images: 6 held-out DFC tiles, 3 Nepal crops, 1 Sikkim 500 m crop</td></tr>
+<tr><td><span class="t">D:\sih2026\papers\</span>, <span class="t">logs\</span>, <span class="t">.venv\</span>, <span class="t">.hf\</span></td><td>Literature PDFs, machine vitals logs, the Python environment, the Hugging Face cache</td></tr>
+</table></div>
+
+<h3>12.2 Core package &mdash; <span class="t">depthwizard/</span></h3>
+<div class="tw"><table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr class="hi"><td><span class="t">model.py</span></td><td class="n">405</td><td>DA-V2 backbone + DPT neck + twin (mean, log-variance) head. Also the optional binned head with head-tail cut, the input-size check, parameter groups, and checkpoint reconstruction.</td></tr>
+<tr class="hi"><td><span class="t">losses.py</span></td><td class="n">304</td><td>Gaussian NLL, &beta;-NLL, gradient matching, Chamfer, distribution constraint, head-tail cross-entropy, assembled as <span class="t">CompositeLoss</span>.</td></tr>
+<tr><td><span class="t">metrics.py</span></td><td class="n">289</td><td>RMSE/MAE per class <em>and per terrain</em>, per-building statistics, calibration curve, expected calibration error, uncertainty-error rank correlation.</td></tr>
+<tr><td><span class="t">dataset.py</span></td><td class="n">274</td><td>Shard loader, two-stage shuffle, D4 and photometric augmentation.</td></tr>
+<tr><td><span class="t">dem.py</span></td><td class="n">424</td><td>Copernicus GLO-30 tile discovery and fetch, resampling, absolute-DSM composition, bare-earth approximation, and the GCP fitting functions <span class="t">fit_gcp_offset</span>, <span class="t">fit_gcp_affine</span>, <span class="t">fit_gcp_power</span>.</td></tr>
+</table></div>
+
+<h3>12.3 Top-level entry points</h3>
+<div class="tw"><table>
+<tr><th>File</th><th>Lines</th><th>Purpose</th></tr>
+<tr class="hi"><td><span class="t">train.py</span></td><td class="n">622</td><td>Fine-tuning. Resumable, bf16/fp16 autodetect, thermal governor, tripwires, append-only JSONL logging.</td></tr>
+<tr class="hi"><td><span class="t">infer.py</span></td><td class="n">548</td><td>Sliding-window inference over a full scene. TTA, zoom fusion, auto-zoom, DEM anchoring, GCP calibration, optional immediate scoring.</td></tr>
+<tr><td><span class="t">requirements.txt</span></td><td>&mdash;</td><td>Training-time dependencies.</td></tr>
+<tr><td><span class="t">run_viewer.bat</span></td><td>&mdash;</td><td>Starts a local HTTP server, because the module viewer cannot load from <span class="t">file://</span>.</td></tr>
+<tr><td><span class="t">viewer_standalone.html</span></td><td class="n">15.16 MB</td><td>The entire viewer, all scenes, all textures, Three.js, in one double-clickable file.</td></tr>
+</table></div>
+
+<h3>12.4 Tools &mdash; <span class="t">tools/</span></h3>
+<h5>Data preparation</h5>
+<div class="dl">
+  <div class="di"><dt>prepare_data.py (381)</dt><dd>DFC2019 Track 1: extract &rarr; probe &rarr; shard. The probe <em>measures</em> what the documentation does not specify.</dd></div>
+  <div class="di"><dt>prepare_gamus.py (567)</dt><dd>GAMUS: list &rarr; probe &rarr; shard, streaming, keeping no raw data.</dd></div>
+  <div class="di"><dt>link_union.py</dt><dd>Builds <span class="t">data/shards_union</span> as hardlinks to the DFC2019 and GAMUS shards &mdash; zero extra bytes.</dd></div>
+  <div class="di"><dt>parse_imd.py</dt><dd>Parses WorldView <span class="t">.IMD</span> metadata into JSON: solar and viewing geometry.</dd></div>
+  <div class="di"><dt>maxar_opendata.py (202)</dt><dd>Maxar Open Data: free 0.3&ndash;0.6 m imagery including India, CC-BY-4.0.</dd></div>
+  <div class="di"><dt>open_buildings.py (201)</dt><dd>Google Open Buildings 2.5D Temporal: independent building heights over India.</dd></div>
+  <div class="di"><dt>bhoonidhi.py (257)</dt><dd>Bhoonidhi (NRSC) API client: authenticate, list collections, search, download.</dd></div>
+  <div class="di"><dt>kaggle_push.py (165) / kaggle_watch.py</dt><dd>Push shards to Kaggle as a private dataset; poll a kernel and print one line per state change.</dd></div>
+</div>
+<h5>Evaluation and analysis</h5>
+<div class="dl">
+  <div class="di"><dt>evaluate.py (416)</dt><dd>Score a checkpoint on a region-disjoint split and write a full report.</dd></div>
+  <div class="di"><dt>zero_shot_baseline.py (236)</dt><dd>How far does stock DA-V2 get with no fine-tuning at all?</dd></div>
+  <div class="di"><dt>compare_runs.py (149)</dt><dd>The ablation table &mdash; generated rather than typed.</dd></div>
+  <div class="di"><dt>compare_open_buildings.py (328)</dt><dd>Score a prediction against Google Open Buildings 2.5D over India.</dd></div>
+  <div class="di"><dt>pair_calibration.py (303)</dt><dd>Are the error bars on a height <em>difference</em> honest? Measured, by separation.</dd></div>
+  <div class="di"><dt>view_angle.py (300)</dt><dd>Accuracy against satellite view geometry &mdash; the domain-gap number we can actually measure.</dd></div>
+  <div class="di"><dt>make_figures.py (248)</dt><dd>Every figure in the evidence pack, regenerated from one metrics file.</dd></div>
+  <div class="di"><dt>analysis/bin_mode_probe.py</dt><dd>Does the binned head <em>know</em> a building is tall and then average that knowledge away?</dd></div>
+  <div class="di"><dt>analysis/calibration_form.py</dt><dd>Which functional form should GCP calibration use? Affine is measurably wrong.</dd></div>
+  <div class="di"><dt>analysis/compression_compare.py</dt><dd>Compare runs on the metric that shows the tail: the compression slope.</dd></div>
+  <div class="di"><dt>analysis/render_compare.py</dt><dd>Side by side: Maxar RGB, our height, Open Buildings height, on one shared colour scale.</dd></div>
+  <div class="di"><dt>analysis/terrain_leakage.py</dt><dd>Is our AGL tracking the hillside? Correlate the low-frequency prediction against GLO-30.</dd></div>
+</div>
+<h5>Probes &mdash; each one a written hypothesis with a falsification condition</h5>
+<div class="dl">
+  <div class="di"><dt>probe_tall.py (256)</dt><dd>Probe 01: can tall-building supervision move the tail, and does it generalise?</dd></div>
+  <div class="di"><dt>probe_backbone.py (154)</dt><dd>Probe 02: is a larger backbone a better prior for satellite height?</dd></div>
+  <div class="di"><dt>guided_refine.py (123)</dt><dd>Probe 03: sharpen a height map against the image it came from, and score the result.</dd></div>
+  <div class="di"><dt>sharpen_probe.py (126)</dt><dd>Probe 03b: can any post-process turn our ramps back into steps?</dd></div>
+  <div class="di"><dt>gsd_probe.py</dt><dd>Probe 05: does the model survive the resolution ISRO will actually evaluate at?</dd></div>
+  <div class="di"><dt>decompress_probe.py</dt><dd>Probe 06: we compress every height toward the median. Can that be inverted?</dd></div>
+  <div class="di"><dt>shadow_probe.py (264)</dt><dd>Can shadow geometry recover the tall buildings the network cannot?</dd></div>
+  <div class="di"><dt>shadow_ceiling.py (260)</dt><dd>The upper bound on shadow: what would <em>perfect</em> shadow segmentation recover?</dd></div>
+  <div class="di"><dt>lds_probe.py</dt><dd>Would LDS reweighting have room to work here? Measure before writing any training code.</dd></div>
+  <div class="di"><dt>gcp_calibration_probe.py (187)</dt><dd>How many ground control points does a user need before heights are right?</dd></div>
+  <div class="di"><dt>nll_deadlock_probe.py</dt><dd>Why run05 died, measured rather than argued.</dd></div>
+  <div class="di"><dt>probe_browser_inference.py (162)</dt><dd>Can the shipped model run in a browser, with no server doing the work?</dd></div>
+</div>
+<h5>Export, viewer and serving</h5>
+<div class="dl">
+  <div class="di"><dt>export_terrain.py (398)</dt><dd>Turn a predicted height map into a bundle the browser viewer can load.</dd></div>
+  <div class="di"><dt>export_onnx.py (200)</dt><dd>Export to ONNX <em>and verify the export actually agrees with PyTorch</em>.</dd></div>
+  <div class="di"><dt>build_scenes.py (178)</dt><dd>Rebuild the whole viewer scene set, reproducibly.</dd></div>
+  <div class="di"><dt>build_standalone.py (210)</dt><dd>Bake the viewer into a single double-clickable HTML file.</dd></div>
+  <div class="di"><dt>verify_viewer.py (131)</dt><dd>Load the built viewer in a real browser and assert it actually rendered.</dd></div>
+  <div class="di"><dt>serve_viewer.py (245)</dt><dd>Local tool. Binds 127.0.0.1, 400 MB uploads, no throttle.</dd></div>
+  <div class="di"><dt>serve_app.py (506)</dt><dd>The public server. Binds 0.0.0.0, hardened, bounded, rate-limited.</dd></div>
+  <div class="di"><dt>capture_viewer.py (189) / crop_shots.py</dt><dd>Automated screenshots of the viewer for the deck.</dd></div>
+</div>
+<h5>Operations and safety</h5>
+<div class="dl">
+  <div class="di"><dt>preflight.py (200)</dt><dd>Refuse to start a long run that is already broken.</dd></div>
+  <div class="di"><dt>tripwire_selftest.py</dt><dd>Prove the tripwires fire &mdash; and prove they do <em>not</em> fire on a healthy run.</dd></div>
+  <div class="di"><dt>vitals.py (194)</dt><dd>Machine vitals watchdog. Logs GPU, RAM and disk continuously; shouts only when it matters. It exists because both hardware failures in this project were sitting in numbers nobody was reading.</dd></div>
+  <div class="di"><dt>thermal_soak.py</dt><dd>Answers &ldquo;will my 3060 cook itself on an overnight run?&rdquo;</dd></div>
+</div>
+<h5>Presentation</h5>
+<div class="dl">
+  <div class="di"><dt>ppt/make_deck.py (515), make_deck_b.py (575), make_deck_c.py (383)</dt><dd>Three generated decks. Shared constants (problem ID, title, theme, team ID) live in <span class="t">make_deck_b.py</span> and are imported by C.</dd></div>
+  <div class="di"><dt>ppt/export_pdf.py, fetch_icons.py, probe_fonts.py, check_layout_b.py</dt><dd>PDF export via LibreOffice, brand icon fetching, font probing, layout assertions.</dd></div>
+</div>
+
+<h3>12.5 Tests &mdash; <span class="t">tests/</span></h3>
+<div class="tw"><table>
+<tr><th>File</th><th>Lines</th><th>Status on 6 Sep 2026</th></tr>
+<tr class="ok"><td><span class="t">test_losses.py</span></td><td class="n">245</td><td><strong>19 passed, 0 failed.</strong> Includes recovery of a known heteroscedastic &sigma; (true 0.50 / 3.00 &rarr; recovered 0.497 / 2.99, ratio 6.02 against a true 6.0).</td></tr>
+<tr class="ok"><td><span class="t">test_gcp_affine.py</span></td><td class="n">178</td><td><strong>All 9 passed.</strong> Includes exact recovery of a known ratio error &mdash; exponent 1.3889 against a true 1.3889, residual 7.74e-07 m &mdash; and correct refusal of too-few and short-only control points.</td></tr>
+</table></div>
+<p>There is no <span class="t">pytest</span> in the environment. Each file carries its own
+<span class="t">__main__</span> runner and needs <span class="t">PYTHONPATH</span> set to the
+repository root.</p>
+
+<h3>12.6 Documentation &mdash; <span class="t">docs/</span></h3>
+<div class="tw"><table>
+<tr><th>File</th><th>Lines</th><th>Contents</th></tr>
+<tr><td><span class="t">problem-statement.md</span></td><td class="n">131</td><td>The official PS scraped verbatim, plus five deltas against internal assumptions.</td></tr>
+<tr><td><span class="t">evidence-pack.md</span></td><td class="n">318</td><td>Every accuracy number, measured on the shipping configuration.</td></tr>
+<tr><td><span class="t">evaluation-protocol.md</span></td><td class="n">202</td><td>The four protocols, and the India cross-check in full.</td></tr>
+<tr><td><span class="t">literature.md</span></td><td class="n">213</td><td>What the published work says, what it changed, and the binned-head outcome.</td></tr>
+<tr><td><span class="t">deployment.md</span></td><td class="n">184</td><td>The full hosting runbook.</td></tr>
+<tr><td><span class="t">viewer-design.md</span></td><td class="n">178</td><td>The design rules and the label discipline.</td></tr>
+<tr><td><span class="t">gamus-integration.md</span></td><td class="n">367</td><td>Plan, disk budget, pre-registered success criteria, phased runbook.</td></tr>
+<tr><td><span class="t">probe-01 &hellip; probe-06</span></td><td class="n">59&ndash;97 each</td><td>Tall buildings, guided filter, resolution, GSD, compression.</td></tr>
+<tr><td><span class="t">PLAN.md</span> (root)</td><td class="n">~1,060</td><td>The plan of record: every design decision and why it was made.</td></tr>
+<tr><td><span class="t">CLAUDE.md</span> (root)</td><td class="n">~45</td><td>Working rules: search the literature first; never quote a number without its protocol; never change GPU settings mid-run.</td></tr>
+</table></div>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 13</div>
+  <h2>Negative results</h2>
+  <p>Everything that was tried and did not work. This is not an appendix &mdash; the elimination is
+  itself the finding, and it is what makes the remaining limitation defensible.</p>
+</div>
+
+<section>
+<div class="fact">
+  <b>How these were run</b>
+  <p>Each hypothesis was written down with a falsification condition <em>before</em> the run, then
+  measured. Two of the first five falsified something the team believed.</p>
+</div>
+
+<h3>13.1 The summary table</h3>
+<div class="tw"><table>
+<tr><th>Hypothesis</th><th>Result</th></tr>
+<tr class="bad"><td>Guided filtering sharpens our surfaces</td><td><strong>Wrong.</strong> Worse at every setting (probe 03).</td></tr>
+<tr class="bad"><td>Morphological toggle contrast sharpens them</td><td><strong>Wrong.</strong> Worse, monotonically (probe 03).</td></tr>
+<tr class="bad"><td>The tall-building tail is a capacity problem</td><td><strong>Wrong.</strong> It is data scarcity (probe 01).</td></tr>
+<tr class="ok"><td>Terrain slope leaks into height on hills</td><td><strong>Ruled out.</strong> r = &minus;0.044 at 31&deg; median slope.</td></tr>
+<tr class="ok"><td>Coarse-GSD loss is irrecoverable</td><td><strong>Wrong.</strong> Only 3.6% of it remains after <span class="t">--auto-zoom</span>.</td></tr>
+</table></div>
+
+<h3>13.2 The tall-building tail, exhaustively</h3>
+<p>The under-call above 20 m is the one limitation that could not be removed. Every lever internal
+to the model is now measured and spent.</p>
+<div class="tw"><table>
+<tr><th>Lever</th><th>Result</th></tr>
+<tr><td>Larger backbone (V1-Large, 335 M)</td><td><strong>No information.</strong> The run diverged to NaN at epoch 6 from a variance head railed at its clamp. Nine GPU-hours, void. Root cause found afterwards: a 666 m initial residual.</td></tr>
+<tr><td>Ordinal / binned head</td><td><strong>No effect.</strong> Compression slope: regression 0.471, bins 0.429, bins+HTC 0.491 &mdash; every head compresses by about half.</td></tr>
+<tr><td>Head-tail cut (HTC-DC Net, TGRS 2023)</td><td><strong>Works, and is not the bottleneck.</strong> 91% of predicted probability mass sits above 20 m on tall pixels; roof-versus-ground separation was never the failure.</td></tr>
+<tr><td>Decoding by argmax instead of expectation</td><td><strong>No tall mode to recover.</strong> Argmax sits +1.86 m from the expectation; on 40 m+ buildings the single most likely bin is 26.4 m against 75.6 m of truth.</td></tr>
+<tr><td>Ensembling two runs with different profiles</td><td><strong>Nothing to average.</strong> <span class="t">corr(err_run02, err_run04) = 0.925</span>. No weighting beats the single model.</td></tr>
+<tr><td>LDS reweighting (Yang et al., ICML 2021)</td><td><strong>Premise does not hold.</strong> Pixels above 20 m are 7.47% of building pixels and already carry <strong>78.78%</strong> of the squared error &mdash; the loss is not ignoring them.</td></tr>
+<tr><td>Per-scene GCP calibration</td><td><strong>A trade, not a fix.</strong> Five control points give &minus;21.3% RMSE on tall tiles but +18% MAE, and degrade 7 of 13 tiles.</td></tr>
+</table></div>
+<div class="fact">
+  <b>What these say together</b>
+  <p>The model is <strong>not</strong> under-parameterised, <strong>not</strong> mis-decoded,
+  <strong>not</strong> under-incentivised, and <strong>not</strong> held back by its head. It assigns
+  91% of its probability mass above 20 m on a tall building and still cannot separate 26 m from
+  76 m.</p>
+  <p><strong>A nadir view of a rooftop does not contain that information.</strong> That is the
+  finding, and it is a stronger claim than &ldquo;we ran out of time.&rdquo;</p>
+</div>
+
+<h3>13.3 Shadow &mdash; the new cue, taken to its ceiling</h3>
+<p>The obvious escape is a physical cue, and the metadata for one exists: 67 WorldView-3
+<span class="t">.IMD</span> files carry solar geometry, sun elevation spanning 23.4&deg;&ndash;74.5&deg;.
+<span class="t">height = shadow_length &times; tan(sun_elevation)</span> is how photointerpreters
+measured buildings before computers, and its error profile is the <em>inverse</em> of ours &mdash;
+shadow is most precise on exactly the tall buildings where the network fails.</p>
+<p><strong>The cue is really there.</strong> Marching away from the sun on the tallest building in
+<span class="t">OMA_288_012</span> gives luminance 166 on the roof, 93&ndash;113 held for about
+120 px, then 254 on lit ground. Marching <em>toward</em> the sun leaves the tile immediately.</p>
+<div class="tw"><table>
+<tr><th>Question</th><th>Measurement</th></tr>
+<tr class="bad"><td>Would <em>perfect</em> shadow segmentation be enough?</td><td><strong>No.</strong> Oracle shadows ray-cast from the truth DSM give r <strong>0.503</strong>, slope 0.583, RMSE 2.61 m over 675 buildings. Our network already achieves r <strong>0.787</strong> per building.</td></tr>
+<tr class="bad"><td>How close is real detection to that oracle?</td><td><strong>Not close.</strong> Luminance + Otsu thresholding scores IoU <strong>0.187</strong> (precision 0.204, recall 0.689).</td></tr>
+<tr><td>Is occlusion the limiter on tall buildings?</td><td><strong>No.</strong> Across the ten tiles richest in tall stock, all 10 components above 20 m had <em>unobstructed</em> shadow paths.</td></tr>
+<tr><td>Then what is?</td><td><strong>Population.</strong> Those ten tiles hold <strong>10 buildings above 20 m out of 766</strong>; the whole validation set holds about 60.</td></tr>
+</table></div>
+<p>So the ceiling on the cue sits <em>below</em> the model we already have, and the population
+available to validate any tall-building method is about sixty buildings. That is why the tail stays
+in Limitations rather than being quietly fixed.</p>
+
+<h3>13.4 The binned head, in detail</h3>
+<div class="tw"><table>
+<tr><th></th><th>RMSE</th><th>Bldg RMSE</th><th>Bldg bias</th><th>Grnd RMSE</th><th>ECE</th><th>&sigma; rank &rho;</th></tr>
+<tr class="hi"><td>run02 direct regression</td><td class="n"><strong>6.454</strong></td><td class="n"><strong>16.37</strong></td><td class="n"><strong>&minus;4.70</strong></td><td class="n">1.92</td><td class="n"><strong>0.083</strong></td><td class="n"><strong>+0.836</strong></td></tr>
+<tr class="bad"><td>run03 binned soft-argmax</td><td class="n">6.950</td><td class="n">17.81</td><td class="n">&minus;5.50</td><td class="n"><strong>1.75</strong></td><td class="n">0.106</td><td class="n">+0.784</td></tr>
+</table></div>
+<p>7.7% worse overall and 8.8% worse on buildings &mdash; the thing it was built to fix. Calibration
+got worse too.</p>
+<p><strong>The one metric that improved says what happened.</strong> Ground RMSE fell to 1.75 m, the
+best of any run, while buildings degraded. Smoothing helps homogeneous terrain and hurts tall
+discontinuous structure. That is the over-smoothing signature of soft-argmax, and the distribution
+supervision added specifically to prevent it did not.</p>
+<div class="warn">
+  <b>A protocol note that nearly caused the wrong model to ship</b>
+  <p>Crop-wise validation disagreed in <em>direction</em>: run03 best 7.894 against run02 best
+  7.980, so crop-wise says run03 <em>won</em>. Whole-tile says it lost by 7.7%. Same checkpoints,
+  opposite conclusions. <strong>Anyone reading only <span class="t">train_log.jsonl</span> would
+  have shipped the worse model.</strong></p>
+</div>
+
+<h3>13.5 What the literature changed</h3>
+<p>A targeted literature search on 27 August 2026 contradicted two decisions already taken:</p>
+<ul>
+<li><strong>Our failure mode is <em>the</em> known failure mode of this field.</strong> HTC-DC Net
+states it directly: &ldquo;the distribution of height values is long-tailed&hellip; trained networks
+are usually biased and tend to <strong>underestimate building heights</strong>&hellip; predictions
+can include many fatal cases for higher objects with incredibly large errors.&rdquo; That is our
+error profile verbatim.</li>
+<li><strong>The fix is not loss reweighting.</strong> Every paper that moves the needle reformulates
+the <em>output space</em>. Hours had gone into designing a &beta;-NLL reweighting fix with a
+two-hour GPU run already committed to it. One search surfaced the paper that named the failure,
+showed reweighting is the wrong class of fix, gave the method that works, and revealed that
+published DFC19 numbers are not comparable to ours at all.</li>
+<li><strong>Soft-argmax needs distribution supervision or it will not help.</strong> A roof edge is
+exactly a foreground/background bimodal pixel &mdash; the truth is either roof height or ground,
+never the average. Supervising only the mean lets the network put mass on both modes and bleed the
+edge.</li>
+</ul>
+<p>This is why the repository carries a standing rule: <strong>search the literature before
+spending compute.</strong></p>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 14</div>
+  <h2>Limitations and unfinished work</h2>
+  <p>Stated plainly. Every one of these should be said out loud before a judge finds it.</p>
+</div>
+
+<section>
+<h3>14.1 Accuracy limitations</h3>
+<ol>
+<li><strong>Buildings above 20 m are under-called by about 17 m.</strong> Data scarcity, proven by
+probe 01. Training data tops out at 82.8 m while validation reaches 155.3 m. The direction is
+conservative &mdash; we are never too tall.</li>
+<li><strong>Forested ground carries 2.5 m of error</strong> because a camera cannot see through
+canopy, while the LiDAR reference can. That is optics, not a model defect.</li>
+<li><strong>Tile borders are worse</strong> &mdash; outer-pixel RMSE is roughly double the interior.
+A known property of patch-based vision-transformer inference.</li>
+<li><strong>The absolute DSM anchor is itself a surface model.</strong> Copernicus GLO-30, like
+SRTM, includes buildings and canopy, so dense urban composites double-count part of the building
+height. <span class="t">--dem-bare</span> approximates a correction and says that it is one.</li>
+<li><strong>No Indian LiDAR.</strong> Everything over India is cross-checked against another model
+and is labelled as agreement, never as accuracy.</li>
+<li><strong>The test split is unscored.</strong> By design, until the very end, once. It is also
+materially easier than validation.</li>
+<li><strong>Urban RMSE is 13.9 m</strong>, four to seven times the other landscapes &mdash; and
+cities are where disasters concentrate. The honest framing: correlation stays at +0.808, so the
+shape is right and the scale of tall structures is not; and 94% of the building stock is under 10 m
+where the error is 1.4 m.</li>
+</ol>
+
+<h3>14.2 Coverage limitations</h3>
+<ul>
+<li><strong>Two American cities.</strong> All LiDAR-verified accuracy comes from Jacksonville and
+Omaha. Both are flat.</li>
+<li><strong>No hilly LiDAR anywhere.</strong> The hilly case is Sikkim, which has no reference data,
+so it is a cross-check.</li>
+<li><strong>GAMUS is not trained on.</strong> The sponsor's recommended dataset is ingested to 200
+tiles and blocked on disk. No model in this project has seen a GAMUS tile.</li>
+<li><strong>Cross-sensor generalisation is untested.</strong> Final evaluation uses ISRO imagery at
+an unknown resolution. <span class="t">--auto-zoom</span> addresses the resolution part, measured on
+DFC2019 downsamples &mdash; not on real ISRO data, which we do not have.</li>
+</ul>
+
+<h3>14.3 Engineering limitations and known bugs</h3>
+<div class="tw"><table>
+<tr><th>Item</th><th>State</th></tr>
+<tr class="bad"><td><span class="t">infer.py --help</span> crashes</td><td>A literal <span class="t">%</span> in one help string breaks argparse's formatting. Cosmetic, but <span class="t">--help</span> is not a way to discover the flags.</td></tr>
+<tr><td>Model reloads per request on the server</td><td>Costs ~8 s of every upload. Fixing it means <span class="t">infer.py</span> must expose a reusable entry point first.</td></tr>
+<tr><td>60 s per upload on the live plan</td><td>Usable for &ldquo;try it yourself&rdquo;, too slow to demo live.</td></tr>
+<tr><td>Viewer does not pre-warn about oversized images</td><td><span class="t">/api/capabilities</span> publishes the limit; the client does not read it yet.</td></tr>
+<tr><td>No delete endpoint for uploaded scenes</td><td>A visitor's upload stays listed until twelve more push it out.</td></tr>
+<tr class="bad"><td>Docker unavailable on the build machine</td><td>BIOS SVM Mode is off. Blocks WSL2 and Hyper-V. Requires a reboot into BIOS.</td></tr>
+<tr><td>run06 never finished</td><td>No checkpoint exists. run02 from 27 August remains the shipping model.</td></tr>
+<tr class="bad"><td>Demo video not made</td><td>The tour path exists; the video does not. The pitch-video QR box on deck slide 6 is still a placeholder.</td></tr>
+<tr><td>Visual verification of every scene</td><td>The standalone viewer is proven to <em>render</em>; that every scene's geometry and textures are visually correct still needs a human to look.</td></tr>
+</table></div>
+
+<h3>14.4 What would be done with more time, in priority order</h3>
+<ol>
+<li><strong>Finish the GAMUS ingest and train on the union.</strong> It is 36&times; our tall-building
+supervision and the only credible route to a generalisation claim. Blocked on about 6 GB of disk.</li>
+<li><strong>Hold out a whole GAMUS city</strong> (New York) and report cross-city transfer. That is
+the number that would answer &ldquo;why should ISRO believe it works anywhere else?&rdquo;</li>
+<li><strong>Finish the reference-point tool in the viewer.</strong> The calculation already works and
+is tested; only the click-to-place interface is missing.</li>
+<li><strong>Use shadows for tall buildings only.</strong> Shadows are best exactly where the model is
+worst. It cannot replace the model, but it might correct the specific cases that fail.</li>
+<li><strong>Score the test split, once</strong>, for the final reported number &mdash; and state that
+it is easier than validation when doing so.</li>
+</ol>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 15</div>
+  <h2>References and command reference</h2>
+  <p>Every paper, dataset and external source the project depends on, followed by every command
+  needed to reproduce it.</p>
+</div>
+
+<section>
+<h3>15.1 Papers</h3>
+<div class="dl">
+  <div class="di w"><dt>HTC-DC Net</dt><dd>Chen et al., <em>IEEE Transactions on Geoscience and Remote Sensing</em>, 2023. arxiv.org/abs/2309.16486 &middot; code at github.com/zhu-xlab/HTC-DC-Net. <strong>The central reference.</strong> Names the underestimation failure as the field's known problem, gives the head-tail cut and distribution constraint, and supplies the published DFC19 comparison table.</dd></div>
+  <div class="di w"><dt>Depth Anything V2</dt><dd>The backbone. Small variant, Apache-2.0, on Hugging Face as <span class="t">depth-anything/Depth-Anything-V2-Small-hf</span>.</dd></div>
+  <div class="di w"><dt>DINOv2</dt><dd>The self-supervised vision-transformer backbone inside Depth Anything.</dd></div>
+  <div class="di w"><dt>DPT</dt><dd>Dense Prediction Transformer &mdash; the decoder architecture. The upsample-after-conv1 ordering in our head mirrors the paper exactly.</dd></div>
+  <div class="di w"><dt>Depth Any Canopy</dt><dd>The only published adaptation of Depth Anything to aerial height that reports its hyperparameters. Source of the AdamW / 5e-6 / batch-8 recipe.</dd></div>
+  <div class="di w"><dt>Kendall &amp; Gal</dt><dd>The twin-head heteroscedastic uncertainty arrangement.</dd></div>
+  <div class="di w"><dt>Seitzer et al.</dt><dd>&beta;-NLL &mdash; detach-weighting of the residual term. run02 uses &beta; = 0.5.</dd></div>
+  <div class="di w"><dt>AdaBins</dt><dd>arxiv.org/abs/2011.14141. Adaptive bin widths via softmax; the &beta; = 0.1 Chamfer convention.</dd></div>
+  <div class="di w"><dt>BinsFormer / LocalBins / IEBins</dt><dd>arxiv.org/pdf/2204.00987 &middot; 2203.15132 &middot; 2309.14137. The bin-count ablations that led to N = 128 rather than 256.</dd></div>
+  <div class="di w"><dt>Sampling-Gaussian for stereo matching</dt><dd>arxiv.org/pdf/2410.06527, and Adaptive Multi-Modal Cross-Entropy Loss for Stereo Matching, arxiv.org/pdf/2407.07816. The soft-argmax over-smoothing analysis.</dd></div>
+  <div class="di w"><dt>LDS / FDS</dt><dd>Yang et al., ICML 2021. Label-distribution smoothing for imbalanced regression &mdash; ruled out here by measurement.</dd></div>
+  <div class="di w"><dt>TSE-Net</dt><dd>arxiv.org/pdf/2511.13552. Recent context in the same lineage.</dd></div>
+  <div class="di w"><dt>GlobalBuildingAtlas</dt><dd>Source of the 5.9 m per-building RMSE benchmark over Asia.</dd></div>
+</div>
+
+<h3>15.2 Datasets and data services</h3>
+<div class="dl">
+  <div class="di w"><dt>DFC2019 Track 1 (US3D)</dt><dd>ieee-dataport.org/open-access/data-fusion-contest-2019-dfc2019. Baselines and metrics: github.com/pubgeo/dfc2019 (MIT).</dd></div>
+  <div class="di w"><dt>GAMUS</dt><dd>huggingface.co/datasets/earthflow/GAMUS, CC-BY-4.0. Dataloader: github.com/EarthNets/RSI-MMSegmentation.</dd></div>
+  <div class="di w"><dt>Copernicus GLO-30</dt><dd><span class="t">https://copernicus-dem-30m.s3.amazonaws.com</span> &mdash; open, no account.</dd></div>
+  <div class="di w"><dt>Google Open Buildings 2.5D Temporal</dt><dd>Sentinel-2 derived building heights, field <span class="t">building_height</span> in [0, 100] m.</dd></div>
+  <div class="di w"><dt>Maxar Open Data</dt><dd>CC-BY-4.0. Event folder <span class="t">India-Floods-Oct-2023</span>, acquisitions dated 2022-03-14.</dd></div>
+  <div class="di w"><dt>Bhoonidhi (NRSC)</dt><dd>ISRO's data portal. Client implemented; open products not at a useful resolution for building heights.</dd></div>
+  <div class="di w"><dt>ISRO reference repository</dt><dd>github.com/IMG-PROCESS-SAC/SIH-DepthWizard-2026</dd></div>
+  <div class="di w"><dt>Problem statement portal</dt><dd>sih.gov.in/sih2026PS</dd></div>
+</div>
+
+<h3>15.3 Command reference</h3>
+<h5>Environment</h5>
+<pre>python -m venv .venv
+.venv/Scripts/pip install torch torchvision --index-url https://download.pytorch.org/whl/cu128
+.venv/Scripts/pip install -r requirements.txt</pre>
+<h5>Data</h5>
+<pre>python tools/prepare_data.py extract path/to/Train-Track1-RGB.zip path/to/Train-Track1-Truth.zip
+python tools/prepare_data.py probe          # MEASURES what the DFC2019 docs do not specify
+python tools/prepare_data.py shard
+
+python tools/prepare_gamus.py probe --sample 6
+python tools/prepare_gamus.py shard --workers 16      # resumable
+python tools/prepare_gamus.py holdout                 # the held-out DC block
+python tools/link_union.py --check &amp;&amp; python tools/link_union.py</pre>
+<h5>Baseline, training, evaluation</h5>
+<pre># what does doing nothing cost? establish this before training anything
+python tools/zero_shot_baseline.py --fit-tiles 40 --eval-tiles 80
+
+python train.py --epochs 12 --batch 8 --workers 4 --max-temp 82
+
+python tools/evaluate.py --ckpt D:/sih2026/checkpoints/run02/best.pt --tiles 80
+python tools/evaluate.py --ckpt &lt;ckpt&gt; --split val
+python tools/evaluate.py --ckpt &lt;ckpt&gt; --split gdc --corpus gamus</pre>
+<h5>The exact command that produced every shipping number</h5>
+<pre>python tools/evaluate.py --ckpt checkpoints/run02/best.pt --tta \
+    --fuse-zoom 2 --fuse-sigma 8 --out out/eval_run02_ship
+python tools/make_figures.py --metrics out/eval_run02_ship/metrics.json</pre>
+<h5>Inference and export</h5>
+<pre>python infer.py --image scene.tif --ckpt checkpoints/run02/best.pt --out out/scene \
+    --tta --fuse-zoom 2 --auto-zoom --dem auto
+
+python tools/export_terrain.py --height out/scene.height.tif --sigma out/scene.sigma.tif \
+    --texture scene.tif --gsd 0.3 --out viewer/scenes/scene
+
+python tools/export_onnx.py --ckpt checkpoints/run02/best.pt --quantize
+python tools/build_standalone.py
+python tools/verify_viewer.py</pre>
+<h5>Viewer and serving</h5>
+<pre>python -m http.server -d viewer 8080     # http://localhost:8080
+run_viewer.bat                            # the same, for a double-click
+python tools/serve_viewer.py              # local, 127.0.0.1, no throttle
+python tools/serve_app.py                 # public, 0.0.0.0:8080
+python tools/serve_app.py --dem           # with Copernicus anchoring</pre>
+<h5>Deployment</h5>
+<pre>python deploy/stage.py
+az webapp deploy -g sih2026-depthwizard -n depthwizard-sih2026 \
+                 --src-path dwz-app.zip --type zip --async true</pre>
+<h5>Tests</h5>
+<pre>PYTHONPATH=D:/sih2026/depthwizard python tests/test_losses.py
+PYTHONPATH=D:/sih2026/depthwizard python tests/test_gcp_affine.py</pre>
+
+<h3>15.4 Viewer controls</h3>
+<div class="tw"><table>
+<tr><th>Input</th><th>Action</th></tr>
+<tr><td>Click</td><td>Capture the pointer and look around</td></tr>
+<tr><td><span class="t">W A S D</span></td><td>Move horizontally</td></tr>
+<tr><td><span class="t">Q</span> / <span class="t">E</span></td><td>Move down / up</td></tr>
+<tr><td><span class="t">Shift</span></td><td>Sprint</td></tr>
+<tr><td><span class="t">Esc</span></td><td>Release the pointer</td></tr>
+<tr><td>Measure, then two clicks</td><td>Ground distance, height difference with &plusmn;, straight-line distance</td></tr>
+</table></div>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 16</div>
+  <h2>Glossary</h2>
+  <p>Every term and abbreviation used anywhere in this document or in the project, in plain
+  English.</p>
+</div>
+
+<section>
+<h5>Height and terrain</h5>
+<div class="dl">
+  <div class="di"><dt>DSM</dt><dd>Digital Surface Model. A map of how high everything is, including buildings and trees. This is what ISRO asked for.</dd></div>
+  <div class="di"><dt>DEM</dt><dd>Digital Elevation Model. A general term for height data.</dd></div>
+  <div class="di"><dt>DTM</dt><dd>Digital Terrain Model. The bare ground, with buildings and trees removed.</dd></div>
+  <div class="di"><dt>rDSM</dt><dd>Relative DSM. The shape of the surface with no absolute datum. What we produce for a photo with no location data.</dd></div>
+  <div class="di"><dt>AGL / nDSM</dt><dd>Above Ground Level, also called a normalised DSM. How tall something is compared to the ground right underneath it. A 10 m building on a 100 m hill is 10 m AGL. This is what our model predicts.</dd></div>
+  <div class="di"><dt>Vertical datum</dt><dd>The zero surface elevations are measured from &mdash; roughly, sea level.</dd></div>
+  <div class="di"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so the shape is visible. Ours starts at 1.5&times; and is removed before any measurement is reported.</dd></div>
+  <div class="di"><dt>Relief</dt><dd>The total height range across a scene. Sikkim's 2 km crop has 947 m of relief.</dd></div>
+</div>
+<h5>Imaging</h5>
+<div class="dl">
+  <div class="di"><dt>GSD</dt><dd>Ground Sample Distance. How much ground one pixel covers. 0.3 m GSD means each pixel is 30 cm across. Smaller means sharper.</dd></div>
+  <div class="di"><dt>Nadir</dt><dd>Looking straight down. What satellites usually do, and why depth models struggle &mdash; there is no horizon or perspective to judge scale from.</dd></div>
+  <div class="di"><dt>Off-nadir</dt><dd>Looking at an angle. At 26&deg; off-nadir a roof sits about 5 m from its own footprint.</dd></div>
+  <div class="di"><dt>Monocular</dt><dd>Using one image only.</dd></div>
+  <div class="di"><dt>Stereo</dt><dd>Using two photographs from different angles to work out height. The normal method, and the one being replaced.</dd></div>
+  <div class="di"><dt>LiDAR</dt><dd>A laser scanner, usually flown on an aircraft. Measures distance by timing a light pulse. Our source of correct answers.</dd></div>
+  <div class="di"><dt>InSAR</dt><dd>Interferometric Synthetic Aperture Radar. Radar-based elevation measurement, named in the problem statement.</dd></div>
+  <div class="di"><dt>Photogrammetry</dt><dd>Measuring real-world sizes and distances from photographs.</dd></div>
+  <div class="di"><dt>Orthoimage</dt><dd>An aerial image corrected so that every pixel is viewed as if from directly above.</dd></div>
+  <div class="di"><dt>Georeferenced</dt><dd>A photo that knows where on Earth it was taken.</dd></div>
+  <div class="di"><dt>GeoTIFF</dt><dd>An image file with location information built into it.</dd></div>
+  <div class="di"><dt>CRS</dt><dd>Coordinate Reference System. The definition of what the coordinates in a file mean.</dd></div>
+  <div class="di"><dt>COG</dt><dd>Cloud-Optimised GeoTIFF. Structured so a client can fetch just the part it needs over HTTP.</dd></div>
+  <div class="di"><dt>Megapixel</dt><dd>One million pixels. This determines processing time &mdash; not the file size.</dd></div>
+</div>
+<h5>Machine learning</h5>
+<div class="dl">
+  <div class="di"><dt>Neural network</dt><dd>A program that learns patterns from examples instead of following written rules.</dd></div>
+  <div class="di"><dt>Backbone</dt><dd>The part of the model that understands the image. 89% of ours.</dd></div>
+  <div class="di"><dt>Neck</dt><dd>The part that turns the backbone's coarse output back into a dense per-pixel feature map. 10.9% of ours.</dd></div>
+  <div class="di"><dt>Head</dt><dd>The small final part that turns features into the answer. 0.1% of ours, and the part we modified.</dd></div>
+  <div class="di"><dt>Vision transformer (ViT)</dt><dd>A network that cuts an image into small squares and lets every square take account of every other square. Ours uses 14&times;14 pixel squares.</dd></div>
+  <div class="di"><dt>Token / patch</dt><dd>One of those squares, and the vector representing it.</dd></div>
+  <div class="di"><dt>DINOv2</dt><dd>The specific backbone inside Depth Anything. Learned from images with no human labelling, which is why it works on many kinds of picture.</dd></div>
+  <div class="di"><dt>DPT</dt><dd>Dense Prediction Transformer. Turns a coarse grid of tokens back into a full-detail answer for every pixel.</dd></div>
+  <div class="di"><dt>Fine-tuning</dt><dd>Taking a model someone else trained and continuing to train it on your own data. This is what makes our model output metres.</dd></div>
+  <div class="di"><dt>Zero-shot</dt><dd>Using a model with no extra training at all.</dd></div>
+  <div class="di"><dt>Checkpoint</dt><dd>A saved file containing a trained model.</dd></div>
+  <div class="di"><dt>Epoch</dt><dd>One full pass over the training data.</dd></div>
+  <div class="di"><dt>Step</dt><dd>One batch of examples, one weight update. run02 took 11,532 of them.</dd></div>
+  <div class="di"><dt>Learning rate</dt><dd>How large a change each step makes.</dd></div>
+  <div class="di"><dt>Weight decay</dt><dd>A pull toward smaller weights, which discourages memorisation.</dd></div>
+  <div class="di"><dt>AdamW</dt><dd>The optimisation algorithm used here.</dd></div>
+  <div class="di"><dt>Overfitting</dt><dd>Memorising the training examples instead of learning the general pattern.</dd></div>
+  <div class="di"><dt>Region-disjoint split</dt><dd>Splitting data by geographic area so no place appears in both training and testing.</dd></div>
+  <div class="di"><dt>Augmentation</dt><dd>Showing the model transformed copies of each example. D4 is the eight symmetries of a square.</dd></div>
+  <div class="di"><dt>TTA</dt><dd>Test-Time Augmentation. Running the same image through several times, flipped and rotated, then averaging. Slower but more accurate.</dd></div>
+  <div class="di"><dt>Sliding window</dt><dd>Processing a large photo as overlapping small squares, because the model only accepts a fixed size.</dd></div>
+  <div class="di"><dt>Ill-posed</dt><dd>A problem with more than one possible correct answer.</dd></div>
+  <div class="di"><dt>Heteroscedastic</dt><dd>Uncertainty that varies from place to place, rather than one number for the whole image.</dd></div>
+  <div class="di"><dt>NLL</dt><dd>Negative Log-Likelihood. The training objective: how surprised the model is by the true answer, given the distribution it predicted.</dd></div>
+  <div class="di"><dt>Soft-argmax</dt><dd>Turning a distribution over bins into a single continuous number by taking its expectation.</dd></div>
+  <div class="di"><dt>Ensemble</dt><dd>Averaging several models. Only helps when they make different mistakes; ours make the same ones (r = 0.925).</dd></div>
+  <div class="di"><dt>ONNX</dt><dd>A standard file format for neural networks. Lets our model run without installing PyTorch.</dd></div>
+  <div class="di"><dt>Quantisation</dt><dd>Storing the model's numbers with less precision to shrink the file. Ours saves 63% of the size and costs 0.161 m of accuracy.</dd></div>
+  <div class="di"><dt>bf16 / fp16 / fp32</dt><dd>Number formats of decreasing speed and increasing precision. bf16 needs Ampere or newer.</dd></div>
+</div>
+<h5>Metrics</h5>
+<div class="dl">
+  <div class="di"><dt>RMSE</dt><dd>Root Mean Square Error. Square every mistake, average, take the square root. Because of the squaring, a few big mistakes push this up a lot.</dd></div>
+  <div class="di"><dt>MAE</dt><dd>Mean Absolute Error. The plain average mistake. Always smaller than RMSE. A big gap between the two means a few large mistakes dominate.</dd></div>
+  <div class="di"><dt>Bias</dt><dd>Whether you are consistently too high or too low. Ours is 17 m too low for buildings over 20 m.</dd></div>
+  <div class="di"><dt>Correlation (r)</dt><dd>How well predictions follow the real pattern, from &minus;1 to +1. High correlation with bad RMSE means the shape is right but the scale is wrong.</dd></div>
+  <div class="di"><dt>Calibration</dt><dd>Whether the model's stated confidence matches how often it is actually right.</dd></div>
+  <div class="di"><dt>ECE</dt><dd>Expected Calibration Error. How far the stated confidence is from the observed frequency. Ours is 0.077.</dd></div>
+  <div class="di"><dt>Sigma (&sigma;)</dt><dd>The model's own statement of how unsure it is about a pixel, in metres.</dd></div>
+  <div class="di"><dt>Rank correlation</dt><dd>Whether the <em>ordering</em> matches, ignoring exact values. Ours between &sigma; and error is +0.829.</dd></div>
+  <div class="di"><dt>IoU</dt><dd>Intersection over Union. How well two shapes overlap. Shadow detection scores 0.187.</dd></div>
+  <div class="di"><dt>Oracle</dt><dd>A pretend perfect version of something, used to find the best a method could possibly do. An oracle result is never deployable.</dd></div>
+  <div class="di"><dt>Compression slope</dt><dd>How much the model squashes the height range. 1.0 would be perfect; ours is 0.471.</dd></div>
+</div>
+<h5>Project and infrastructure</h5>
+<div class="dl">
+  <div class="di"><dt>GCP</dt><dd>Ground Control Point. A place where the true height is already known, used to correct a scene.</dd></div>
+  <div class="di"><dt>SRTM</dt><dd>A free worldwide elevation map from a Space Shuttle mission in 2000. Named in the problem statement.</dd></div>
+  <div class="di"><dt>Copernicus GLO-30</dt><dd>The free European worldwide elevation map we use instead. Same 30 m detail as SRTM, no account needed, and it covers the far north where SRTM has gaps.</dd></div>
+  <div class="di"><dt>CartoDEM</dt><dd>ISRO's Indian elevation map. Free only to Indian government bodies, so not available to us.</dd></div>
+  <div class="di"><dt>FABDEM</dt><dd>A true bare-earth product. Non-commercial licence, so not used.</dd></div>
+  <div class="di"><dt>DFC2019</dt><dd>Our training dataset. Aerial photos of Jacksonville and Omaha at 0.3 m per pixel, with laser-measured heights.</dd></div>
+  <div class="di"><dt>GAMUS</dt><dd>The dataset ISRO's own page recommends. Philadelphia, New York and Washington DC &mdash; all dense cities.</dd></div>
+  <div class="di"><dt>Mesh</dt><dd>The 3D surface built from the height numbers.</dd></div>
+  <div class="di"><dt>Texture drape</dt><dd>Painting the original photo onto that 3D surface so it looks real.</dd></div>
+  <div class="di"><dt>Hillshade</dt><dd>Artificial shading from a chosen sun direction, which makes relief legible.</dd></div>
+  <div class="di"><dt>Oryx</dt><dd>Azure's build system. Installs Python dependencies on the platform &mdash; and runs the app from <span class="t">/tmp</span>, not <span class="t">wwwroot</span>.</dd></div>
+  <div class="di"><dt>SNI</dt><dd>Server Name Indication. The TLS binding mode used for the custom domain.</dd></div>
+  <div class="di"><dt>ACR Tasks</dt><dd>Azure Container Registry's cloud image builder. Barred on Azure for Students.</dd></div>
+  <div class="di"><dt>SVM Mode</dt><dd>AMD's hardware virtualisation switch in the BIOS. Off on this machine, which is why Docker cannot run.</dd></div>
+  <div class="di"><dt>RSS</dt><dd>Resident Set Size. How much RAM a process is actually using. Ours peaks at 2.21 GB.</dd></div>
+</div>
+</section>
+
+<footer>
+  <p><strong>Provenance.</strong> Every figure in this document was re-verified against the
+  repository, the checkpoints, the live deployment or a fresh test run on <strong>6 September
+  2026</strong>. Accuracy figures come from the exact configuration running on the live website
+  &mdash; run02 with &times;8 D4 test-time augmentation and zoom-2 fusion &mdash; scored on 80
+  held-out whole tiles, 11,983,760 valid pixels and 3,090 buildings, against airborne LiDAR. Where
+  no LiDAR reference exists, results are described as comparisons rather than as accuracy.</p>
+  <p style="margin-top:8px">DepthWizard &middot; SIH26175 &middot; Team Dev Up, Team ID 47 &middot;
+  Live at project5.zaidansari.tech</p>
+</footer>
+
+</body></html>

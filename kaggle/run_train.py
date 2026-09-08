@@ -1,4 +1,4 @@
-"""Kaggle notebook body for run05 — V1-Large on DFC2019.
+"""Kaggle notebook body for run06 — V1-Large on DFC2019, with run05's bug fixed.
 
 Paste this into a Kaggle notebook with GPU enabled and both datasets attached:
 
@@ -6,6 +6,26 @@ Paste this into a Kaggle notebook with GPU enabled and both datasets attached:
     depthwizard-code             (this repo)
 
 Why the settings are what they are, so a resumed session does not quietly differ:
+
+* **`--init-mu constant`, and this is the whole reason run05 is being redone.** The
+  pretrained readout `conv_mu` emits DISPARITY, and its output scale belongs to the
+  checkpoint it came from. Measured on real crops with `tools/preflight.py`, median
+  |truth - mu| at initialisation is 16.5 m for DA-V2-Small but **666 m** for
+  DA-V1-Large: the two families' necks do not emit features of the same magnitude, even
+  though their conv3 weights are comparable (|w| 0.100 vs 0.088). A residual that size
+  drives log_var into `log_var_max=7.0`, where clamp() zeroes its own gradient and
+  suppresses mu's by ~1100x (`tools/nll_deadlock_probe.py`). That is run05's
+  `sigma = 33.115 m = exp(7/2)` in every logged step, and why it produced nothing in
+  543.6 minutes. With the constant init the residual starts at 0.02 m.
+* **`--epochs 6`, not 12.** run03 and run04 both plateaued at epoch 4-5 of 12 and then
+  oscillated in a 0.15 m band. `--resume auto` extends it if epoch 5 is still falling.
+* **Tripwires are on by default now.** train.py aborts on a non-finite loss, on sigma
+  pinned at the clamp, and on an epoch-0 validation worse than 25 m / r 0.20 (run04
+  reached 8.239 m / +0.660). Verified by `tools/tripwire_selftest.py`, including that a
+  healthy run is NOT aborted. A repeat of run05 now costs minutes, not nine hours.
+* **This runs on Kaggle because the local 3060 box cannot hold it.** Two attempts died to
+  a host MemoryError in a DataLoader worker at 15 and 27 minutes: 15.9 GB of system RAM
+  is not enough for a 335 M model plus shard buffers. VRAM was never the problem.
 
 * **fp16, not bf16.** Kaggle hands out T4 (Turing) and P100 (Pascal); neither supports
   bf16. `pick_precision` detects this, but we pass it explicitly so the log is unambiguous.
@@ -27,7 +47,7 @@ from pathlib import Path
 
 WORK = Path("/kaggle/working")
 CODE = str(WORK / "code")
-OUT = WORK / "checkpoints" / "run05"
+OUT = WORK / "checkpoints" / "run06"
 
 # Find the inputs rather than hardcoding their mount points. Kaggle derives the directory
 # from the dataset slug, and a slug that differs by one character would fail the run after
@@ -84,6 +104,24 @@ if not torch.cuda.is_available():
         "-> GPU T4 x2, wait for the session to restart and show the GPU, then commit again. "
         "Check the saved version's metadata says isGpuEnabled: true."
     )
+# Kaggle picks the card, and the API has no field to ask for one. On 29 Aug 2026 it
+# handed out a Tesla P100 (sm_60) while its own preinstalled torch 2.10.0+cu128 builds
+# only sm_70 and up, so every CUDA op raised "no kernel image is available for execution
+# on the device" 80 seconds in, with a stack trace pointing at a conv layer rather than at
+# the real cause. Check the arch list up front and say what to change.
+_cap = torch.cuda.get_device_capability()
+_arch = f"sm_{_cap[0]}{_cap[1]}"
+_supported = torch.cuda.get_arch_list()
+if _arch not in _supported:
+    raise SystemExit(
+        f"{torch.cuda.get_device_name(0)} is {_arch}, and this torch "
+        f"({torch.__version__}) was built for {' '.join(_supported)}. Nothing runs. "
+        f"FIX: in the notebook, Session options -> Accelerator -> GPU T4 x2 (T4 is "
+        f"sm_75 and supported), then re-run. A P100 would need a torch built for sm_60, "
+        f"which means a ~2.5 GB reinstall every session."
+    )
+print(f"gpu arch {_arch} is in this torch's build list -- ok")
+
 print(f"bf16 supported: {torch.cuda.is_bf16_supported()}"
       "   (expect False on T4/P100 -> fp16 + GradScaler)")
 if CODE_ZIP is not None:
@@ -117,10 +155,11 @@ cmd = [
     "--shards", SHARDS,
     "--out", str(OUT),
     "--model-id", "LiheYoung/depth-anything-large-hf",
+    "--init-mu", "constant",   # the fix; see the note at the top of this file
     "--precision", "fp16",
     "--batch", "2",
     "--accum", "4",              # effective batch 8, matching run02's recipe
-    "--epochs", "12",
+    "--epochs", "6",
     "--lr", "5e-6",
     "--grad-weight", "0.5",
     "--beta", "0.5",             # run02's setting; it is our best model

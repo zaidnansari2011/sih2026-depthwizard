@@ -1,0 +1,521 @@
+<div class="parthead">
+  <div class="pn">Part 6</div>
+  <h2>The data</h2>
+  <p>Every dataset touched by this project, what is in it, how it was split, and the statistics
+  that were measured rather than assumed.</p>
+</div>
+
+<section>
+<h3>6.1 DFC2019 Track 1 &mdash; the training corpus</h3>
+<div class="dl">
+  <div class="di"><dt>Full name</dt><dd>IEEE GRSS Data Fusion Contest 2019, Track 1, also published as the US3D dataset</dd></div>
+  <div class="di"><dt>Source</dt><dd>ieee-dataport.org/open-access/data-fusion-contest-2019-dfc2019 &mdash; free account required</dd></div>
+  <div class="di"><dt>Coverage</dt><dd>Jacksonville, Florida and Omaha, Nebraska. Roughly 100 km&sup2; in total. Both are <strong>flat</strong>.</dd></div>
+  <div class="di"><dt>Imagery</dt><dd>WorldView-3 satellite, pan-sharpened RGB, <strong>0.3 m ground sample distance</strong></dd></div>
+  <div class="di"><dt>Reference</dt><dd>Airborne LiDAR, converted to above-ground level. This is the same source the field benchmarks against.</dd></div>
+  <div class="di"><dt>Semantic classes</dt><dd>Ground, vegetation, building, water, bridge</dd></div>
+  <div class="di"><dt>Tile shape</dt><dd>1024 &times; 1024 &times; 3 RGB, paired with a 1024 &times; 1024 float AGL raster</dd></div>
+  <div class="di"><dt>Volume</dt><dd><strong>2,783 tiles</strong> across <strong>108 regions</strong></dd></div>
+  <div class="di"><dt>Region naming</dt><dd><span class="t">JAX_nnn</span> and <span class="t">OMA_nnn</span>. 53 Jacksonville regions, 55 Omaha regions.</dd></div>
+</div>
+
+<div class="warn">
+  <b>The DFC2019 tiles carry no georeferencing at all</b>
+  <p>Measured, not assumed: the probe reports <span class="t">crs = ['None']</span> and a pixel
+  size of <span class="t">1.0</span> &mdash; the identity transform. The tiles were rewritten by
+  <span class="t">tifffile</span> at some point in their history, which stripped the CRS and the
+  affine transform. <strong>Nothing in the files says a pixel is 30 cm.</strong></p>
+  <p>Two consequences run through the whole project. Ground sample distance must be passed
+  explicitly with <span class="t">--gsd 0.3</span>. And
+  <span class="t">tools/export_terrain.py</span> refuses to invent one: with no GSD it labels
+  distances in <em>pixels</em> rather than printing confident nonsense in metres.</p>
+</div>
+
+<h4>Measured height distribution across all 2,783 tiles</h4>
+<div class="tw"><table>
+<tr><th>Statistic</th><th>Value</th><th>What it tells you</th></tr>
+<tr><td>Minimum</td><td class="n">&minus;2.976 m</td><td>Slightly negative &mdash; excavations, and LiDAR noise around the zero plane</td></tr>
+<tr><td>1st percentile</td><td class="n">&minus;0.077 m</td><td></td></tr>
+<tr><td>25th percentile</td><td class="n">0.000 m</td><td>A quarter of all pixels are exactly ground</td></tr>
+<tr><td>Median</td><td class="n">0.037 m</td><td><strong>Half the scene is flat ground.</strong> This is the long tail that makes the problem hard.</td></tr>
+<tr><td>75th percentile</td><td class="n">4.594 m</td><td></td></tr>
+<tr><td>90th percentile</td><td class="n">9.853 m</td><td>Used to initialise the foreground bin head</td></tr>
+<tr class="hi"><td>95th percentile</td><td class="n">13.223 m</td><td><strong>This is <span class="t">height_scale</span></strong></td></tr>
+<tr><td>99th percentile</td><td class="n">21.063 m</td><td></td></tr>
+<tr><td>99.9th percentile</td><td class="n">44.266 m</td><td></td></tr>
+<tr><td>Maximum</td><td class="n">204.147 m</td><td>One structure. Scaling by this would squash everything else to nothing.</td></tr>
+</table></div>
+<p>Void pixels are encoded as a sentinel, not as NaN (<span class="t">void_is_nan = False</span>).
+This is the kind of thing that has to be measured: assuming NaN would have let void pixels enter
+the loss as real zero-height ground.</p>
+
+<h3>6.2 The split &mdash; region-disjoint, seed 1337</h3>
+<div class="tw"><table>
+<tr><th>Split</th><th>Regions</th><th>Shard files</th><th>Role</th></tr>
+<tr><td>train</td><td class="n">76</td><td class="n">61 &times; .npz</td><td>Fine-tuning</td></tr>
+<tr class="hi"><td>val</td><td class="n">16</td><td class="n">14 &times; .npz</td><td>Every development decision and every reported number</td></tr>
+<tr><td>test</td><td class="n">16</td><td class="n">14 &times; .npz</td><td>Held out. Spent twice by accident before the <span class="t">--split</span> flag existed; not scored since.</td></tr>
+</table></div>
+
+<div class="fact">
+  <b>Why region-disjoint, when it makes our numbers look worse</b>
+  <p>Whole regions go to one split. No tile from a training region can appear in validation.</p>
+  <p>A random tile split leaks: adjacent tiles share buildings, lighting, architecture and
+  shadows, so a model can score well by memorising a neighbourhood. The published HTC-DC Net
+  DFC19 results randomly split 44,258 crops of 256&times;256 from two cities, which means the crop
+  immediately next to a test crop &mdash; same building, same rooftop, same street &mdash; is in
+  the training set.</p>
+  <p><strong>This is why our 4.68 m zero-shot figure and their 2.12 m are not the same
+  number.</strong> Presenting our result as losing to theirs would be wrong, and quietly adopting
+  their protocol to close the gap would be worse.</p>
+</div>
+
+<div class="warn">
+  <b>The test split is materially easier than validation</b>
+  <p>The same zero-shot global-affine baseline reads <strong>4.68 m on test</strong> against
+  <strong>9.308 m on validation</strong>. The test split also contains <strong>exactly one
+  building above 30 m</strong> (maximum 34.0 m), while validation reaches 155.3 m. When a test
+  number is finally reported it will look better than validation, and that must be said whenever
+  it is quoted.</p>
+</div>
+
+<h3>6.3 The validation set used for every reported number</h3>
+<div class="dl">
+  <div class="di"><dt>Tiles</dt><dd><strong>80 whole 1024&times;1024 tiles</strong>, drawn from the 16 validation regions with seed 1337</dd></div>
+  <div class="di"><dt>Valid pixels</dt><dd><strong>11,983,760</strong></dd></div>
+  <div class="di"><dt>Buildings</dt><dd><strong>3,090</strong>, after dropping connected components smaller than 25 m&sup2;</dd></div>
+  <div class="di"><dt>Median building height</dt><dd>4.22 m</dd></div>
+  <div class="di"><dt>90th percentile building height</dt><dd>7.53 m</dd></div>
+  <div class="di"><dt>Tallest building</dt><dd>155.3 m</dd></div>
+</div>
+<p>The tile list is bit-identical across every method compared in Part 9 &mdash; verified, not
+assumed.</p>
+
+<h3>6.4 The crops &mdash; what training actually sees</h3>
+<div class="dl">
+  <div class="di"><dt>Crop size</dt><dd><strong>518 &times; 518</strong> = 14 &times; 37. DA-V2's native resolution and a multiple of the patch size.</dd></div>
+  <div class="di"><dt>Storage</dt><dd>Compressed NumPy <span class="t">.npz</span> shards. Each holds many crops with their RGB, height and semantic class.</dd></div>
+  <div class="di"><dt>Loader</dt><dd><span class="t">depthwizard/dataset.py</span> &mdash; <span class="t">ShardStream</span> plus <span class="t">HeightShardDataset</span>, with a two-stage shuffle: shards are shuffled, then crops within a buffer of <span class="t">--buffer-shards 2</span> shards are shuffled again. This gives good mixing without holding the corpus in RAM.</dd></div>
+  <div class="di"><dt>Augmentation</dt><dd><strong>D4</strong> &mdash; the eight symmetries of a square (four rotations &times; optional mirror) &mdash; plus photometric jitter. D4 is safe here in a way it is not for ground-level photography, because a satellite image has no privileged &ldquo;up&rdquo;.</dd></div>
+  <div class="di"><dt>Normalisation</dt><dd>ImageNet mean and standard deviation, matching what the pretrained backbone expects.</dd></div>
+</div>
+
+<h3>6.5 Solar and viewing geometry</h3>
+<p><span class="t">tools/parse_imd.py</span> parses WorldView <span class="t">.IMD</span> metadata
+into JSON. <strong>67 files</strong> were recovered and joined to Track 1 tiles by scene index.
+Each carries, for example:</p>
+<pre>{"CatId": "104001000209A800", "satId": "WV03",
+ "firstLineTime": "2014-10-05T16:01:38.873575Z",
+ "meanOffNadirViewAngle": 18.9, "meanInTrackViewAngle": 18.6,
+ "meanCrossTrackViewAngle": 3.6, "meanSatAz": 19.8, "meanSatEl": 69.3,
+ "meanSunAz": 150.3, "meanSunEl": 50.8,
+ "shadow_len_per_m": 0.8156, "shadow_quality": "usable"}</pre>
+<p>Sun elevation across the set spans <strong>23.4&deg; to 74.5&deg;</strong>, and
+<strong>54 of the 67</strong> scenes have a usable sun elevation for shadow work. This metadata is
+what made the shadow investigation in Part 13 possible &mdash; and what allowed it to be closed
+with measurements rather than opinion.</p>
+
+<h3>6.6 GAMUS &mdash; the sponsor's recommended dataset</h3>
+<div class="tw"><table>
+<tr><th>Property</th><th>Value</th></tr>
+<tr><td>Source</td><td>huggingface.co/datasets/earthflow/GAMUS &mdash; provider Earthflow, CC-BY-4.0</td></tr>
+<tr><td>Added to ISRO's repository</td><td>29 August 2026</td></tr>
+<tr><td>Size</td><td>8,724 tiles: 5,004 train / 859 val / 2,861 test</td></tr>
+<tr><td>Cities</td><td>Philadelphia 4,398 &middot; New York 2,167 &middot; Washington DC 2,159 &mdash; all dense US urban</td></tr>
+<tr><td>Structure</td><td><span class="t">images/</span>, <span class="t">heights/</span> as <span class="t">*_AGL.h5</span>, <span class="t">classes/</span></td></tr>
+<tr><td>Ground sample distance</td><td>0.33 m &mdash; within 6% of our 0.3 m, so the resolution match is close</td></tr>
+<tr><td>Void encoding</td><td><strong>&minus;5 sentinel, not NaN.</strong> Measured. Treating it as a real height would poison training.</td></tr>
+<tr class="bad"><td>Disk required</td><td>~100 GB against ~31 GB free. This is the blocking constraint.</td></tr>
+</table></div>
+<h4>Why GAMUS matters and why it is not the only corpus</h4>
+<ul>
+<li><strong>It is 36&times; our tall-building supervision.</strong> Our single measured defect is
+buildings above 20 m, and the cause is proven data scarcity. Three dense American cities is
+exactly the missing population.</li>
+<li><strong>It is the only route to a credible generalisation claim.</strong> Training on two
+cities and testing on the same two cities cannot demonstrate transfer. Training on DFC2019 and
+holding out a whole GAMUS city can.</li>
+<li><strong>It is the sponsor's own recommendation</strong>, which carries weight independent of
+its technical merits.</li>
+<li><strong>Not GAMUS alone</strong>, because it is entirely dense urban. Replacing DFC2019 with
+it would discard our sparse, forested and mixed coverage &mdash; three of the four landscapes
+ISRO explicitly names.</li>
+</ul>
+<h4>Current status, 6 September 2026</h4>
+<div class="tw"><table>
+<tr><th>Component</th><th>State</th></tr>
+<tr><td><span class="t">tools/prepare_gamus.py</span></td><td>Written. <span class="t">probe</span> run and passing. <strong>200 tiles ingested</strong>, producing 7 shard files in <span class="t">data/shards_gamus/</span>. The ingest is resumable and picks up exactly where it stopped.</td></tr>
+<tr><td><span class="t">tools/link_union.py</span></td><td>Written, <strong>not yet run</strong>. Builds a union directory as hardlinks, costing zero extra bytes.</td></tr>
+<tr><td><span class="t">tools/evaluate.py</span></td><td><span class="t">--corpus gamus</span> added. The DFC2019 path is unchanged and bit-identical.</td></tr>
+<tr class="bad"><td>Training on GAMUS</td><td><strong>Not started.</strong> Blocked on disk. No model in this project has seen a GAMUS tile.</td></tr>
+</table></div>
+<p>The ingest and a training run must not be run at the same time: the machine has 15.9 GB of RAM
+with roughly 1 GB free, and the ingest has already pushed the page file up once.</p>
+
+<h3>6.7 Indian imagery &mdash; Maxar Open Data</h3>
+<div class="dl">
+  <div class="di"><dt>Source</dt><dd>Maxar Open Data programme, CC-BY-4.0, free 0.3&ndash;0.6 m imagery including India</dd></div>
+  <div class="di"><dt>Scene</dt><dd>Teesta valley, Sikkim. Event folder <span class="t">India-Floods-Oct-2023</span>, but the actual acquisitions in it are dated <strong>2022-03-14</strong> &mdash; so the matching Open Buildings year is 2022, not 2023.</dd></div>
+  <div class="di"><dt>Resolution</dt><dd>0.31 m, essentially our training resolution</dd></div>
+  <div class="di"><dt>View geometry</dt><dd>26&deg; off-nadir, which means a roof sits about 5 m from its own footprint &mdash; a co-registration problem addressed in Part 9.7</dd></div>
+  <div class="di"><dt>Relief</dt><dd>947 m across the 2 km crop, median slope 31.4&deg;. Far outside anything in DFC2019.</dd></div>
+  <div class="di"><dt>Tooling</dt><dd><span class="t">tools/maxar_opendata.py</span></dd></div>
+</div>
+<p>Nepal imagery from the same programme was also cropped for upload testing &mdash; three
+1024&times;1024 tiles in <span class="t">D:\sih2026\testkit\</span>.</p>
+
+<h3>6.8 Reference and anchor datasets</h3>
+<div class="tw"><table>
+<tr><th>Dataset</th><th>What it is</th><th>How it is used</th></tr>
+<tr class="hi"><td><strong>Copernicus GLO-30</strong></td><td>Free worldwide elevation, 30 m posting, derived from TanDEM-X. Bucket <span class="t">copernicus-dem-30m.s3.amazonaws.com</span>, no account or key.</td><td>The metric anchor. Converts our above-ground heights into an absolute DSM. Also supplies the Himalayan terrain the Sikkim scene stands on.</td></tr>
+<tr><td>SRTM 30 m</td><td>Shuttle Radar Topography Mission, 2000. Named in the problem statement.</td><td><strong>Not used.</strong> GLO-30 is the same resolution, needs no account, and covers latitudes above 60&deg;N where SRTM has no data.</td></tr>
+<tr class="bad"><td>CartoDEM</td><td>ISRO's Indian elevation product</td><td><strong>Not used.</strong> Free only to Indian Government Entities. As students we do not qualify.</td></tr>
+<tr class="bad"><td>FABDEM</td><td>True bare-earth product</td><td><strong>Not used.</strong> Non-commercial licence. Its absence is why the bare-earth correction is an approximation.</td></tr>
+<tr><td>Google Open Buildings 2.5D Temporal</td><td>Building heights inferred from Sentinel-2 at 10 m, effective resolution roughly 4 m. Field <span class="t">building_height</span>, defined as height above terrain in [0, 100] m &mdash; the same quantity we predict.</td><td>The only quantitative cross-check available over India, because there is no Indian LiDAR. Read as a windowed COG by <span class="t">tools/open_buildings.py</span>.</td></tr>
+<tr><td>Bhoonidhi (NRSC)</td><td>ISRO's own data portal. Client written in <span class="t">tools/bhoonidhi.py</span> &mdash; authenticate, list collections, search, download.</td><td>Investigated 27 Aug 2026. Resolved, but it did not yield what was hoped for: the openly available products are not at a resolution useful for building heights.</td></tr>
+</table></div>
+
+<div class="warn">
+  <b>An honesty note that belongs in any report</b>
+  <p>GLO-30 is itself a <em>surface</em> model, not bare earth, so in dense urban areas it already
+  contains part of the building height we are about to add. At 30 m posting a single building
+  contributes only a fraction of a cell, but the double-count is real and is largest exactly where
+  buildings are tallest and densest. SRTM has the same property.
+  <span class="t">--dem-bare</span> applies a coarse low-percentile filter as an approximation and
+  says that it is one.</p>
+</div>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 7</div>
+  <h2>Training</h2>
+  <p>The recipe, the exact hyperparameters of the shipping model, all six runs with their
+  outcomes, and the thermal problem that governed everything.</p>
+</div>
+
+<section>
+<h3>7.1 The recipe and where it comes from</h3>
+<p>Training follows <strong>Depth Any Canopy</strong>, which is the only published adaptation of
+Depth Anything to aerial height that reports its hyperparameters: AdamW, backbone learning rate
+5&times;10<sup>-6</sup>, 5% linear warm-up then linear decay, a handful of epochs.</p>
+<p>Two deliberate departures: a <strong>Gaussian negative-log-likelihood objective instead of
+MSE</strong>, and a <strong>separate, larger learning rate for the head</strong>.</p>
+
+<h3>7.2 run02 &mdash; the shipping model, exact configuration</h3>
+<p>Read directly out of <span class="t">checkpoints/run02/best.pt</span> on 6 September 2026.</p>
+<div class="tw"><table>
+<tr><th>Argument</th><th>Value</th><th>Note</th></tr>
+<tr class="hi"><td><span class="t">model_id</span></td><td>depth-anything/Depth-Anything-V2-Small-hf</td><td>Apache-2.0</td></tr>
+<tr class="hi"><td><span class="t">height_scale</span></td><td class="n">13.223477220535276</td><td>p95 of the measured height distribution</td></tr>
+<tr><td><span class="t">epochs</span></td><td class="n">12</td><td>Best epoch was the last, epoch 11</td></tr>
+<tr><td><span class="t">batch</span></td><td class="n">8</td><td>Measured as the throughput-efficient setting</td></tr>
+<tr><td><span class="t">accum</span></td><td class="n">1</td><td>No gradient accumulation</td></tr>
+<tr><td><span class="t">lr</span></td><td class="n">5e-06</td><td>Backbone</td></tr>
+<tr><td><span class="t">lr_head</span></td><td>None &rarr; 50&times; backbone = 2.5e-04</td><td></td></tr>
+<tr><td><span class="t">weight_decay</span></td><td class="n">0.01</td><td>Biases and norms excluded</td></tr>
+<tr><td><span class="t">init_sigma</span></td><td class="n">5.0 m</td><td>Uniform &sigma; at initialisation</td></tr>
+<tr><td><span class="t">grad_weight</span></td><td class="n">0.5</td><td>Gradient-matching term</td></tr>
+<tr><td><span class="t">warmup_mse</span></td><td class="n">200 steps</td><td>Plain MSE before NLL takes over</td></tr>
+<tr class="hi"><td><span class="t">beta</span></td><td class="n">0.5</td><td>&beta;-NLL. This is what distinguishes run02 from run01.</td></tr>
+<tr><td><span class="t">clip</span></td><td class="n">1.0</td><td>Gradient-norm clipping</td></tr>
+<tr><td><span class="t">precision</span></td><td>auto &rarr; bf16 on the RTX 3060</td><td>Ampere has native bf16</td></tr>
+<tr><td><span class="t">seed</span></td><td class="n">1337</td><td>Same seed as the data split</td></tr>
+<tr><td><span class="t">workers</span></td><td class="n">2</td><td></td></tr>
+<tr><td><span class="t">buffer_shards</span></td><td class="n">2</td><td>Two-stage shuffle buffer</td></tr>
+<tr><td><span class="t">val_batches</span></td><td class="n">60</td><td>In-training validation sample</td></tr>
+<tr><td><span class="t">max_temp / temp_ceiling</span></td><td class="n">83 &deg;C / 87 &deg;C</td><td>Software thermal governor</td></tr>
+<tr><td><span class="t">freeze_backbone</span></td><td>False</td><td>Everything trains</td></tr>
+<tr><td><span class="t">no_uncertainty</span></td><td>False</td><td>The variance head is on</td></tr>
+<tr><td><span class="t">bins</span></td><td class="n">0</td><td>Direct regression, not the binned head</td></tr>
+</table></div>
+<div class="dl">
+  <div class="di"><dt>Global steps</dt><dd><strong>11,532</strong></dd></div>
+  <div class="di"><dt>Wall-clock time</dt><dd><strong>7,811 seconds &mdash; 2 hours 10 minutes</strong> on one RTX 3060</dd></div>
+  <div class="di"><dt>Best crop-wise validation RMSE</dt><dd><strong>7.980 m</strong> at epoch 11 (protocol 1 &mdash; see Part 9.1)</dd></div>
+  <div class="di"><dt>Checkpoint size</dt><dd>297,134,061 bytes; stripped to 99.2 MB for serving</dd></div>
+</div>
+
+<h3>7.3 In-training validation of run02, by semantic class</h3>
+<p>Stored inside the checkpoint. This is <strong>protocol 1</strong>, crop-wise, so it is about
+1.5 m higher than the whole-tile figure for the same weights.</p>
+<div class="tw"><table>
+<tr><th>Class</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>Pixels</th></tr>
+<tr><td>Water</td><td class="n">1.604</td><td class="n">0.614</td><td class="n">+0.202</td><td class="n">158,807</td></tr>
+<tr><td>Ground</td><td class="n">2.199</td><td class="n">0.797</td><td class="n">+0.575</td><td class="n">15,929,692</td></tr>
+<tr><td>Vegetation</td><td class="n">4.270</td><td class="n">2.955</td><td class="n">&minus;1.406</td><td class="n">2,178,882</td></tr>
+<tr><td>Bridge</td><td class="n">4.640</td><td class="n">3.592</td><td class="n">&minus;2.416</td><td class="n">229,386</td></tr>
+<tr class="bad"><td><strong>Building</strong></td><td class="n"><strong>21.168</strong></td><td class="n">8.602</td><td class="n">&minus;6.417</td><td class="n">2,750,783</td></tr>
+<tr class="hi"><td><strong>All</strong></td><td class="n"><strong>7.980</strong></td><td class="n">2.066</td><td class="n">&minus;0.577</td><td class="n">21,465,960</td></tr>
+</table></div>
+<p>Correlation +0.770, median absolute error 0.220 m, 90th-percentile absolute error 4.668 m,
+expected calibration error 0.092, &sigma;-error rank correlation +0.84.</p>
+
+<h3>7.4 Every training run, and what each one settled</h3>
+<div class="tw"><table>
+<tr><th>Run</th><th>What it was</th><th>Epochs</th><th>Wall clock</th><th>Outcome</th></tr>
+<tr><td><strong>run01</strong></td><td>First fine-tune. Standard NLL, &beta; = 0.</td><td class="n">6</td><td class="n">1 h 37 m</td><td>Best crop-wise 8.224 at epoch 1. Whole-tile 6.811. Weak uncertainty: ECE 0.163, rank correlation +0.562.</td></tr>
+<tr class="hi"><td><strong>run02</strong></td><td>&beta;-NLL at &beta; = 0.5. Otherwise identical to run01.</td><td class="n">12</td><td class="n">2 h 10 m</td><td><strong>The model of record.</strong> Whole-tile 6.454, building 16.37, ECE 0.083, rank correlation +0.836. Everything shipped comes from this checkpoint.</td></tr>
+<tr><td><strong>run03</strong></td><td>Binned classification head: 128 adaptive bins, soft-argmax, Chamfer on edges, distribution constraint.</td><td class="n">8</td><td class="n">1 h 57 m</td><td><strong>Lost.</strong> Whole-tile 6.950 &mdash; 7.7% worse overall, 8.8% worse on buildings. Ground improved to 1.75 m, the best of any run, which is the over-smoothing signature.</td></tr>
+<tr><td><strong>run04</strong></td><td>Binned head <em>plus</em> the head-tail cut.</td><td class="n">12</td><td class="n">3 h 34 m</td><td><strong>Lost.</strong> Best crop-wise 7.887 at epoch 5. Later used to test ensembling, which is how we learned the two models make the same mistakes: correlation between their errors is 0.925.</td></tr>
+<tr class="bad"><td><strong>run05</strong></td><td>DA-V1-Large backbone, 335 M parameters.</td><td class="n">6, then NaN</td><td class="n">~9 GPU-hours</td><td><strong>VOID.</strong> Diverged to NaN from a variance head railed at its clamp. Nine GPU-hours, zero information. Diagnosed afterwards: the V1-Large readout emits a 666 m residual at initialisation.</td></tr>
+<tr class="bad"><td><strong>run06</strong></td><td>The experiment run05 was supposed to be, with <span class="t">init_mu="constant"</span> and the rail tripwire.</td><td class="n">stopped in epoch 0</td><td class="n">933 s</td><td><strong>Never finished.</strong> The log stops at step 331 with no validation row. There is no checkpoint. run02 remains the shipping model.</td></tr>
+</table></div>
+
+<div class="fact">
+  <b>The shipping model is run02, trained on 27 August 2026</b>
+  <p>Everything measured, exported, deployed and demonstrated comes from that single checkpoint.
+  Runs 03 through 06 are recorded results, not candidates.</p>
+</div>
+
+<h3>7.5 Precision selection</h3>
+<p><span class="t">pick_precision()</span> chooses bf16, fp16 or fp32:</p>
+<div class="tw"><table>
+<tr><th>Hardware</th><th>Compute capability</th><th>Choice</th></tr>
+<tr><td>RTX 3060 (Ampere)</td><td class="n">8.6</td><td>bf16 &mdash; native, no loss scaling needed</td></tr>
+<tr><td>Tesla T4 (Turing)</td><td class="n">7.5</td><td>fp16 + GradScaler &mdash; Turing has fp16 tensor cores</td></tr>
+<tr><td>Tesla P100 (Pascal)</td><td class="n">6.0</td><td>fp16 + GradScaler &mdash; buys memory, not speed; no tensor cores at all</td></tr>
+<tr><td>CPU</td><td>&mdash;</td><td>fp32</td></tr>
+</table></div>
+<div class="warn">
+  <b>Do not use torch.cuda.is_bf16_supported()</b>
+  <p>It counts <em>emulated</em> bf16 and returns True on hardware that has none. run06's Kaggle
+  log printed &ldquo;bf16 supported: True&rdquo; on a Tesla P100, which has no bf16 at all. On a T4
+  it would likewise pick bf16 and get a slow software path instead of Turing's fp16 tensor cores
+  &mdash; the exact opposite of what the function promises. Compute capability is the unambiguous
+  test: bf16 is native from 8.0 onward.</p>
+</div>
+
+<h3>7.6 Throughput, measured</h3>
+<div class="tw"><table>
+<tr><th>Batch</th><th>ms/step</th><th>Crops/s</th><th>Peak VRAM</th></tr>
+<tr><td class="n">4</td><td class="n">174</td><td class="n">23.0</td><td class="n">2.21 GB</td></tr>
+<tr class="hi"><td class="n">8</td><td class="n">327</td><td class="n">24.5</td><td class="n">6.01 GB</td></tr>
+<tr><td class="n">12</td><td class="n">469</td><td class="n">25.6</td><td class="n">7.57 GB</td></tr>
+</table></div>
+<p>Throughput plateaus around <strong>25 crops per second</strong>, so batch 8 &mdash; the Depth Any
+Canopy setting &mdash; is also the efficient one, and 12 GB of VRAM is not the binding constraint.
+<strong>Heat is.</strong></p>
+
+<h3>7.7 The thermal problem, and how it was actually solved</h3>
+<p>Unregulated, the RTX 3060 reached <strong>91 &deg;C in under ten minutes</strong> and
+down-clocked itself from 1875 MHz to <strong>1492 MHz</strong>. The &ldquo;full speed&rdquo; run was
+not faster, only hotter. <span class="t">nvidia-smi -pl</span> is the clean fix but needs an
+administrator shell, so <span class="t">train.py</span> carries a software
+<span class="t">ThermalGovernor</span>: sample every N steps, pause proportional to overshoot,
+hard-stop above a ceiling until it cools.</p>
+<div class="fact">
+  <b>The software governor was a workaround for a settings bug</b>
+  <p>MSI Afterburner has a <strong>Prioritize</strong> switch between power and temperature, and it
+  defaults to <em>power</em> &mdash; which makes the temperature limit advisory. The card draws to
+  its power limit and lets temperature land wherever it lands. That is why a limit of 77 &deg;C
+  still produced 91 &deg;C readings, and why raising the fan from 62% to 85% bought only about
+  3 &deg;C.</p>
+</div>
+<div class="tw"><table>
+<tr><th></th><th>Before</th><th>After (Prioritize = temperature)</th></tr>
+<tr><td>Temperature</td><td class="n">91 &deg;C</td><td class="n">mean 80.1 &deg;C, peak 85 &deg;C</td></tr>
+<tr><td>Clocks</td><td class="n">throttled to 1492 MHz</td><td class="n">1777&ndash;1867 MHz</td></tr>
+<tr><td>Throughput</td><td class="n">53 steps/min</td><td class="n">143 steps/min</td></tr>
+<tr class="hi"><td>12-epoch run</td><td class="n">3.6 h</td><td class="n"><strong>~1.6 h</strong></td></tr>
+</table></div>
+<p>Cooler <em>and</em> 2.7&times; faster, because the card down-clocks smoothly instead of being
+stopped and started. Working configuration: fan 85% with auto off, temperature limit 80, power
+limit 85%, Prioritize = temperature, and the link toggle off so the two limits can be set
+independently. The software governor now fires zero times and remains only as a backstop.</p>
+<div class="warn">
+  <b>Never change GPU settings while a CUDA job is running</b>
+  <p>Applying Afterburner settings resets the display driver and invalidates live CUDA contexts.
+  Doing it mid-run killed a training process with
+  <span class="t">torch.AcceleratorError: CUDA error: unknown error</span> and silently reverted
+  the power limit to 170 W.</p>
+</div>
+
+<h3>7.8 Built for interruption</h3>
+<p>Kaggle sessions are capped at 12 hours and can be reclaimed sooner, so everything assumes the
+process may die at any moment:</p>
+<ul>
+<li>State is checkpointed every epoch and on a wall-clock budget (<span class="t">--max-hours</span>).</li>
+<li><span class="t">--resume auto</span> restores model, optimiser, scheduler <em>and</em> RNG state.</li>
+<li>The metrics log is append-only JSONL, so a partial run still plots.</li>
+<li>Preprocessing is done locally &mdash; it is CPU and disk bound and burns zero GPU quota &mdash;
+then shards are uploaded once as a Kaggle Dataset and every session mounts them instantly.</li>
+<li>Code lives in git and is cloned into notebooks. Code is never written inside a notebook.</li>
+</ul>
+
+<h3>7.9 Preflight &mdash; refusing to start a broken run</h3>
+<p><span class="t">tools/preflight.py</span> exists because run05 burned nine GPU-hours producing
+nothing. It measures the initial residual before a run begins, and it is the tool that revealed
+the 16.5 m against 666 m difference between DA-V2-Small and DA-V1-Large. A long run that is
+already broken at step zero is now refused rather than discovered six epochs later.</p>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 8</div>
+  <h2>Inference</h2>
+  <p>How a full scene of arbitrary size is processed, and every optional stage that can be
+  switched on: augmentation, resolution fusion, zoom matching, DEM anchoring and control points.</p>
+</div>
+
+<section>
+<h3>8.1 Sliding window</h3>
+<p>The model accepts exactly 518&times;518. A real scene does not come in that size, so
+<span class="t">infer.py</span> tiles it.</p>
+<div class="dl">
+  <div class="di"><dt>Tile size</dt><dd>518 (<span class="t">--tile</span>), which must be a multiple of 14</dd></div>
+  <div class="di"><dt>Overlap</dt><dd>140 px (<span class="t">--overlap</span>), giving a stride of 378</dd></div>
+  <div class="di"><dt>Blending</dt><dd>A cosine window over the overlap region, so neighbouring windows fade into each other rather than producing visible seams</dd></div>
+  <div class="di"><dt>Variance combination</dt><dd>Variances combine <strong>in quadrature</strong>, not by averaging the &sigma; values. Averaging standard deviations is wrong and would understate uncertainty in the overlaps.</dd></div>
+  <div class="di"><dt>Batch</dt><dd>4 windows at a time (<span class="t">--batch</span>)</dd></div>
+</div>
+<p>A 1024&times;1024 tile is covered by a 3&times;3 grid of windows &mdash; nine forward passes.</p>
+
+<h3>8.2 Test-time augmentation</h3>
+<p><span class="t">--tta</span> runs each window <strong>eight times</strong> under the D4 group
+&mdash; four rotations, each with and without a mirror &mdash; then un-transforms and averages the
+results.</p>
+<div class="tw"><table>
+<tr><th>Configuration</th><th>Whole-tile RMSE</th><th>Per-building</th><th>Bias</th><th>ECE</th></tr>
+<tr><td>run02, single pass</td><td class="n">6.456</td><td class="n">3.771</td><td class="n">&minus;0.31</td><td class="n">0.083</td></tr>
+<tr><td>run02 + TTA</td><td class="n">6.369</td><td class="n"><strong>3.616</strong></td><td class="n">&minus;0.34</td><td class="n">0.078</td></tr>
+<tr class="hi"><td><strong>shipped: TTA + fused</strong></td><td class="n">6.401</td><td class="n">3.667</td><td class="n"><strong>&minus;0.24</strong></td><td class="n"><strong>0.077</strong></td></tr>
+</table></div>
+<p>D4 augmentation is legitimate here in a way it would not be for ground-level photography,
+because a satellite image has no privileged orientation. Rotating it 90&deg; produces another
+perfectly plausible satellite image.</p>
+
+<h3>8.3 Resolution fusion</h3>
+<p><span class="t">--fuse-zoom 2 --fuse-sigma 8</span> runs a second pass at 2&times; magnification and
+fuses it with the first using a <strong>Laplacian split</strong>: the low-frequency component
+(smoothed with a Gaussian of &sigma; = 8) comes from the native-resolution pass, and the
+high-frequency detail comes from the zoomed pass.</p>
+<div class="fact">
+  <b>A deliberate trade, made because half the marks are visualisation</b>
+  <p>Fusion costs <strong>+0.051 m of per-building RMSE &mdash; 1.4%</strong> against TTA alone,
+  and buys <strong>+28% edge definition</strong>: buildings read as flat-topped blocks rather than
+  rounded mounds. It also improves bias and calibration slightly.</p>
+  <p>The fused numbers are the ones reported, because <strong>whatever is shipped must be what is
+  scored</strong>. Reporting the better 3.616 m while shipping the 3.667 m configuration would be
+  dishonest by a margin larger than the difference.</p>
+</div>
+
+<h3>8.4 The two quality presets</h3>
+<div class="tw"><table>
+<tr><th>Preset</th><th>What runs</th><th>Forward passes per 1024&times;1024 tile</th><th>CPU time</th></tr>
+<tr><td><strong>fast</strong> (default on the public site)</td><td>Single pass, 9 windows</td><td class="n">9</td><td class="n">5.0 s inference, 13.3 s wall including model load</td></tr>
+<tr><td><strong>accurate</strong></td><td>&times;8 D4 TTA + zoom-2 fusion</td><td class="n">~180</td><td class="n">57.2 s inference, 86.2 s wall</td></tr>
+</table></div>
+<p>The ratio between them is <strong>11.4&times;</strong> (57.2 &divide; 5.02), which is the constant the
+public server uses to scale its size limits between modes. Peak resident memory is 2.05 GB in fast
+mode and 2.21 GB in accurate mode &mdash; both comfortably inside a 3.5 GB host.</p>
+
+<h3>8.5 Auto-zoom &mdash; surviving a different evaluation resolution</h3>
+<p>We train at 0.3 m. ISRO will evaluate on their own imagery, likely nearer 0.6&ndash;1.0 m.
+Untreated, that costs a great deal: a backbone token then covers twice the ground, and buildings
+get averaged with their surroundings.</p>
+<p>One token is 14 pixels. At 0.3 m per pixel that is <strong>4.2 m of ground</strong> per token.
+At 0.6 m it becomes 8.4 m &mdash; wide enough to swallow a small house whole.</p>
+<p><span class="t">--auto-zoom</span> reads the ground sample distance from the input's geospatial
+metadata and upsamples so the backbone always sees the scale it was trained at.</p>
+<div class="tw"><table>
+<tr><th>Input GSD</th><th>Untreated per-building RMSE</th><th>With <span class="t">--auto-zoom</span></th><th>Recovery</th></tr>
+<tr><td class="n">0.3 m (native)</td><td class="n">1.350 m</td><td>&mdash;</td><td>&mdash;</td></tr>
+<tr class="hi"><td class="n">0.6 m</td><td class="n">2.260 m</td><td class="n"><strong>1.399 m</strong></td><td>within <strong>3.6%</strong> of never having lost the resolution</td></tr>
+<tr><td class="n">1.0 m</td><td class="n">3.138 m</td><td class="n"><strong>1.657 m</strong></td><td>roughly half the loss recovered</td></tr>
+</table></div>
+<p><span class="t">--native-gsd</span> declares what the model was trained at (default 0.3). If the
+image has no geospatial metadata there is nothing to read, and the flag has no effect &mdash; which
+is correct behaviour, not a silent failure.</p>
+
+<h3>8.6 DEM anchoring &mdash; producing an absolute DSM</h3>
+<p><span class="t">--dem auto</span> turns above-ground heights into absolute elevation:</p>
+<pre>DSM = terrain elevation (Copernicus GLO-30) + our above-ground height</pre>
+<div class="dl">
+  <div class="di"><dt>Tile discovery</dt><dd><span class="t">dem.tiles_for_bounds()</span> returns every 1&deg;&times;1&deg; GLO-30 tile touching the scene's bounding box. A scene straddling a tile edge is normal, not exotic &mdash; assuming one tile is how a coastal or border scene ends up with half its elevation missing and no error raised.</dd></div>
+  <div class="di"><dt>Tile naming</dt><dd><span class="t">Copernicus_DSM_COG_10_N27_00_E088_00_DEM</span> &mdash; constructed from the floor of the latitude and longitude.</dd></div>
+  <div class="di"><dt>Access</dt><dd>Read over HTTPS through GDAL's <span class="t">/vsicurl/</span>, windowed, so only the needed bytes are fetched.</dd></div>
+  <div class="di"><dt>Resampling</dt><dd>Cubic, onto the scene's own pixel grid.</dd></div>
+  <div class="di"><dt>Datum handling</dt><dd>Terrain is stored relative to a datum (<span class="t">terrain_datum_m</span> in the manifest), or the mesh sits 1.3 km from the origin and every camera default aims at empty sky.</dd></div>
+  <div class="di"><dt>Bare-earth option</dt><dd><span class="t">--dem-bare</span> applies a coarse low-percentile filter to approximate removing GLO-30's own buildings and canopy, and labels the result as an approximation.</dd></div>
+  <div class="di"><dt>Default state</dt><dd><strong>Off</strong> in the public deployment. <span class="t">--dem auto</span> reaches Copernicus during a request that already takes a minute, so it is opt-in per deployment rather than a surprise timeout.</dd></div>
+</div>
+
+<h3>8.7 Ground control point calibration</h3>
+<p>The problem statement names &ldquo;a limited set of Ground Control Points&rdquo; as an acceptable
+route to absolute scale. This is implemented and, importantly, <em>measured</em>.</p>
+
+<h4>Affine is the wrong functional form</h4>
+<p>The model's error is a height-dependent <strong>ratio</strong> &mdash; 1.20&times; at 0&ndash;3 m,
+falling to 0.52&times; above 40 m. No straight line can be above 1 at one end and below it at the
+other. Measured head to head on held-out buildings, per tile, over the 10 validation tiles
+containing a building above 20 m:</p>
+<div class="tw"><table>
+<tr><th>Form</th><th>Control points (k)</th><th>RMSE</th><th>vs uncalibrated</th><th>MAE</th><th>Tiles made worse</th></tr>
+<tr><td>uncalibrated</td><td>&mdash;</td><td class="n">7.248 m</td><td>&mdash;</td><td class="n">4.013 m</td><td>&mdash;</td></tr>
+<tr class="bad"><td>affine</td><td class="n">8</td><td class="n">6.154 m</td><td class="n">&minus;15.1%</td><td class="n">4.477 m</td><td class="n">8 of 10</td></tr>
+<tr><td>power</td><td class="n">5</td><td class="n">5.730 m</td><td class="n">&minus;20.9%</td><td class="n">4.202 m</td><td class="n"><strong>4 of 10</strong></td></tr>
+<tr class="hi"><td><strong>power</strong></td><td class="n">8</td><td class="n"><strong>5.442 m</strong></td><td class="n"><strong>&minus;24.9%</strong></td><td class="n"><strong>4.038 m</strong></td><td class="n">5 of 10</td></tr>
+</table></div>
+<p>Affine buys RMSE by spending MAE (+11.6%); the power law takes more RMSE and leaves MAE where
+it found it (+0.6%). Over all 57 usable tiles the power law is the only form that beats doing
+nothing at all (&minus;4.4% against affine's +0.1%).</p>
+
+<h4>Guards, calibrated against the measurement rather than chosen</h4>
+<ul>
+<li>At least 2 control points must lie in the <strong>upper 60%</strong> of their height span.
+Requiring the upper <em>half</em> would refuse 24.6% of the draws that produced the gain; the upper
+60% refuses 6.3%.</li>
+<li>The fitted exponent must be &ge; 0.95, which is what catches &ldquo;this fit would compress
+the heights further.&rdquo;</li>
+<li>Control values are read as a <strong>structure median</strong> &mdash; region-grown from the
+clicked point &mdash; not a fixed patch. On one Omaha tile a point sample returned 0.59 m where the
+truth was 5.6 m.</li>
+</ul>
+
+<div class="warn">
+  <b>Honest end-to-end status</b>
+  <p>On the real tiles tested, <strong>the guards decline and the system falls back to
+  offset-only</strong>. On OMA_288_012 the fitted exponent is 0.40&ndash;0.57 because that tile
+  under-predicts everything; on JAX_165_018 it is 0.505 because the model is already good there.
+  Both refusals are correct. <strong>It never degrades a result</strong> &mdash; it helps only when
+  control points carry building-level heights and the scene genuinely spans a height range.</p>
+</div>
+
+<h4>A selection trap worth remembering</h4>
+<p>The first probe required 25 buildings per tile and looked clean. It was worthless: those 36
+tiles contain <strong>zero</strong> buildings above 20 m (RMSE 1.381 m), while all 60 tall
+buildings sit in tiles with fewer (RMSE 8.487 m). Dense suburbs have many small buildings and
+downtowns have few large ones, so a threshold chosen for sample size excluded 100% of the problem.</p>
+
+<h3>8.8 Complete inference flag reference</h3>
+<div class="tw"><table>
+<tr><th>Flag</th><th>Default</th><th>Effect</th></tr>
+<tr><td><span class="t">--image</span></td><td>required</td><td>Input scene: .tif, .png or .jpg</td></tr>
+<tr><td><span class="t">--out</span></td><td>required</td><td>Output prefix; writes <span class="t">&lt;prefix&gt;.height.tif</span>, <span class="t">.sigma.tif</span> and <span class="t">.json</span></td></tr>
+<tr><td><span class="t">--ckpt</span></td><td>none</td><td>Checkpoint. Omit for zero-shot DA-V2.</td></tr>
+<tr><td><span class="t">--tile</span></td><td class="n">518</td><td>Window size; must be a multiple of 14</td></tr>
+<tr><td><span class="t">--overlap</span></td><td class="n">140</td><td>Window overlap in pixels</td></tr>
+<tr><td><span class="t">--batch</span></td><td class="n">4</td><td>Windows per forward pass</td></tr>
+<tr><td><span class="t">--tta</span></td><td>off</td><td>&times;8 D4 test-time augmentation</td></tr>
+<tr><td><span class="t">--fuse-zoom</span></td><td class="n">1</td><td>Second pass at this magnification, Laplacian-fused</td></tr>
+<tr><td><span class="t">--fuse-sigma</span></td><td class="n">8.0</td><td>Gaussian width of the frequency split</td></tr>
+<tr><td><span class="t">--zoom</span></td><td class="n">1</td><td>Fixed magnification for a single pass</td></tr>
+<tr><td><span class="t">--auto-zoom</span></td><td>off</td><td>Read GSD from metadata and match the training scale</td></tr>
+<tr><td><span class="t">--native-gsd</span></td><td class="n">0.3</td><td>The scale the model was trained at</td></tr>
+<tr><td><span class="t">--dem</span></td><td>none</td><td><span class="t">auto</span> for Copernicus, or a path to a DEM raster</td></tr>
+<tr><td><span class="t">--dem-bare</span></td><td>off</td><td>Approximate bare-earth correction of the anchor</td></tr>
+<tr><td><span class="t">--gcp</span></td><td>none</td><td>JSON file of ground control points</td></tr>
+<tr><td><span class="t">--gcp-form</span></td><td>power</td><td><span class="t">power</span> or <span class="t">affine</span></td></tr>
+<tr><td><span class="t">--gcp-scale</span></td><td>off</td><td>Fit scale as well as offset</td></tr>
+<tr><td><span class="t">--height-scale</span></td><td>from checkpoint</td><td>Override metres per normalised unit</td></tr>
+<tr><td><span class="t">--precision</span></td><td>auto</td><td>auto / bf16 / fp16 / fp32</td></tr>
+<tr><td><span class="t">--truth</span></td><td>none</td><td>An AGL GeoTIFF; if supplied, the result is scored immediately</td></tr>
+</table></div>
+<div class="warn">
+  <b>A known cosmetic bug</b>
+  <p><span class="t">infer.py --help</span> crashes. A literal <span class="t">%</span> in one help
+  string breaks argparse's formatting. It means <span class="t">--help</span> is not a way to
+  discover the flags &mdash; this table is.</p>
+</div>
+</section>

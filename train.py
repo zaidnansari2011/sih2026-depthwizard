@@ -43,12 +43,21 @@ def pick_precision(requested: str):
     needs no loss scaling; fp16 does, and a P100 has no tensor cores at all so fp16 buys
     memory rather than speed. Getting this wrong shows up as silent NaNs, so we detect
     rather than assume.
+
+    **Do not use `torch.cuda.is_bf16_supported()` here.** It counts *emulated* bf16 and so
+    returns True on hardware that has none: run06's Kaggle log printed "bf16 supported:
+    True" on a Tesla P100, which has no bf16 at all. On a T4 it would likewise pick bf16
+    and get a slow software path instead of Turing's fp16 tensor cores -- the exact
+    opposite of what this function's first line promises. Compute capability is the
+    unambiguous test: bf16 is native from Ampere (8.0) onward, so 3060 yes, T4 (7.5) no,
+    P100 (6.0) no.
     """
     if not torch.cuda.is_available():
         return torch.float32, False, "cpu/fp32"
     if requested == "fp32":
         return torch.float32, False, "fp32 (forced)"
-    if requested in ("auto", "bf16") and torch.cuda.is_bf16_supported():
+    native_bf16 = torch.cuda.get_device_capability()[0] >= 8
+    if requested in ("auto", "bf16") and native_bf16:
         return torch.bfloat16, False, "bf16"
     if requested == "bf16":
         print("  ! bf16 requested but unsupported on this GPU; falling back to fp16")
@@ -255,6 +264,23 @@ def main():
     ap.add_argument("--grad-weight", type=float, default=0.5, help="gradient-matching weight")
     ap.add_argument("--warmup-mse", type=int, default=200, help="steps of plain MSE first")
     ap.add_argument("--beta", type=float, default=0.0, help="beta-NLL (Seitzer et al.)")
+    ap.add_argument("--log-var-max", type=float, default=7.0,
+                    help="clamp on log predictive variance; sigma rails at exp(this/2)")
+    ap.add_argument("--init-mu", default="pretrained", choices=["pretrained", "constant"],
+                    help="'constant' re-inits the mean readout; required for DA-V1 "
+                         "backbones, whose pretrained head starts ~666 m off (preflight)")
+    ap.add_argument("--init-mu-m", type=float, default=0.0,
+                    help="height the constant mean init predicts everywhere, in metres")
+    # -------------------------------------------------------------------- tripwires
+    ap.add_argument("--no-tripwires", action="store_true",
+                    help="disable the health aborts. run05 had no tripwires and spent "
+                         "543.6 min producing nothing.")
+    ap.add_argument("--rail-patience", type=int, default=50,
+                    help="steps of railed sigma tolerated before aborting")
+    ap.add_argument("--gate-rmse", type=float, default=25.0,
+                    help="abort if epoch-0 val RMSE exceeds this (run04: 8.239 m)")
+    ap.add_argument("--gate-corr", type=float, default=0.20,
+                    help="abort if epoch-0 val correlation is below this (run04: +0.660)")
     ap.add_argument("--precision", default="auto", choices=["auto", "bf16", "fp16", "fp32"])
     ap.add_argument("--clip", type=float, default=1.0, help="grad-norm clip; 0 disables")
     ap.add_argument("--buffer-shards", type=int, default=2)
@@ -263,7 +289,22 @@ def main():
                     help="checkpoint and stop before a session limit; 0 = no budget")
     ap.add_argument("--val-batches", type=int, default=40, help="0 = whole val split")
     ap.add_argument("--log-every", type=int, default=25)
-    ap.add_argument("--resume", default=None, help="checkpoint path, or 'auto'")
+    ap.add_argument("--resume", default=None, help="checkpoint path, or 'auto'. "
+                    "Continues the SAME run: restores optimiser, scheduler, epoch and "
+                    "step counters. To start a new run from trained weights, you want "
+                    "--init-from instead.")
+    ap.add_argument("--init-from", default=None, metavar="CKPT",
+                    help="warm start a NEW run from a checkpoint's weights only. "
+                         "Optimiser, scheduler, epoch counter, step counter and best "
+                         "score all stay at their initial values.\n"
+                         "This exists because --resume cannot do it. --resume restores "
+                         "epoch+1 (12 for run02), so `range(start_epoch, args.epochs)` "
+                         "is empty for any --epochs <= 12: the run trains nothing, "
+                         "writes no checkpoint, prints the RESUMED checkpoint's best "
+                         "RMSE as its own result, and exits 0. Raising --epochs does not "
+                         "rescue it either, because the restored scheduler is already "
+                         "past this run's total_steps and lr_lambda then returns exactly "
+                         "0.0. Both traps found by adversarial audit, 6 Sep 2026.")
     ap.add_argument("--freeze-backbone", action="store_true")
     ap.add_argument("--no-uncertainty", action="store_true",
                     help="ablation: train a plain regressor, the 6.1 baseline")
@@ -353,7 +394,8 @@ def main():
                   freeze_backbone=args.freeze_backbone,
                   predict_uncertainty=not args.no_uncertainty,
                   bins=args.bins, bin_min=args.bin_min,
-                  bin_max=args.bin_max, htc=not args.no_htc).to(device)
+                  bin_max=args.bin_max, htc=not args.no_htc,
+                  init_mu=args.init_mu, init_mu_m=args.init_mu_m).to(device)
     if args.checkpointing:
         model.enable_gradient_checkpointing()
 
@@ -370,6 +412,7 @@ def main():
                  if args.bins else "direct regression")
     loss_fn = CompositeLoss(grad_weight=args.grad_weight, beta=args.beta,
                             warmup_mse=args.warmup_mse,
+                            log_var_max=args.log_var_max,
                             chamfer_weight=args.chamfer if args.bins else 0.0,
                             dist_weight=args.dist_weight if args.bins else 0.0,
                             htc_weight=(args.htc_weight if args.bins
@@ -380,7 +423,33 @@ def main():
     ckpt_last = out_dir / "last.pt"
     resume = ckpt_last if args.resume == "auto" and ckpt_last.exists() else \
         (Path(args.resume) if args.resume and args.resume != "auto" else None)
-    if resume and resume.exists():
+    if args.init_from and resume:
+        raise SystemExit(
+            "--init-from and --resume are mutually exclusive. --init-from starts a new "
+            "run from trained weights; --resume continues an existing one. Note that "
+            "--resume auto silently picks up out/last.pt if it exists, so pass a fresh "
+            "--out directory alongside --init-from.")
+    if args.init_from:
+        st = torch.load(args.init_from, map_location=device, weights_only=False)
+        # Weights ONLY. Optimiser, scheduler, epoch, gstep and best stay at their
+        # initial values, which is the whole point: this is a new run, and inheriting
+        # any of that state is what makes --resume unusable for a warm start.
+        model.load_state_dict(st["model"])
+        # The head emits mu = conv_mu(x) * height_scale. Loading weights calibrated for
+        # one scale into a model built with another multiplies every prediction at step
+        # 0, and a large initial residual rails log_var at its clamp and deadlocks the
+        # mean head -- the mechanism that voided run05 (9 GPU-hours, zero information).
+        prev = st.get("height_scale")
+        if prev is not None and abs(float(prev) - height_scale) > 1e-6:
+            raise SystemExit(
+                f"height_scale mismatch: the checkpoint was trained with {prev!r} but "
+                f"this run resolved {height_scale!r} from {probe_path}. Every prediction "
+                f"would be scaled by {height_scale / float(prev):.3f}x at step 0. Pass "
+                f"--height-scale {prev!r} to keep the head calibrated, or start from "
+                f"scratch deliberately.")
+        print(f"warm start from {args.init_from}: weights only "
+              f"(epoch/step/optimiser/scheduler reset), height_scale {height_scale:.6f}")
+    elif resume and resume.exists():
         st = torch.load(resume, map_location=device, weights_only=False)
         model.load_state_dict(st["model"])
         opt.load_state_dict(st["opt"])
@@ -390,6 +459,17 @@ def main():
         start_epoch, gstep, best = st["epoch"] + 1, st["gstep"], st.get("best", float("inf"))
         torch.set_rng_state(st["rng"].cpu() if torch.is_tensor(st["rng"]) else st["rng"])
         print(f"resumed {resume} at epoch {start_epoch}, step {gstep}, best RMSE {best:.3f}")
+        # Without this, range(start_epoch, args.epochs) is empty, the epoch loop body
+        # never executes, no checkpoint is written, and the run prints the RESUMED
+        # checkpoint's best RMSE as its own result with exit status 0.
+        if start_epoch >= args.epochs:
+            raise SystemExit(
+                f"nothing to do: {resume} is already at epoch {st['epoch']} and "
+                f"--epochs is {args.epochs}, so the epoch range is empty and this run "
+                f"would train zero batches, write no checkpoint, and still print "
+                f"'best val RMSE {best:.3f}' from the checkpoint you resumed. Raise "
+                f"--epochs above {start_epoch} to continue this run, or use "
+                f"--init-from {resume} to start a NEW run from these weights.")
 
     tot, tr = model.n_params()
     print(f"""
@@ -424,6 +504,15 @@ DepthWizard training
     stop = False
     model.train()
 
+    # A "railed" sigma is the fingerprint of the NLL deadlock that killed run05: log_var
+    # pinned at log_var_max, its own gradient zeroed by clamp() and mu's suppressed ~1100x.
+    sigma_rail = math.exp(args.log_var_max / 2) * 0.99
+    n_railed = 0
+    if not args.no_tripwires:
+        print(f"  tripwires    on: abort on non-finite loss, on sigma >= "
+              f"{sigma_rail:.2f} m for {args.rail_patience} steps, and on epoch-"
+              f"{start_epoch} val worse than {args.gate_rmse} m / r {args.gate_corr}")
+
     for epoch in range(start_epoch, args.epochs):
         train_ds.set_epoch(epoch)
         run, seen, t_ep = {}, 0, time.time()
@@ -449,6 +538,32 @@ DepthWizard training
                 if log_var is None:                       # ablation path
                     log_var = torch.zeros_like(mu)
                 loss, stats = loss_fn(mu.float(), log_var.float(), agl, mask, aux=aux)
+
+            # ------------------------------------------------------------- tripwires
+            # run05 went NaN at step 6066 of 11532 and kept going for another 4.2 hours,
+            # because nothing was watching. These abort instead. Every threshold is
+            # measured against logs/run04.log, the healthy 12-epoch reference.
+            if not args.no_tripwires:
+                why = None
+                if not math.isfinite(stats["loss"]):
+                    why = (f"loss is {stats['loss']} at step {gstep}. run05 hit this at "
+                           f"6066/11532 and burned 4.2 h more producing nothing.")
+                elif stats.get("sigma_mean", 0) >= sigma_rail:
+                    # clamp() zeroes log_var's gradient at the rail and suppresses mu's by
+                    # ~1100x (tools/nll_deadlock_probe.py). Nothing recovers from here.
+                    n_railed += 1
+                    if n_railed >= args.rail_patience:
+                        why = (f"sigma has sat at the clamp ({stats['sigma_mean']:.3f} m "
+                               f">= {sigma_rail:.3f}) for {n_railed} steps. The variance "
+                               f"head is dead; this is exactly how run05 failed.")
+                else:
+                    n_railed = 0
+                if why:
+                    print(f"\n  TRIPWIRE: {why}\n  Aborting. Nothing after this point "
+                          f"would have been usable.")
+                    write_log({"t": "tripwire", "epoch": epoch, "step": gstep, "why": why})
+                    return 2
+
             loss = loss / args.accum
 
             if needs_scaler:
@@ -508,6 +623,29 @@ DepthWizard training
             write_log({"t": "val", "epoch": epoch, "step": gstep,
                        "elapsed_s": round(time.time() - t0, 1), **val})
 
+            # The epoch-0 gate. run04, healthy, ended epoch 0 at RMSE 8.239 m / r 0.660.
+            # run05 ended it at 70.8 m / r -0.046 and then ran eight more hours. One
+            # epoch is enough to tell those apart, so decide here rather than at the end.
+            if epoch == start_epoch and not args.no_tripwires:
+                bad = []
+                if val["rmse"] > args.gate_rmse:
+                    bad.append(f"RMSE {val['rmse']:.3f} m > {args.gate_rmse} m "
+                               f"(run04 reached 8.239 m; run05 sat at 70.8 m)")
+                if val["corr"] < args.gate_corr:
+                    bad.append(f"r {val['corr']:+.3f} < {args.gate_corr} "
+                               f"(run04 reached +0.660; run05 was -0.046)")
+                if bad:
+                    print(f"\n  TRIPWIRE: epoch {epoch} is not on a healthy trajectory.")
+                    for s in bad:
+                        print(f"    - {s}")
+                    print("  Aborting rather than spending the remaining "
+                          f"{args.epochs - epoch - 1} epochs on it. Override with "
+                          "--no-tripwires if this is expected.")
+                    write_log({"t": "tripwire", "epoch": epoch, "step": gstep,
+                               "why": "; ".join(bad)})
+                    log.close()
+                    return 2
+
         state = {
             "model": model.state_dict(), "opt": opt.state_dict(), "sched": sched.state_dict(),
             "scaler": scaler.state_dict() if needs_scaler else None,
@@ -533,4 +671,4 @@ DepthWizard training
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main() or 0)

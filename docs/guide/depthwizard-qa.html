@@ -1,0 +1,805 @@
+<title>DepthWizard Defence Notes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap">
+
+<style>
+  :root{
+    --paper:#F4F6F7; --surface:#FFFFFF; --raised:#FBFCFC;
+    --ink:#0E1A20; --ink-2:#3A4C55; --ink-3:#6D7E88;
+    --rule:#D6DFE2; --rule-soft:#E7EDEF;
+    --accent:#0E6B7A; --accent-ink:#0A505C; --accent-soft:#E0EFF1;
+    --warn:#9C4A16; --warn-soft:#F7EAE1;
+    --serif:"IBM Plex Serif",Georgia,serif;
+    --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0C1317; --surface:#121D23; --raised:#16232A;
+      --ink:#E8EFF2; --ink-2:#AABCC4; --ink-3:#7C9099;
+      --rule:#243139; --rule-soft:#1B272E;
+      --accent:#54B6C6; --accent-ink:#7FCEDA; --accent-soft:#10333B;
+      --warn:#DC8F5E; --warn-soft:#2E2018;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0C1317; --surface:#121D23; --raised:#16232A;
+    --ink:#E8EFF2; --ink-2:#AABCC4; --ink-3:#7C9099;
+    --rule:#243139; --rule-soft:#1B272E;
+    --accent:#54B6C6; --accent-ink:#7FCEDA; --accent-soft:#10333B;
+    --warn:#DC8F5E; --warn-soft:#2E2018;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font:400 17.5px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:800px;margin:0 auto;padding:0 22px 96px}
+
+  header.top{padding:44px 0 26px;border-bottom:2px solid var(--ink)}
+  .eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font:600 40px/1.08 var(--serif);margin:0 0 12px;letter-spacing:-.015em;text-wrap:balance}
+  .standfirst{font-size:18px;color:var(--ink-2);margin:0;max-width:60ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px 26px;margin-top:22px;font:500 12.5px/1 var(--mono);color:var(--ink-3)}
+  .meta b{color:var(--ink-2);font-weight:600}
+
+  nav.jump{position:sticky;top:0;z-index:20;background:var(--paper);border-bottom:1px solid var(--rule);
+    margin-bottom:34px;padding:11px 0;display:flex;gap:6px;overflow-x:auto}
+  nav.jump a{flex:0 0 auto;font:500 12.5px/1 var(--mono);color:var(--ink-2);text-decoration:none;
+    padding:7px 11px;border-radius:4px;white-space:nowrap;border:1px solid transparent}
+  nav.jump a:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--rule)}
+  nav.jump a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  .cheat{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--accent);
+    padding:26px 28px;margin-bottom:44px}
+  .cheat h2{font:600 13px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin:0 0 18px}
+  .cheat ol{margin:0;padding-left:0;list-style:none;display:grid;gap:16px;counter-reset:c}
+  .cheat li{counter-increment:c;display:grid;grid-template-columns:30px 1fr;gap:13px;font-size:17px;line-height:1.6}
+  .cheat li::before{content:counter(c);font:600 13px/1.6 var(--mono);color:var(--accent);
+    border-right:1px solid var(--rule);padding-right:11px;text-align:right}
+
+  section{margin-bottom:52px;scroll-margin-top:64px}
+  h2.sec{font:600 12.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+  h3.sect{font:600 27px/1.2 var(--serif);margin:0 0 8px;letter-spacing:-.01em;text-wrap:balance}
+  .sec-note{color:var(--ink-2);margin:0 0 26px;font-size:16.5px;max-width:62ch}
+
+  .qa{border-top:1px solid var(--rule);padding-top:22px;margin-top:24px}
+  .qa:first-of-type{border-top:none}
+  .q{display:grid;grid-template-columns:44px 1fr;gap:12px;align-items:baseline;margin:0 0 14px}
+  .qn{font:500 12px/1.7 var(--mono);color:var(--accent)}
+  .qt{font:600 20.5px/1.35 var(--serif);margin:0;text-wrap:balance}
+  .a{padding-left:56px}
+  .a>p{margin:0 0 14px;max-width:64ch}
+  .a>p:last-child{margin-bottom:0}
+  .a ul,.a ol{margin:0 0 14px;padding-left:21px;max-width:62ch}
+  .a li{margin-bottom:9px}
+  @media (max-width:600px){
+    .q{grid-template-columns:1fr;gap:3px}.qn{font-size:11.5px}.a{padding-left:0}
+    h1{font-size:31px}body{font-size:17px}
+  }
+
+  .say{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;margin:0 0 15px}
+  .say b{display:block;font:600 10.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px}
+  .say p{margin:0 0 9px;max-width:60ch;font-size:17px}
+  .say p:last-child{margin-bottom:0}
+  .trap{border-left:3px solid var(--warn);background:var(--warn-soft);padding:14px 18px;margin:0 0 15px}
+  .trap b{display:block;font:600 10.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--warn);margin-bottom:8px}
+  .trap p{margin:0 0 9px;max-width:60ch;font-size:16.5px}
+  .trap p:last-child{margin-bottom:0}
+
+  .t{font:500 .93em/1 var(--mono);background:var(--rule-soft);padding:2px 5px;border-radius:3px}
+  .num{font-family:var(--mono);font-weight:500;font-variant-numeric:tabular-nums}
+
+  .tw{overflow-x:auto;margin:0 0 15px;border:1px solid var(--rule);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:15px;min-width:330px}
+  th,td{padding:9px 13px;text-align:left;border-bottom:1px solid var(--rule-soft)}
+  th{font:600 11px/1.3 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);background:var(--raised);white-space:nowrap}
+  td{font-variant-numeric:tabular-nums}
+  td.n{font-family:var(--mono);font-size:14px}
+  tr:last-child td{border-bottom:none}
+  tr.hi td{background:var(--accent-soft);font-weight:600}
+  tr.bad td{background:var(--warn-soft)}
+
+  .gloss{display:grid;border:1px solid var(--rule);background:var(--surface)}
+  .gi{display:grid;grid-template-columns:180px 1fr;gap:16px;padding:14px 17px;border-bottom:1px solid var(--rule-soft);font-size:16px}
+  .gi:last-child{border-bottom:none}
+  .gi dt{font:600 13.5px/1.6 var(--mono);color:var(--accent-ink);margin:0}
+  .gi dd{margin:0;color:var(--ink-2)}
+  @media (max-width:600px){.gi{grid-template-columns:1fr;gap:3px}}
+
+  footer{border-top:2px solid var(--ink);margin-top:14px;padding-top:20px;font-size:14.5px;color:var(--ink-3)}
+  strong{font-weight:600}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">SIH26175 · ISRO / Space Applications Centre</div>
+  <h1>DepthWizard Defence Notes</h1>
+  <p class="standfirst">43 questions a judge could ask you, each with an answer you can say out loud. Every technical word is explained in plain English.</p>
+  <div class="meta">
+    <span><b>Your headline</b> 3.667 m</span>
+    <span><b>The bar</b> 5.9 m</span>
+    <span><b>Live site</b> project5.zaidansari.tech</span>
+  </div>
+</header>
+
+<nav class="jump">
+  <a href="#pitch">The pitch</a>
+  <a href="#problem">The problem</a>
+  <a href="#built">What you built</a>
+  <a href="#method">How it works</a>
+  <a href="#numbers">Your numbers</a>
+  <a href="#weak">Weaknesses</a>
+  <a href="#alts">"Have you tried…"</a>
+  <a href="#deploy">Deployment</a>
+  <a href="#killer">Hardest</a>
+  <a href="#gloss">Glossary</a>
+</nav>
+
+<div class="cheat">
+  <h2>The five things to remember</h2>
+  <ol>
+    <li><strong>Your error is 3.667 m. The published benchmark is 5.9 m.</strong> You are better by 38%.</li>
+    <li><strong>The hard part is not running a depth model.</strong> It is turning an answer with no units into an answer in metres.</li>
+    <li><strong>You get tall buildings badly wrong.</strong> Above 20 m you are about 17 m too short. Say this before a judge finds it.</li>
+    <li><strong>You split your data by region, not randomly.</strong> This makes your score worse but honest. Most teams do it the easy way and get a better-looking number.</li>
+    <li><strong>Half the marks are for the 3D viewer.</strong> Show the live website. Do not show a screenshot of it.</li>
+  </ol>
+</div>
+
+<section id="pitch">
+  <h2 class="sec">Section 01</h2>
+  <h3 class="sect">The pitch itself</h3>
+  <p class="sec-note">You have 5 to 10 minutes. Talk for about three. Demo for about two. Leave the rest for questions. The questions are what decide it.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q01</span><p class="qt">What do you say in the first thirty seconds?</p></div>
+    <div class="a">
+      <div class="say"><b>Say this</b>
+        <p>"To measure the height of buildings from space, you normally need two photos of the same place taken from different angles. Or a laser scanner flown on a plane. Both are slow and expensive."</p>
+        <p>"We do it with one ordinary photo. Our software turns it into a 3D map of building and ground heights, and you can fly through that map in a web browser. It takes about a minute, and it runs on a normal computer with no special hardware."</p>
+      </div>
+      <p>That covers four things at once. What the problem is. How you solve it. What you built. And the fact that it runs anywhere.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q02</span><p class="qt">In what order should you run the demo?</p></div>
+    <div class="a">
+      <ol>
+        <li><strong>Open a scene that is already loaded.</strong> The Jacksonville one looks good. Do not start by uploading a new image. Uploading takes 60 seconds and you would be standing in silence.</li>
+        <li><strong>Fly around it.</strong> Show that the buildings have real shape, and that the original photo is wrapped over the 3D surface.</li>
+        <li><strong>Turn on the truth overlay.</strong> This shows your result next to real laser-scanner data. Very few teams can show this. It is your strongest moment.</li>
+        <li><strong>Turn on the confidence layer.</strong> Say: "the model marks where it is unsure, and when it says it is unsure, it really is wrong."</li>
+        <li><strong>Now start an upload</strong> and keep talking while it runs.</li>
+      </ol>
+      <div class="trap"><b>Do not do this</b><p>Do not invite a judge to upload any image they like as your first move. If they pick a photo of a city centre, that is your worst case. You would be explaining a weakness before you have shown anything good.</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q03</span><p class="qt">What if the website is down, or the Wi-Fi fails?</p></div>
+    <div class="a">
+      <p>Carry the file <span class="t">viewer_standalone.html</span> on a USB stick.</p>
+      <p>It is one file, 15.2 MB. You double-click it and the whole 3D viewer opens in a browser. No internet. No server. No installation.</p>
+      <p>You tested this properly. You did not just look at the file and assume it worked. You actually opened it in a browser and checked that the 3D view appeared.</p>
+      <p>This file also earns marks on its own. The problem statement asks for software that can be deployed on its own, and this is exactly that.</p>
+    </div>
+  </div>
+</section>
+
+<section id="problem">
+  <h2 class="sec">Section 02</h2>
+  <h3 class="sect">The problem</h3>
+  <p class="sec-note">What ISRO asked for, and why it is genuinely difficult.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q04</span><p class="qt">What exactly did ISRO ask for?</p></div>
+    <div class="a">
+      <p>Software that takes one satellite photo and produces a height map. It has to handle two kinds of input.</p>
+      <div class="tw"><table>
+        <tr><th>Input</th><th>What you must produce</th></tr>
+        <tr><td>A plain photo (PNG or JPG) with no location information</td><td>A <strong>relative</strong> height map. Shapes are right, but there are no real units.</td></tr>
+        <tr><td>A photo that knows where on Earth it was taken (GeoTIFF)</td><td>An <strong>absolute</strong> height map, in real metres.</td></tr>
+      </table></div>
+      <p>Then you have to wrap that photo over a 3D surface, show it in a browser, and let someone fly around it and measure heights and slopes.</p>
+      <p>Marks are split <strong>50% for accuracy, 50% for the 3D viewer</strong>. Remember that. Half the marks are for something that is not the model at all.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q05</span><p class="qt">Why is this hard? Why not just use an existing depth model?</p></div>
+    <div class="a">
+      <p>This is the most important question in the whole document. Here is the answer in three steps.</p>
+      <p><strong>Step 1. Depth models have no units.</strong> A depth model tells you which things are closer and which are further away. It does not tell you by how much. A building could be 5 m tall or 50 m tall, and the model's output looks exactly the same.</p>
+      <p><strong>Step 2. They learned from photos taken by people on the ground.</strong> Think of a normal holiday photo. It has a horizon. It has a road that gets narrower as it goes away from you. It has sky at the top. It has people and cars whose size you already know. All of these are clues about scale.</p>
+      <p><strong>Step 3. Satellite photos point straight down.</strong> Looking straight down, there is no horizon. Nothing gets narrower with distance. There is no sky. Every clue the model learned to use has disappeared.</p>
+      <p>ISRO says this themselves in the problem statement. Their words: <em>"Converting relative depth into metric elevation remains a critical challenge."</em></p>
+      <div class="say"><b>Say this</b><p>"Normally you measure height by comparing two photos taken from different angles. That is how your eyes judge distance. With only one photo you cannot do that, so the usual method for getting scale is simply not available. That is the problem we solved."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q06</span><p class="qt">Why does disaster management need heights?</p></div>
+    <div class="a">
+      <p>Three concrete reasons.</p>
+      <ul>
+        <li><strong>Floods.</strong> Water flows downhill. To predict where it goes, you need to know the shape of the ground.</li>
+        <li><strong>Landslides.</strong> Risk depends on how steep a slope is and how much material sits on it.</li>
+        <li><strong>Damage assessment.</strong> If you know building heights before and after an event, you can see what collapsed.</li>
+      </ul>
+      <p>The catch is timing. Booking a laser survey or a special satellite pass takes weeks. After a cyclone you do not have weeks. Your method uses a photo that already exists, and gives an answer in about a minute.</p>
+    </div>
+  </div>
+</section>
+
+<section id="built">
+  <h2 class="sec">Section 03</h2>
+  <h3 class="sect">What you built</h3>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q07</span><p class="qt">Walk me through your pipeline.</p></div>
+    <div class="a">
+      <p>Seven steps, in order.</p>
+      <ol>
+        <li><strong>Someone uploads a photo.</strong> PNG, JPG or GeoTIFF.</li>
+        <li><strong>You check the scale.</strong> If the photo knows where it was taken, you can work out how many metres each pixel covers. You then resize the photo so each pixel covers 0.3 m, which is what your model was trained on.</li>
+        <li><strong>You cut it into squares.</strong> The model only accepts 518×518 pixel images, so a big photo is cut into overlapping squares.</li>
+        <li><strong>Each square goes through the model.</strong> For every pixel it outputs two numbers: a height, and how confident it is about that height.</li>
+        <li><strong>You glue the squares back together</strong> and blend the overlaps so no seams show.</li>
+        <li><strong>If the photo has location data</strong>, you add ground elevation underneath, so heights become real elevations above sea level.</li>
+        <li><strong>You build the 3D scene.</strong> The height numbers become a 3D surface, and the original photo is painted onto it. Then it renders in the browser.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q08</span><p class="qt">What model is underneath? Did you train it yourself?</p></div>
+    <div class="a">
+      <p>You started from <strong>Depth Anything V2 Small</strong>. It is a free, openly licensed model that estimates depth from a single photo.</p>
+      <p>But you did not just download it and use it. <strong>You retrained it</strong> on aerial photos with real measured heights. That retraining is what turns it from "this is nearer than that" into "this is 12.4 metres tall".</p>
+      <div class="trap"><b>Important</b><p>Never say "we used a pre-trained model" and stop there. It makes it sound like you downloaded something and ran it.</p><p>Say instead: "we took a pre-trained model and retrained it on aerial height data, which is what makes it output real metres."</p></div>
+      <p>One more useful fact. This model comes in three sizes: Small, Base and Large. Only <strong>Small</strong> has a licence that allows commercial use. Base and Large are non-commercial only. So Small is the only one ISRO could actually deploy.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q09</span><p class="qt">What did you change inside the model?</p></div>
+    <div class="a">
+      <p>Three changes.</p>
+      <p><strong>1. You made it produce two answers instead of one.</strong> Originally it output one number per pixel: the depth. You kept that, and added a second output next to it: how uncertain the model is about that pixel. This is what powers your confidence layer.</p>
+      <p><strong>2. You removed a function called ReLU from the end.</strong> ReLU forces any negative number to become zero. The original model needed that, because depth can never be negative. But it causes a problem during training: once a pixel gets pushed below zero, it gets stuck there and stops learning forever. You removed it and let the training handle it instead.</p>
+      <p><strong>3. You made it output metres.</strong> The original model produced numbers around 1. Building heights are in the tens of metres. Rather than force the model to learn that big jump, you let it keep producing small numbers and multiply the result by a fixed factor. The benefit is that your reported error is directly in metres, which is exactly what ISRO scores.</p>
+      <div class="say"><b>A nice detail to mention</b><p>"Depth Anything outputs larger numbers for things that are closer to the camera. When you are looking down from space, closer means taller. So the model's existing behaviour already pointed the right way. We were adjusting something that already made sense, not fighting it."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q10</span><p class="qt">What data did you train on?</p></div>
+    <div class="a">
+      <p>A dataset called <strong>DFC2019</strong>. It contains aerial photos of <strong>Jacksonville and Omaha</strong> in the United States, at 0.3 m per pixel, with real heights measured by an aircraft-mounted laser scanner.</p>
+      <p>Why that one? Three reasons. It has real measured heights to train against. It is free. And it is the dataset other researchers use, so your results can be compared to published work.</p>
+      <p>Your testing used <strong>80 photos, about 12 million pixels, and 3,090 buildings</strong>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="method">
+  <h2 class="sec">Section 04</h2>
+  <h3 class="sect">How it works</h3>
+  <p class="sec-note">This is where judges dig deepest. Know these five properly.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q11</span><p class="qt">How do you get from "no units" to real metres? This is the core question.</p></div>
+    <div class="a">
+      <p>There are <strong>two separate conversions</strong> here. People mix them up. Keep them apart.</p>
+      <p><strong>Conversion 1: from "no units" to metres above the ground.</strong></p>
+      <p>You did not do this with a clever formula afterwards. You did it by <strong>retraining the model</strong> on photos where the real heights were known. After enough examples, the model simply learned to output metres. That is the whole reason retraining was necessary instead of using the model as-is.</p>
+      <p><strong>Conversion 2: from "metres above the ground" to "metres above sea level".</strong></p>
+      <p>Your model says how tall something is compared to the ground right underneath it. A 10 m building on a 100 m hill gives you 10.</p>
+      <p>But ISRO asked for a surface model, which is height above sea level. For that building you need 110. So you add the ground elevation:</p>
+      <div class="say"><b>The formula</b><p><strong>height above sea level = ground elevation + our height above ground</strong></p></div>
+      <p>The ground elevation comes from <strong>Copernicus GLO-30</strong>. It is a free worldwide elevation map. It is rough — one value every 30 metres — but that is fine, because you only need it for the ground underneath, and the fine detail comes from your model.</p>
+      <div class="trap"><b>Be honest about this weakness</b><p>Copernicus GLO-30 was made using radar. Radar bounces off the tops of buildings and trees, not the bare ground. So in a dense city, that "ground elevation" already includes part of the buildings.</p><p>Which means when you add your building height on top, you count some of it twice.</p><p>A proper fix needs a different dataset that is not free for commercial use. You have an option that reduces the problem approximately, and you describe it as approximate rather than pretending it is solved. Saying this yourself makes you look careful, not weak.</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q12</span><p class="qt">Why not use India's own elevation data, CartoDEM?</p></div>
+    <div class="a">
+      <p>CartoDEM would be the obvious Indian choice. But it is free only to Indian government bodies.</p>
+      <p>Your college is a private institution, so you are not one, and you would have to pay for it.</p>
+      <p>That is a licensing restriction, not a technical opinion. Just say it plainly.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q13</span><p class="qt">How does the model know when it is wrong?</p></div>
+    <div class="a">
+      <p>Start with why this matters. Guessing height from one photo has no single correct answer — many different 3D scenes could produce the same flat photo. So giving one confident number would be dishonest.</p>
+      <p>Instead, your model gives two numbers per pixel: <strong>a height, and how unsure it is</strong>.</p>
+      <p>The clever part is how it is trained. The training rule lets the model reduce its penalty by admitting uncertainty — but admitting uncertainty costs it something too. So it cannot just claim to be unsure about everything to avoid being marked wrong. It has to be honest.</p>
+      <div class="tw"><table>
+        <tr><th>Measurement</th><th>Value</th><th>What it means</th></tr>
+        <tr><td>Calibration error</td><td class="n">0.077</td><td>When it says it is 80% sure, it is right about 80% of the time. Lower is better.</td></tr>
+        <tr class="hi"><td>Uncertainty vs actual error</td><td class="n">+0.829</td><td>The places it flags as unsure really are the places it gets wrong.</td></tr>
+        <tr><td>Typical stated uncertainty</td><td class="n">1.082 m</td><td>On average it says "give or take about a metre".</td></tr>
+      </table></div>
+      <p>That <strong>+0.829</strong> is the useful one. It means someone using your maps can trust the confidence layer to tell them which areas need checking.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q14</span><p class="qt">Your measuring tool shows a "plus or minus" figure. Where does that come from?</p></div>
+    <div class="a">
+      <p>This answer will impress a technical judge, so it is worth learning.</p>
+      <p>When you measure the height difference between two points, you want to say how uncertain that measurement is. The obvious way is to combine the uncertainty of both points using the standard formula.</p>
+      <p>But that formula assumes the two points are wrong <em>independently</em> of each other. Yours are not.</p>
+      <p>You measured what actually happens. Two pixels one metre apart are wrong together <strong>94% of the time</strong>. Their errors only become independent when they are about <strong>60 metres apart</strong>.</p>
+      <p>Think of it this way. If the model reads a whole rooftop 3 m too low, then measuring from one corner to the other still gives the right answer, because both ends are wrong by the same amount. The error cancels out.</p>
+      <p>So the standard formula gives an uncertainty about <strong>3.5 times too large</strong> for measurements on one roof. You measured the real relationship and corrected for it.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q15</span><p class="qt">ISRO will test on their own photos, at a different resolution. Will that break your model?</p></div>
+    <div class="a">
+      <p>It would, if you did nothing. And you measured exactly how badly.</p>
+      <p>First, why resolution matters. The model chops the image into small squares of 14×14 pixels and reasons about those squares. At 0.3 m per pixel, one square covers <strong>4.2 m of ground</strong>. That is roughly part of a roof.</p>
+      <p>Give it a photo at 0.6 m per pixel instead, and one square now covers <strong>8.4 m</strong>. A small building and the ground around it get averaged into one square. The result is that buildings come out too short.</p>
+      <div class="tw"><table>
+        <tr><th>Photo resolution</th><th>Error, doing nothing</th><th>Error, after your fix</th></tr>
+        <tr><td>0.3 m (what you trained on)</td><td class="n">1.350 m</td><td>—</td></tr>
+        <tr class="hi"><td>0.6 m</td><td class="n">2.260 m</td><td class="n">1.399 m</td></tr>
+        <tr><td>1.0 m</td><td class="n">3.138 m</td><td class="n">1.657 m</td></tr>
+      </table></div>
+      <p>The fix is simple. Read from the photo's own data how many metres each pixel covers. Then enlarge the photo so each square covers 4.2 m of ground again. At 0.6 m this recovers almost all the lost accuracy — you end up within <strong>3.6%</strong> of never having lost it.</p>
+      <div class="say"><b>Say this</b><p>"The problem statement says final testing uses ISRO's own satellite imagery, so we treated the resolution difference as a real risk and measured it, rather than hoping it would be fine."</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="numbers">
+  <h2 class="sec">Section 05</h2>
+  <h3 class="sect">Your numbers</h3>
+  <p class="sec-note">Every figure here comes from the exact setup that runs on the live website. None of it is from a more flattering test.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q16</span><p class="qt">What is your accuracy?</p></div>
+    <div class="a">
+      <div class="tw"><table>
+        <tr><th>Measurement</th><th>Value</th></tr>
+        <tr class="hi"><td><strong>Typical error per building</strong></td><td class="n">3.667 m</td></tr>
+        <tr><td>Average error per building</td><td class="n">1.498 m</td></tr>
+        <tr><td>Half of all buildings are within</td><td class="n">0.894 m</td></tr>
+        <tr><td>Are you too high or too low on average?</td><td class="n">0.237 m too low</td></tr>
+      </table></div>
+      <p>For context: half the buildings in your test set are under <strong>4.22 m</strong> tall.</p>
+      <p><strong>Two words you need to know.</strong></p>
+      <p><strong>RMSE</strong> means root mean square error. You take every mistake, square it, average them, then take the square root. The squaring means a few big mistakes push the number up a lot. Your RMSE is 3.667 m.</p>
+      <p><strong>MAE</strong> means mean absolute error. This is just the plain average mistake, ignoring whether you were too high or too low. Your MAE is 1.498 m.</p>
+      <p>MAE is always smaller than RMSE. When the gap between them is big, it tells you a few large mistakes are dominating. Yours is 1.498 versus 3.667, so yes — a few bad ones are dragging it up. Those are the tall buildings.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q17</span><p class="qt">Is 3.667 m good? Compared to what?</p></div>
+    <div class="a">
+      <p>There is a published dataset called <strong>GlobalBuildingAtlas</strong>. It covers building heights worldwide. Its published error for Asia is <strong>5.9 m</strong>.</p>
+      <p>You are at 3.667 m. That is <strong>38% better</strong>.</p>
+      <p>You also work from much sharper photos than they do — 0.3 m per pixel against their 3 m.</p>
+      <div class="say"><b>Say this</b><p>"Our benchmark was GlobalBuildingAtlas, which publishes 5.9 m error for Asia. We are at 3.667 m."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q18</span><p class="qt">Why do you report error per building instead of per pixel?</p></div>
+    <div class="a">
+      <p>Because per-pixel error is misleading at building edges.</p>
+      <p>Picture the edge of a roof. On one side of the line the correct answer is 20 m. On the other side it is 0 m. If your model puts that line even slightly in the wrong place, those few pixels are wrong by the entire height of the building.</p>
+      <p>That inflates the number enormously and it is not comparable to anything. Your per-pixel building error is 16.256 m. Your per-building error is 3.667 m. Same model, same data — just a different question.</p>
+      <p>Every published paper reports one height per building. So do you.</p>
+      <div class="trap"><b>Mention this yourself. It earns trust.</b><p>When you compare a building, you take the middle value of your prediction across that roof, and the middle value of the truth. Middle against middle.</p><p>You could cheat here by taking a high value of yours against the middle of theirs. That would make your numbers look 1.3 m better. You tested that, saw it was misleading, and did not do it.</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q19</span><p class="qt">How did you split your data for testing, and why does it matter?</p></div>
+    <div class="a">
+      <p>You split by <strong>region</strong>. Whole areas of a city go into training, or into testing, never both.</p>
+      <p>Here is why that matters. The easy way is to shuffle all the photos randomly and take some for testing. But neighbouring photos overlap in style: same streets, same architecture, same lighting, sometimes the same buildings.</p>
+      <p>So a model can score well just by memorising a neighbourhood, without ever learning to judge height.</p>
+      <p>Splitting by region blocks that. It makes your score <strong>worse but trustworthy</strong>.</p>
+      <p>You also have a third set of data you have never scored at all. It is kept for the very end, and it is not even stored on the training computer.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q20</span><p class="qt">ISRO asks for stability across landscapes. Show me.</p></div>
+    <div class="a">
+      <div class="tw"><table>
+        <tr><th>Landscape</th><th>Error</th><th>Shape match</th></tr>
+        <tr><td>Open land</td><td class="n">1.837 m</td><td class="n">+0.583</td></tr>
+        <tr><td>Mixed</td><td class="n">2.723 m</td><td class="n">+0.824</td></tr>
+        <tr><td>Forest</td><td class="n">3.319 m</td><td class="n">+0.780</td></tr>
+        <tr class="bad"><td><strong>City</strong></td><td class="n">13.860 m</td><td class="n">+0.808</td></tr>
+      </table></div>
+      <p>Three out of four are strong. City is four to seven times worse. That is because cities are where tall buildings are, and tall buildings are your weakness.</p>
+      <p><strong>But look at the last column.</strong> "Shape match" stays high in the city at +0.808. That means the model still puts the tall buildings in the right places and gets their relative order right. It just gets the actual numbers too small.</p>
+      <p>Right shape, wrong scale. That is a much better position to be in than being randomly wrong.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q21</span><p class="qt">Why is forest worse than open land? Is your model bad at trees?</p></div>
+    <div class="a">
+      <p>No. This one is physics, not a flaw in your model.</p>
+      <p>The "correct answers" you compare against came from a laser scanner. Laser pulses slip through gaps in the leaves and hit the actual ground below. So the truth data knows where the real ground is.</p>
+      <p>A camera cannot do that. Leaves block the view completely. Your model can only see the top of the canopy.</p>
+      <p>So you are not making a mistake. You are being compared against information that is physically impossible to see in a photograph.</p>
+      <p>The proof is that the same model gets 0.87 m on open ground a few hundred kilometres away.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q22</span><p class="qt">What about hills? That is one of the four landscapes ISRO named.</p></div>
+    <div class="a">
+      <p>Answer honestly: <strong>your training data has no hills.</strong> Jacksonville and Omaha are both flat.</p>
+      <p>You cover hills using imagery from Sikkim, in the Indian Himalayas. But there is no laser data for Sikkim, so you cannot calculate a real accuracy figure. You report it as a visual check, not a score.</p>
+      <p>You did test one specific fear. On steep ground, does the model confuse the slope with building height? On 31-degree slopes, the relationship between predicted height and ground steepness is <strong>−0.044</strong>, which is effectively zero. No confusion.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q23</span><p class="qt">You have no Indian ground truth. So what does your India work prove?</p></div>
+    <div class="a">
+      <p>Be careful and precise here.</p>
+      <p>There is no laser data for your Indian scenes. So you compared against a different source: Google's building height dataset, which is itself estimated from much blurrier satellite images.</p>
+      <p>That means you are comparing <strong>two estimates against each other</strong>. Neither is truth. You must say that.</p>
+      <div class="tw"><table>
+        <tr><th>Sikkim</th><th>Difference</th></tr>
+        <tr><td>All 585 buildings</td><td class="n">1.15 m lower than Google</td></tr>
+        <tr class="bad"><td><strong>Only the 168 Google is confident about</strong></td><td class="n">6.94 m lower than Google</td></tr>
+      </table></div>
+      <div class="trap"><b>Quote the worse number</b><p>Use <strong>6.94 m</strong>, not 1.15 m.</p><p>The reason: when Google is unsure about a building outline, that outline spills onto the surrounding ground and trees. Those sloppy outlines drag the comparison towards zero and make you look better than you are.</p><p>The 168 buildings Google is confident about give the fairer comparison, and it is the less flattering one. Quoting it yourself is what makes a judge trust the rest of your numbers.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="weak">
+  <h2 class="sec">Section 06</h2>
+  <h3 class="sect">Your weaknesses</h3>
+  <p class="sec-note">Bring these up before a judge finds them. A weakness you measured and explained looks like good engineering. The same weakness discovered by a judge looks like you were hiding it.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q24</span><p class="qt">Where does your error actually come from?</p></div>
+    <div class="a">
+      <div class="tw"><table>
+        <tr><th>Real height</th><th>How many</th><th>Error</th><th>Too high or low</th></tr>
+        <tr><td>0–3 m</td><td class="n">166</td><td class="n">1.282 m</td><td>slightly high</td></tr>
+        <tr><td>3–6 m</td><td class="n">2,305</td><td class="n">1.429 m</td><td>slightly high</td></tr>
+        <tr><td>6–10 m</td><td class="n">443</td><td class="n">1.947 m</td><td>slightly low</td></tr>
+        <tr><td>10–20 m</td><td class="n">116</td><td class="n">4.034 m</td><td>1 m low</td></tr>
+        <tr class="bad"><td><strong>over 20 m</strong></td><td class="n">60</td><td class="n">23.451 m</td><td><strong>17 m low</strong></td></tr>
+      </table></div>
+      <div class="say"><b>Learn this sentence</b><p>"79% of our total error comes from 1.9% of the buildings. Below 10 metres, which is 94% of all buildings, our error is 1.4 metres."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q25</span><p class="qt">Why can't you fix the tall buildings? Just train it more.</p></div>
+    <div class="a">
+      <p>You tested that. It is a <strong>data problem, not a training problem</strong>.</p>
+      <p>Your training photos contain only 166 buildings over 30 m, and the tallest is <strong>82.8 m</strong>. But your test set contains buildings up to <strong>155.3 m</strong>.</p>
+      <p>So you are asking the model to judge something it has essentially never seen.</p>
+      <p>You tried training harder on the few tall buildings you have. It made things <strong>worse</strong>, not better. The model got better at those specific buildings and worse at new ones. That is the classic sign of learning examples by heart instead of learning the pattern.</p>
+      <p>Here is the detail that settles it. The model puts <strong>91% of its confidence above 20 m</strong> for a tall building. So it knows the building is tall. It simply cannot tell whether it is 26 m or 76 m.</p>
+      <div class="say"><b>The strongest way to say this</b><p>"We tested every option inside the model. A bigger model. Different output designs. Different ways of reading the output. Combining two models. Changing the training to focus on tall buildings. None of them helped."</p><p>"What that leaves is a conclusion about the data, not the model: looking straight down at a roof, the photo does not contain enough information to tell 26 metres from 76 metres. Fixing it needs training data with tall buildings in it."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q26</span><p class="qt">List all your limitations.</p></div>
+    <div class="a">
+      <ol>
+        <li><strong>Buildings over 20 m come out about 17 m too short.</strong> Not enough tall buildings in the training data.</li>
+        <li><strong>Forest ground is 2.5 m off</strong>, because a camera cannot see through leaves.</li>
+        <li><strong>The edges of each processed square are less accurate</strong> than the middle, roughly double the error. This is a known behaviour of this type of model.</li>
+        <li><strong>The ground elevation data you add includes some building height already</strong>, so in dense cities you count part of it twice.</li>
+        <li><strong>You have no laser data for India</strong>, so Indian results are comparisons, not accuracy.</li>
+        <li><strong>You have a final test set you have never scored</strong>, deliberately, until the very end.</li>
+      </ol>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q27</span><p class="qt">Your viewer stretches heights by 1.5×. Isn't that cheating?</p></div>
+    <div class="a">
+      <p>No, and you can prove it three ways.</p>
+      <ul>
+        <li>It only stretches the <strong>picture</strong>, not the data. The saved height file records no stretching at all.</li>
+        <li>The measuring tool <strong>removes the stretch</strong> before it reports any number.</li>
+        <li>The real laser data gets stretched by the same amount, so any comparison stays fair.</li>
+      </ul>
+      <p>The slider is labelled on screen and says "the numbers stay true".</p>
+      <p><strong>Why it exists.</strong> A typical scene covers about 300 m of ground but buildings are only 5 to 30 m tall. So the heights are tiny compared to the width. Without stretching, the 3D view looks almost completely flat and you cannot see anything. Drag the slider to 1.0 to see true proportions.</p>
+      <div class="say"><b>The best follow-up</b><p>"And stretching cannot be hiding anything, because we predict buildings too <em>short</em>, not too tall. On our city test image the tallest real building is 93.6 m and we say 33.9 m. Even stretched by 1.5, it still appears shorter than it really is."</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="alts">
+  <h2 class="sec">Section 07</h2>
+  <h3 class="sect">"Have you tried…?"</h3>
+  <p class="sec-note">This is the most common judge question. For each of these, you wrote down what you expected and what result would prove you wrong — before running the test.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q28</span><p class="qt">Have you tried… (the full list)</p></div>
+    <div class="a">
+      <div class="tw"><table>
+        <tr><th>Idea</th><th>What happened</th></tr>
+        <tr><td>Use a bigger model</td><td>Size is not the problem. Every version tested squashes tall buildings by about the same amount.</td></tr>
+        <tr><td>Predict a height range instead of a number</td><td>No improvement.</td></tr>
+        <tr><td>Read the output differently</td><td>No hidden tall answer to recover. For 40 m+ buildings the model's most likely answer is 26 m when the truth is 76 m.</td></tr>
+        <tr><td>Average two models together</td><td>Pointless. Both models make almost identical mistakes, so averaging changes nothing.</td></tr>
+        <tr><td>Make training focus harder on tall buildings</td><td>The assumption was wrong. Tall pixels are 7.5% of the data but already cause 78.8% of the error, so training was already paying attention to them.</td></tr>
+        <tr><td>Sharpen the output to square off roofs</td><td>Made every measurement worse.</td></tr>
+        <tr><td>Calibrate each scene using known reference points</td><td>A trade, not a fix. Better on tall buildings, worse on average, and it made 7 of 13 test images worse.</td></tr>
+      </table></div>
+      <div class="say"><b>Say this</b><p>"Two of those five experiments proved us wrong about something we believed. We wrote down our prediction before running each one, which is why we treat these as findings rather than excuses."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q29</span><p class="qt">Why not use shadows? That is how it was done before computers.</p></div>
+    <div class="a">
+      <p>Good question, and you have a real answer.</p>
+      <p>The old method is simple: measure how long a building's shadow is, work out where the sun was, and the geometry gives you the height. It works best on <strong>tall</strong> buildings, which are exactly where your model struggles. So it sounds perfect.</p>
+      <p>You have the data needed — 67 files recording the sun's position for your images.</p>
+      <p>You even confirmed the shadows are clearly visible. On the tallest building in one image, walking away from the sun, the brightness drops from 166 on the roof to about 100 in the shadow, holds for 120 pixels, then jumps to 254 on sunlit ground.</p>
+      <p><strong>But you measured its best possible performance and it still loses.</strong> Even assuming perfect shadow measurement, the method reaches a shape-match of 0.503. Your model already achieves 0.787.</p>
+      <p>So adding it would make things worse. It stays in your plan as a documented idea with evidence, rather than something you built.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q30</span><p class="qt">Why not just use stereo photos or a laser scanner?</p></div>
+    <div class="a">
+      <p>Because that is the whole point of the problem statement.</p>
+      <p>ISRO's own wording calls those methods <em>"cost-prohibitive, dependent on specific sensor availability, and computationally intensive"</em>.</p>
+      <p>If you already have stereo photos, you do not need this. The point is producing usable heights when you do not have them — which includes every photo already sitting in an archive.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q31</span><p class="qt">ISRO recommends the GAMUS dataset. Why didn't you use it?</p></div>
+    <div class="a">
+      <p>This is a fair hit, so have the answer ready.</p>
+      <p>GAMUS is the dataset ISRO's own page recommends. You trained on DFC2019 instead.</p>
+      <p>The honest reasons: DFC2019 is the same kind of data — sharp aerial photos with laser-measured heights — and it is the one published research uses. That is what lets you compare yourself to the 5.9 m benchmark. If you had used GAMUS, that comparison would not exist.</p>
+      <p>You have started loading GAMUS but have not finished.</p>
+      <div class="say"><b>Turn it into a strength</b><p>"GAMUS is our next training set, and specifically because its cities are dense urban areas. That is exactly where our error is worst. So it targets the weakness we have already measured."</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="deploy">
+  <h2 class="sec">Section 08</h2>
+  <h3 class="sect">Deployment</h3>
+  <p class="sec-note">Half the marks are the viewer and the deployment. This section is worth as much as the accuracy section.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q32</span><p class="qt">Is it actually deployed, or just running on your laptop?</p></div>
+    <div class="a">
+      <p>It is live at <strong>project5.zaidansari.tech</strong>, hosted on Microsoft Azure. Anyone can open it right now on a phone. No login.</p>
+      <p>It has six ready-made 3D scenes, and working upload. An upload takes about <strong>60 seconds</strong> from photo to finished 3D scene.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q33</span><p class="qt">Does it need a graphics card?</p></div>
+    <div class="a">
+      <p><strong>No.</strong> The live website runs on an ordinary processor with no graphics card at all.</p>
+      <p>Processing one 518×518 square takes <strong>509 milliseconds</strong> — about half a second.</p>
+      <p>This matters more than it sounds. No graphics card means no expensive hardware to buy, a few dollars a month to run instead of hundreds, and it works on whatever computer a field office already has.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q34</span><p class="qt">What is the ONNX export and why does it exist?</p></div>
+    <div class="a">
+      <p><strong>ONNX</strong> is a standard file format for neural networks. Saving your model in this format means it can run without installing PyTorch, which is a large and complicated piece of software.</p>
+      <div class="tw"><table>
+        <tr><th></th><th>Full precision</th><th>Compressed</th></tr>
+        <tr><td>File size</td><td class="n">100.7 MB</td><td class="n">36.8 MB</td></tr>
+        <tr><td>Biggest difference from the original</td><td class="n">0.0010 cm</td><td class="n">0.161 m</td></tr>
+      </table></div>
+      <p>You did not assume the converted model still worked. You ran <strong>804,972 test inputs</strong> through both versions and compared. The full-precision one matched to a hundredth of a millimetre.</p>
+      <p>The compressed version stores numbers with less precision to save space. It is 63% smaller but costs 0.161 m of accuracy. Say that openly — it is a genuine trade-off, and a judge will check.</p>
+      <p>One honest limitation: the exported model only accepts exactly 518×518 images. It cannot handle other sizes. That is fine because your software always feeds it 518×518, but you should say so rather than imply flexibility you do not have.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q35</span><p class="qt">Can I break your website?</p></div>
+    <div class="a">
+      <p>There are limits in place, because each upload uses real computing time.</p>
+      <ul>
+        <li><strong>50 MB maximum file size.</strong> TIFF, PNG or JPG only.</li>
+        <li><strong>Maximum image size of about 13.8 million pixels.</strong></li>
+        <li><strong>Damaged or half-downloaded files are rejected immediately</strong>, by checking the file header rather than discovering the problem mid-processing.</li>
+        <li><strong>Only three jobs at once</strong>, and one upload per person every 20 seconds.</li>
+      </ul>
+      <p>The pixel limit is the interesting one. File size does not predict how long processing takes — the number of pixels does. A satellite image can be 17408×17408 pixels (303 million pixels) in a file of only 12 MB, because it compresses well. That would take about 2.8 hours.</p>
+      <div class="say"><b>Good line</b><p>"A file size limit does not protect the server, because processing time depends on pixels, not megabytes. So we reject based on how long the job would actually take, calculated from measured speed."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q36</span><p class="qt">Why Three.js and not Unity?</p></div>
+    <div class="a">
+      <p>The problem statement allows Three.js, Unity or Babylon.js.</p>
+      <p>Three.js runs <strong>in a web browser with nothing to install</strong>. A judge opens a link and it works. Unity would need a separate download and a different build for each operating system.</p>
+      <p>Since "can be deployed on its own" is directly worth marks, no installation wins.</p>
+      <p>It also made your single-file version possible: the entire viewer packed into one HTML file that runs from a USB stick with no server at all.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q37</span><p class="qt">What is TTA, and why isn't your best score the one you ship?</p></div>
+    <div class="a">
+      <p><strong>TTA</strong> means test-time augmentation. You run the same image through the model several times — flipped and rotated — and average the results. It takes longer but is more accurate.</p>
+      <div class="tw"><table>
+        <tr><th>Setup</th><th>Per building</th><th>Too low by</th></tr>
+        <tr><td>Basic</td><td class="n">3.771 m</td><td class="n">0.31 m</td></tr>
+        <tr><td>With TTA</td><td class="n">3.616 m</td><td class="n">0.34 m</td></tr>
+        <tr class="hi"><td><strong>What you ship</strong></td><td class="n">3.667 m</td><td class="n">0.24 m</td></tr>
+      </table></div>
+      <p>Notice that what you ship is <strong>0.051 m worse</strong> than your best score. That is deliberate.</p>
+      <p>The shipped version adds a second pass at higher detail and blends it in. It costs 1.4% of accuracy. In exchange, edges are <strong>28% sharper</strong> — buildings look like proper flat-topped blocks instead of rounded lumps.</p>
+      <div class="say"><b>Why this is the right choice</b><p>"Half the marks are for the 3D view, so we accepted a 1.4% accuracy cost for a 28% improvement in how buildings look. And we report the numbers from the version we actually ship, because what we ship should be what gets scored."</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="killer">
+  <h2 class="sec">Section 09</h2>
+  <h3 class="sect">The hardest questions</h3>
+  <p class="sec-note">If you can answer these six, you can handle anything else they ask.</p>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q38</span><p class="qt">Isn't this just Depth Anything with extra steps?</p></div>
+    <div class="a">
+      <p>No. Here is the precise difference.</p>
+      <p>Depth Anything used straight out of the box, on a satellite photo, gives you a shape with no units and poor accuracy, because everything it learned about scale came from ground-level photos.</p>
+      <p>What you added:</p>
+      <ul>
+        <li>Retrained it on aerial photos with real measured heights, so it outputs metres</li>
+        <li>Added a second output that reports how confident it is</li>
+        <li>Added ground elevation so results become real heights above sea level</li>
+        <li>Added automatic resolution matching so it survives a different camera</li>
+        <li>Built the entire 3D viewer and measuring tools</li>
+      </ul>
+      <p>The original model is the starting point, not the solution.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q39</span><p class="qt">Your city error is 13.9 m. So it doesn't work in cities — where disasters happen?</p></div>
+    <div class="a">
+      <p>This is the sharpest question you will get. Answer in three parts.</p>
+      <p><strong>First, agree.</strong> Cities are our weakest case, and the error is concentrated in buildings over 20 m.</p>
+      <p><strong>Second, narrow it.</strong> 94% of buildings are under 10 m, and there our error is 1.4 m. The problem is a small, identified group. And the shape-match stays at +0.808, meaning we still place tall buildings correctly and rank them correctly — we just report them too short.</p>
+      <p><strong>Third, point at the confidence layer.</strong> The model marks these exact areas as uncertain. So a person using the map knows which buildings to double-check.</p>
+      <div class="say"><b>Finish with this</b><p>"A system that is wrong and knows it is very different from a system that is wrong and confident. That is why the confidence output was the first thing we built, not the last."</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q40</span><p class="qt">You tested on two American cities. Why should ISRO believe it works in India?</p></div>
+    <div class="a">
+      <p>Do not overclaim. Structure the answer like this.</p>
+      <ul>
+        <li>Real accuracy figures only exist where laser data exists, which is Jacksonville and Omaha.</li>
+        <li>For India you have a comparison against another estimate, and you report the less flattering of the two available numbers.</li>
+        <li>The specific risk of a different camera resolution was measured and fixed, recovering all but 3.6%.</li>
+        <li>The risk of steep Himalayan terrain confusing the model was tested and ruled out.</li>
+      </ul>
+      <p>Then say what would close the gap: Indian height measurements to test against, or training data from dense cities.</p>
+      <p>Naming what you still need is a strength, not an admission.</p>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q41</span><p class="qt">How do we know you didn't just tune everything to your test set?</p></div>
+    <div class="a">
+      <p>Three answers.</p>
+      <ul>
+        <li><strong>The region-based split.</strong> No area appears in both training and testing, so memorising a neighbourhood cannot help.</li>
+        <li><strong>A third set of data that has never been scored once.</strong> It is deliberately kept off the training computer.</li>
+        <li><strong>You wrote down your failed experiments.</strong> A team that was tuning to look good would only report successes. Two of your five recorded experiments proved you wrong.</li>
+      </ul>
+      <div class="trap"><b>Say this before they ask</b><p>That untouched final test set contains only <strong>one building over 30 m</strong>. Since tall buildings are your weakness, that set will make you look better than you really are.</p><p>Whenever you quote a score from it, say that in the same breath.</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q42</span><p class="qt">Who built this? Can you explain code you didn't write yourself?</p></div>
+    <div class="a">
+      <p>Answer straight. Most of the build is one person's work with AI assistance. That is normal now and is not a weakness. The weakness would be not understanding what was built — which is what this document exists to prevent.</p>
+      <div class="say"><b>If you don't know something</b><p>Say so, then say where the answer is. For example: "I would need to check our calibration results for the exact figure."</p><p>That is a far better answer than a confident wrong number. Judges forgive gaps. They do not forgive bluffing, and an ISRO panel will catch it immediately.</p></div>
+    </div>
+  </div>
+
+  <div class="qa">
+    <div class="q"><span class="qn">Q43</span><p class="qt">What would you do with three more months?</p></div>
+    <div class="a">
+      <p>Have this ready. It shows you know exactly where you stand.</p>
+      <ol>
+        <li><strong>Get training data with tall buildings.</strong> This is the one measured problem you have not solved. GAMUS first, because its cities are dense.</li>
+        <li><strong>Get Indian height measurements</strong>, so your India results become real accuracy instead of a comparison.</li>
+        <li><strong>Finish the reference-point tool in the viewer.</strong> The calculation already works and is tested; only the click-to-place interface is missing.</li>
+        <li><strong>Use shadows for tall buildings only.</strong> Shadows are best exactly where your model is worst. It cannot replace the model, but it might correct the specific cases that fail.</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<section id="gloss">
+  <h2 class="sec">Section 10</h2>
+  <h3 class="sect">Glossary</h3>
+  <p class="sec-note">Every term you might be asked about, in plain English.</p>
+
+  <dl class="gloss">
+    <div class="gi"><dt>DSM</dt><dd>Digital Surface Model. A map of how high everything is, including buildings and trees. This is what ISRO asked for.</dd></div>
+    <div class="gi"><dt>DEM</dt><dd>Digital Elevation Model. A general term for height data.</dd></div>
+    <div class="gi"><dt>DTM</dt><dd>Digital Terrain Model. A map of the bare ground, with buildings and trees removed.</dd></div>
+    <div class="gi"><dt>rDSM</dt><dd>Relative DSM. The shape of the surface, but with no real units. What you produce for a photo with no location data.</dd></div>
+    <div class="gi"><dt>AGL</dt><dd>Above Ground Level. How tall something is compared to the ground right underneath it. A 10 m building on a 100 m hill is 10 m AGL.</dd></div>
+    <div class="gi"><dt>GSD</dt><dd>Ground Sample Distance. How much ground one pixel covers. 0.3 m GSD means each pixel is 30 cm across. Smaller means sharper.</dd></div>
+    <div class="gi"><dt>Nadir</dt><dd>Looking straight down. This is what satellites usually do, and it is why depth models struggle — there is no horizon or perspective to judge scale from.</dd></div>
+    <div class="gi"><dt>Off-nadir</dt><dd>Looking at an angle instead of straight down. At 17 degrees off-nadir you can see some of the sides of buildings.</dd></div>
+    <div class="gi"><dt>LiDAR</dt><dd>A laser scanner, usually flown on an aircraft. It measures distance by timing how long a light pulse takes to bounce back. This is your source of correct answers.</dd></div>
+    <div class="gi"><dt>Stereo</dt><dd>Using two photos of the same place taken from different angles to work out height. The normal method, and the one you are replacing.</dd></div>
+    <div class="gi"><dt>Monocular</dt><dd>Using one image only. "Mono" means one.</dd></div>
+    <div class="gi"><dt>Ill-posed</dt><dd>A problem with more than one possible correct answer. Many different 3D scenes could produce the same flat photo, which is why reporting uncertainty is the honest approach.</dd></div>
+    <div class="gi"><dt>RMSE</dt><dd>Root Mean Square Error. Square every mistake, average them, take the square root. Because of the squaring, a few big mistakes push this number up a lot.</dd></div>
+    <div class="gi"><dt>MAE</dt><dd>Mean Absolute Error. The plain average mistake. Always smaller than RMSE. A big gap between the two means a few large mistakes dominate.</dd></div>
+    <div class="gi"><dt>Bias</dt><dd>Whether you are consistently too high or too low. Yours is 17 m too low for buildings over 20 m.</dd></div>
+    <div class="gi"><dt>Correlation</dt><dd>How well your predictions follow the real pattern, from −1 to +1. High correlation with bad RMSE means the shape is right but the scale is wrong. That is your city situation.</dd></div>
+    <div class="gi"><dt>Calibration</dt><dd>Whether the model's stated confidence matches how often it is actually right.</dd></div>
+    <div class="gi"><dt>Sigma (σ)</dt><dd>The model's own statement of how unsure it is about a pixel, in metres.</dd></div>
+    <div class="gi"><dt>Neural network</dt><dd>A program that learns patterns from examples instead of following written rules.</dd></div>
+    <div class="gi"><dt>Backbone</dt><dd>The part of the model that understands the image. Almost all the learned knowledge lives here — 89% of yours.</dd></div>
+    <div class="gi"><dt>Head</dt><dd>The small final part that turns understanding into the answer you want. Yours is about 0.1% of the model, and it is the part you modified.</dd></div>
+    <div class="gi"><dt>Vision transformer (ViT)</dt><dd>A type of network that cuts an image into small squares and lets every square take account of every other square. Yours uses 14×14 pixel squares.</dd></div>
+    <div class="gi"><dt>DINOv2</dt><dd>The specific backbone inside Depth Anything. It learned from images without any human labelling, which is why it works on many different kinds of picture.</dd></div>
+    <div class="gi"><dt>DPT</dt><dd>Dense Prediction Transformer. The part that turns a coarse grid of squares back into a full-detail answer for every pixel.</dd></div>
+    <div class="gi"><dt>Fine-tuning</dt><dd>Taking a model someone else trained and continuing to train it on your own data. This is what makes your model output metres.</dd></div>
+    <div class="gi"><dt>Zero-shot</dt><dd>Using a model with no extra training at all. Doing this on satellite photos does not work well, which is why you fine-tuned.</dd></div>
+    <div class="gi"><dt>Checkpoint</dt><dd>A saved file containing a trained model.</dd></div>
+    <div class="gi"><dt>Overfitting</dt><dd>When a model memorises the training examples instead of learning the general pattern. It scores well on data it has seen and badly on anything new.</dd></div>
+    <div class="gi"><dt>Region-disjoint split</dt><dd>Splitting data by geographic area, so no place appears in both training and testing. Stops the model scoring well by memorising a neighbourhood.</dd></div>
+    <div class="gi"><dt>TTA</dt><dd>Test-Time Augmentation. Running the same image through several times, flipped and rotated, then averaging. Slower but more accurate.</dd></div>
+    <div class="gi"><dt>Sliding window</dt><dd>Processing a large photo as overlapping small squares, because the model only accepts a fixed size.</dd></div>
+    <div class="gi"><dt>ONNX</dt><dd>A standard file format for neural networks. Lets your model run without installing PyTorch.</dd></div>
+    <div class="gi"><dt>Quantisation</dt><dd>Storing the model's numbers with less precision to make the file smaller. Yours saves 63% of the size and costs 0.161 m of accuracy.</dd></div>
+    <div class="gi"><dt>GCP</dt><dd>Ground Control Point. A place where the true height is already known, used to correct a scene.</dd></div>
+    <div class="gi"><dt>SRTM</dt><dd>A free worldwide elevation map made from a Space Shuttle mission in 2000. Mentioned in the problem statement.</dd></div>
+    <div class="gi"><dt>Copernicus GLO-30</dt><dd>The free European worldwide elevation map you use instead. Same 30 m detail as SRTM, no account needed, and it covers the far north where SRTM has gaps.</dd></div>
+    <div class="gi"><dt>CartoDEM</dt><dd>ISRO's Indian elevation map. Free only to Indian government bodies, so not available to you.</dd></div>
+    <div class="gi"><dt>DFC2019</dt><dd>Your training dataset. Aerial photos of Jacksonville and Omaha at 0.3 m per pixel, with laser-measured heights.</dd></div>
+    <div class="gi"><dt>GAMUS</dt><dd>The dataset ISRO's own page recommends. Covers Philadelphia, New York and Washington DC — all dense cities.</dd></div>
+    <div class="gi"><dt>Georeferenced</dt><dd>A photo that knows where on Earth it was taken. GeoTIFF is the usual format.</dd></div>
+    <div class="gi"><dt>GeoTIFF</dt><dd>An image file with location information built into it.</dd></div>
+    <div class="gi"><dt>Megapixel</dt><dd>One million pixels. This is what determines processing time — not the file size.</dd></div>
+    <div class="gi"><dt>Mesh</dt><dd>The 3D surface built from your height numbers.</dd></div>
+    <div class="gi"><dt>Texture drape</dt><dd>Painting the original photo onto that 3D surface so it looks real.</dd></div>
+    <div class="gi"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so you can see the shape. Yours starts at 1.5× and is removed before any measurement is reported.</dd></div>
+  </dl>
+</section>
+
+<footer>
+  <p>All figures come from the exact configuration running on the live website, tested on 80 photos, about 12 million pixels and 3,090 buildings, against aircraft laser measurements. Where no laser data exists, results are described as comparisons rather than accuracy.</p>
+</footer>
+
+</div>

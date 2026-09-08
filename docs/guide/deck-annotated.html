@@ -1,0 +1,583 @@
+<title>Deck C, Annotated</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,500;0,600;1,400&display=swap">
+
+<style>
+  :root{
+    --paper:#F4F6F7; --surface:#FFFFFF; --raised:#FBFCFC;
+    --ink:#0E1A20; --ink-2:#3A4C55; --ink-3:#6D7E88;
+    --rule:#D6DFE2; --rule-soft:#E7EDEF;
+    --accent:#0E6B7A; --accent-ink:#0A505C; --accent-soft:#E0EFF1;
+    --warn:#9C4A16; --warn-soft:#F7EAE1;
+    --serif:"IBM Plex Serif",Georgia,serif;
+    --sans:"IBM Plex Sans","Segoe UI",system-ui,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --paper:#0C1317; --surface:#121D23; --raised:#16232A;
+      --ink:#E8EFF2; --ink-2:#AABCC4; --ink-3:#7C9099;
+      --rule:#243139; --rule-soft:#1B272E;
+      --accent:#54B6C6; --accent-ink:#7FCEDA; --accent-soft:#10333B;
+      --warn:#DC8F5E; --warn-soft:#2E2018;
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#0C1317; --surface:#121D23; --raised:#16232A;
+    --ink:#E8EFF2; --ink-2:#AABCC4; --ink-3:#7C9099;
+    --rule:#243139; --rule-soft:#1B272E;
+    --accent:#54B6C6; --accent-ink:#7FCEDA; --accent-soft:#10333B;
+    --warn:#DC8F5E; --warn-soft:#2E2018;
+  }
+  *{box-sizing:border-box}
+  body{background:var(--paper);color:var(--ink);font:400 17.5px/1.7 var(--sans);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:820px;margin:0 auto;padding:0 22px 96px}
+
+  header.top{padding:44px 0 26px;border-bottom:2px solid var(--ink)}
+  .eyebrow{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:14px}
+  h1{font:600 40px/1.08 var(--serif);margin:0 0 12px;letter-spacing:-.015em;text-wrap:balance}
+  .standfirst{font-size:18px;color:var(--ink-2);margin:0;max-width:60ch}
+
+  nav.jump{position:sticky;top:0;z-index:20;background:var(--paper);border-bottom:1px solid var(--rule);
+    margin-bottom:34px;padding:11px 0;display:flex;gap:6px;overflow-x:auto}
+  nav.jump a{flex:0 0 auto;font:500 12.5px/1 var(--mono);color:var(--ink-2);text-decoration:none;
+    padding:7px 11px;border-radius:4px;white-space:nowrap;border:1px solid transparent}
+  nav.jump a:hover{background:var(--accent-soft);color:var(--accent-ink);border-color:var(--rule)}
+  nav.jump a:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+  .fixes{background:var(--warn-soft);border:1px solid var(--warn);padding:24px 26px;margin-bottom:44px}
+  .fixes h2{font:600 13px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--warn);margin:0 0 10px}
+  .fixes p.lede{margin:0 0 16px;color:var(--ink-2);font-size:16.5px;max-width:62ch}
+  .fixes ol{margin:0;padding-left:20px;display:grid;gap:12px}
+  .fixes li{font-size:16.5px;line-height:1.6}
+
+  section.slide{margin-bottom:56px;scroll-margin-top:64px}
+  .shead{border-bottom:2px solid var(--ink);padding-bottom:12px;margin-bottom:24px}
+  .snum{font:500 12px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--accent);margin-bottom:7px}
+  .shead h3{font:600 28px/1.16 var(--serif);margin:0 0 7px;text-wrap:balance}
+  .shead p{margin:0;color:var(--ink-2);font-size:16.5px;max-width:62ch}
+
+  .el{border-top:1px solid var(--rule);padding-top:19px;margin-top:21px}
+  .el:first-of-type{border-top:none;margin-top:0}
+  .el h4{font:600 19px/1.3 var(--serif);margin:0 0 11px}
+  .el p{margin:0 0 12px;max-width:64ch}
+  .el p:last-child{margin-bottom:0}
+  .el ul,.el ol{margin:0 0 12px;padding-left:21px;max-width:62ch}
+  .el li{margin-bottom:8px}
+
+  .onslide{font:500 15px/1.6 var(--mono);background:var(--raised);border-left:3px solid var(--ink-3);
+    padding:11px 15px;margin:0 0 14px;color:var(--ink-2);max-width:62ch}
+  .say{border-left:3px solid var(--accent);background:var(--accent-soft);padding:14px 18px;margin:0 0 14px}
+  .say b{display:block;font:600 10.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--accent-ink);margin-bottom:8px}
+  .say p{margin:0 0 9px;max-width:60ch;font-size:17px}
+  .say p:last-child{margin-bottom:0}
+  .flag{border-left:3px solid var(--warn);background:var(--warn-soft);padding:14px 18px;margin:0 0 14px}
+  .flag b{display:block;font:600 10.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--warn);margin-bottom:8px}
+  .flag p{margin:0 0 9px;max-width:60ch;font-size:16.5px}
+  .flag p:last-child{margin-bottom:0}
+
+  .terms{display:grid;border:1px solid var(--rule);background:var(--surface);margin:0 0 14px}
+  .ti{display:grid;grid-template-columns:168px 1fr;gap:15px;padding:12px 15px;border-bottom:1px solid var(--rule-soft);font:400 16px/1.6 var(--sans)}
+  .ti:last-child{border-bottom:none}
+  .ti dt{font:600 13.5px/1.6 var(--mono);color:var(--accent-ink);margin:0}
+  .ti dd{margin:0;color:var(--ink-2)}
+  @media (max-width:620px){.ti{grid-template-columns:1fr;gap:2px}}
+
+  .tw{overflow-x:auto;margin:0 0 14px;border:1px solid var(--rule);background:var(--surface)}
+  table{border-collapse:collapse;width:100%;font-size:15px;min-width:330px}
+  th,td{padding:9px 13px;text-align:left;border-bottom:1px solid var(--rule-soft)}
+  th{font:600 11px/1.3 var(--mono);letter-spacing:.07em;text-transform:uppercase;color:var(--ink-3);background:var(--raised);white-space:nowrap}
+  td{font-variant-numeric:tabular-nums}
+  td.n{font-family:var(--mono);font-size:14px}
+  tr:last-child td{border-bottom:none}
+  tr.hi td{background:var(--accent-soft);font-weight:600}
+
+  .chain{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 16px;align-items:center}
+  .chain span{font:500 12.5px/1 var(--mono);background:var(--surface);border:1px solid var(--rule);padding:9px 11px;border-radius:3px}
+  .chain i{color:var(--accent);font-style:normal;font-weight:600}
+
+  .t{font:500 .93em/1 var(--mono);background:var(--rule-soft);padding:2px 5px;border-radius:3px}
+  footer{border-top:2px solid var(--ink);margin-top:14px;padding-top:20px;font-size:14.5px;color:var(--ink-3)}
+  strong{font-weight:600}
+  @media (max-width:600px){h1{font-size:31px}body{font-size:17px}}
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <div class="eyebrow">SIH2026-DevUp-SIH26175-DepthWizard-C · 6 slides</div>
+  <h1>Deck C, Annotated</h1>
+  <p class="standfirst">Every slide explained, one piece at a time, with every technical word defined in plain English. If a judge points at anything on screen, the answer is in here.</p>
+</header>
+
+<nav class="jump">
+  <a href="#fix">Fix first</a>
+  <a href="#s1">1 · Title</a>
+  <a href="#s2">2 · Problem</a>
+  <a href="#s3">3 · Technical</a>
+  <a href="#s4">4 · Feasibility</a>
+  <a href="#s5">5 · Impact</a>
+  <a href="#s6">6 · Research</a>
+</nav>
+
+<div class="fixes" id="fix">
+  <h2>Seven things to fix</h2>
+  <p class="lede">I checked the deck against the official SIH portal page and against your actual code. These are things a judge could catch.</p>
+  <ol>
+    <li><strong>The theme is wrong.</strong> Slide 1 says "Space Technology". The portal says <strong>Disaster Management</strong>.</li>
+    <li><strong>The problem title is not exact.</strong> Yours says "Single-View Height Estimation and 3D Terrain Visualisation". The official one is <strong>"DepthWizard - Single-View Height Estimation and 3D Flythrough"</strong>.</li>
+    <li><strong>Team ID still says <span class="t">&lt;fill from portal&gt;</span></strong> on slide 1.</li>
+    <li><strong>3.62 m is not the number your software actually produces.</strong> That figure comes from a slightly different setup. The version running on your website scores <strong>3.667 m</strong>, which makes you <strong>38%</strong> better than the benchmark, not 39%. This appears on slides 1 and 6.</li>
+    <li><strong>React is listed but you do not use it.</strong> It only appears inside the scripts that build the PowerPoint, as the name of an icon. Your viewer uses no framework at all.</li>
+    <li><strong>OpenCV is listed but you do not use it.</strong> It appears nowhere in your code.</li>
+    <li><strong>It says Python 3.11.</strong> You actually use 3.10.7.</li>
+  </ol>
+</div>
+
+<!-- SLIDE 1 -->
+<section class="slide" id="s1">
+  <div class="shead">
+    <div class="snum">Slide 1</div>
+    <h3>Title and headline numbers</h3>
+    <p>This slide has one job: make the judges decide you are worth listening to. It does that by leading with measurements instead of promises.</p>
+  </div>
+
+  <div class="el">
+    <h4>The name and tagline</h4>
+    <div class="onslide">DEPTH WIZARD — "One satellite image in, a measurable 3D surface out."</div>
+    <p>The important word is <strong>measurable</strong>. Not "accurate", not "high-precision". Measurable means someone can check it. That sets up everything that follows.</p>
+  </div>
+
+  <div class="el">
+    <h4>The details block</h4>
+    <p>Problem ID, problem title, theme, category, team ID, team name. This is admin information, and SIH checks it matches their portal exactly.</p>
+    <p>Three of the seven errors listed above are in this block.</p>
+    <dl class="terms">
+      <div class="ti"><dt>PS</dt><dd>Problem Statement. Every SIH problem has an ID number. Yours is SIH26175.</dd></div>
+      <div class="ti"><dt>Category</dt><dd>Software or Hardware. Yours is Software.</dd></div>
+      <div class="ti"><dt>Theme</dt><dd>The topic SIH files the problem under. Yours should say Disaster Management.</dd></div>
+      <div class="ti"><dt>Dev Up</dt><dd>Your registered team name.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>"BUILT AND MEASURED, NOT PROPOSED"</h4>
+    <p>Most SIH teams present a plan for something they intend to build. This line says yours already exists and has been tested.</p>
+    <p>Every number underneath it is there to back up that claim.</p>
+  </div>
+
+  <div class="el">
+    <h4>The three boxes</h4>
+    <p>These are not random statistics. They answer the three questions every judge is silently asking, in order.</p>
+    <div class="tw"><table>
+      <tr><th>Box</th><th>Question it answers</th></tr>
+      <tr><td><strong>3.62 m</strong> error per building</td><td>Is it accurate? Measured against a real laser scanner, not our own opinion.</td></tr>
+      <tr><td><strong>39%</strong> better than 5.9 m</td><td>Is it better than what already exists? Yes, than a published dataset.</td></tr>
+      <tr><td><strong>509 ms</strong> per tile, no graphics card</td><td>Can it actually be used? Yes, on ordinary hardware.</td></tr>
+    </table></div>
+    <p>Each one alone proves nothing. Accuracy alone invites "better than what?". A comparison alone invites "on what hardware?". Together they close the argument.</p>
+    <dl class="terms">
+      <div class="ti"><dt>RMSE</dt><dd>Root Mean Square Error. Square every mistake, average them, take the square root. A few big mistakes push this number up a lot.</dd></div>
+      <div class="ti"><dt>Per building</dt><dd>Comparing one height per building against one true height, rather than comparing every single pixel. This is what published research does, so it is the only fair comparison.</dd></div>
+      <div class="ti"><dt>Airborne LiDAR</dt><dd>A laser scanner flown on an aircraft. It measures distance by timing light pulses. This is your source of correct answers.</dd></div>
+      <div class="ti"><dt>GlobalBuildingAtlas</dt><dd>A published worldwide dataset of building heights. Its error for Asia is 5.9 m, and that is the benchmark you beat.</dd></div>
+      <div class="ti"><dt>Tile</dt><dd>A 518 by 518 pixel piece of the photo. Big photos are processed in overlapping pieces because the model only accepts that one size.</dd></div>
+    </dl>
+    <div class="flag"><b>If a judge checks the maths</b><p>5.9 minus 3.62, divided by 5.9, gives 38.6%, which rounds to 39. That works.</p><p>But with your real shipped number of 3.667 it gives 37.8%, which rounds to 38. Change the number rather than arguing about rounding.</p></div>
+  </div>
+
+  <div class="el">
+    <h4>The colour strip along the bottom</h4>
+    <div class="onslide">"The palette is the model's own output scale: 0 m at the left, 155 m at the right."</div>
+    <p>The colours used throughout this deck are the same colours your software uses to show height.</p>
+    <p>Dark navy on the left means 0 m, which is ground level. The colours move through blues to amber and rust on the right, which is 155 m. That is the tallest building in your test data.</p>
+    <p>So the deck is not decorated with random brand colours. It is coloured using its own data. If a judge asks, that is the whole answer.</p>
+  </div>
+</section>
+
+<!-- SLIDE 2 -->
+<section class="slide" id="s2">
+  <div class="shead">
+    <div class="snum">Slide 2</div>
+    <h3>Problem and solution</h3>
+    <p>Three problems, six answers, and three screenshots that prove the software runs.</p>
+  </div>
+
+  <div class="el">
+    <h4>"Every submission promises accuracy. This one reports it."</h4>
+    <p>Same idea as the banner on slide 1. Keep repeating it. It is what separates you from teams presenting intentions.</p>
+  </div>
+
+  <div class="el">
+    <h4>Problem 1: Archives with no height</h4>
+    <p>India has decades of satellite photos already taken by Cartosat. Every one of them is a single photo.</p>
+    <p>To get height the normal way you need two photos from different angles, or a laser survey. <strong>You cannot go back in time and take a second photo.</strong> So those old photos can never gain height information by the usual methods.</p>
+    <p>This is the strongest argument in the whole deck. It makes your approach the <em>only</em> option for that archive, not just a cheaper one.</p>
+  </div>
+
+  <div class="el">
+    <h4>Problem 2: Answers with no confidence</h4>
+    <p>Guessing height from one photo has no single correct answer. Many different real-world scenes could produce the same flat image.</p>
+    <p>So if software gives you one confident number, it is hiding the fact that it might be badly wrong. That is why you also output how sure the model is.</p>
+  </div>
+
+  <div class="el">
+    <h4>Problem 3: Checkpoints are not products</h4>
+    <p>Research papers usually publish a trained model file and a script to test it. That is useful to other researchers and useless to anyone else.</p>
+    <p>Someone doing actual work needs something they can open, look at, and check. This is your argument for why the 3D viewer matters — and remember, it is worth half the marks.</p>
+    <dl class="terms">
+      <div class="ti"><dt>Cartosat</dt><dd>ISRO's series of Earth-observation satellites. Their photo archive is what this problem is about.</dd></div>
+      <div class="ti"><dt>Checkpoint</dt><dd>A saved file containing a trained model.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>The six things you built</h4>
+    <div class="tw"><table>
+      <tr><th>Claim on the slide</th><th>What it actually means</th></tr>
+      <tr><td>One image to a metric DSM</td><td>One photo in, a height map in real metres out, whether or not the photo knows its location.</td></tr>
+      <tr><td>Confidence, not just height</td><td>Every pixel also gets a "how sure am I" number.</td></tr>
+      <tr><td>A navigable 3D scene</td><td>You can fly around it in a browser, compare against real data, and see an error map.</td></tr>
+      <tr><td>Validation inside the product</td><td>The accuracy figures are shown for each landscape type, not hidden behind one flattering average.</td></tr>
+      <tr><td>Absolute heights, two ways</td><td>Two methods for turning heights into real elevations: a free global elevation map, or known reference points.</td></tr>
+      <tr><td>Deployable, not demo-ware</td><td>No graphics card needed, and the viewer is a single file you can open from a USB stick.</td></tr>
+    </table></div>
+    <dl class="terms">
+      <div class="ti"><dt>DSM</dt><dd>Digital Surface Model. A map of how high everything is, including buildings and trees.</dd></div>
+      <div class="ti"><dt>Metric</dt><dd>In real units, meaning metres. The opposite of a result with no units.</dd></div>
+      <div class="ti"><dt>GeoTIFF</dt><dd>An image file that knows where on Earth it was taken.</dd></div>
+      <div class="ti"><dt>Sigma</dt><dd>The model's own statement of how unsure it is about a pixel, in metres.</dd></div>
+      <div class="ti"><dt>Monotonically</dt><dd>Consistently, without going backwards. Here it means: the more unsure the model says it is, the more wrong it actually is, every time.</dd></div>
+      <div class="ti"><dt>MAE</dt><dd>Mean Absolute Error. The plain average mistake.</dd></div>
+      <div class="ti"><dt>Correlation</dt><dd>How well your answers follow the real pattern, from −1 to +1.</dd></div>
+      <div class="ti"><dt>GCP</dt><dd>Ground Control Point. A place where the real height is already known, used to correct your results.</dd></div>
+      <div class="ti"><dt>Power-law fit</dt><dd>A correction curve rather than a straight line. Used because your error grows with height instead of staying constant.</dd></div>
+      <div class="ti"><dt>Demo-ware</dt><dd>Software that only works in a carefully staged demonstration. You are claiming the opposite.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>The three screenshots</h4>
+    <div class="onslide">"THE PRODUCT, RUNNING — CAPTURES OF THE LIVE VIEWER, NOT MOCK-UPS"</div>
+    <ul>
+      <li><strong>Sikkim, India.</strong> The ground rises and falls by 967 m across 2 km. This is your evidence for hilly terrain, and it is Indian.</li>
+      <li><strong>Omaha, height above ground.</strong> You can see flat roofs, tree tops and even kerbs. This shows fine detail.</li>
+      <li><strong>Omaha, confidence.</strong> This shows where the model is unsure.</li>
+    </ul>
+    <div class="say"><b>Expect this question</b><p>"Are these real screenshots?" Yes, and the caption says so. They are captures of the live viewer, which is running right now at project5.zaidansari.tech. Offer to open it there and then.</p></div>
+  </div>
+</section>
+
+<!-- SLIDE 3 -->
+<section class="slide" id="s3">
+  <div class="shead">
+    <div class="snum">Slide 3</div>
+    <h3>Technical approach</h3>
+    <p>The slide judges question hardest. It has four parts: how the software works, how it would be adopted, what you decided and why, and how you tested it.</p>
+  </div>
+
+  <div class="el">
+    <h4>How the software works, left to right</h4>
+    <div class="chain">
+      <span>INPUT</span><i>→</i><span>NORMALISATION</span><i>→</i><span>MODEL</span><i>→</i><span>DUAL HEAD</span><i>→</i><span>POST-PROCESS</span><i>→</i><span>OUTPUT</span>
+    </div>
+    <p><strong>Input.</strong> Three possibilities: a photo that knows its location, a plain photo that does not, or an old Cartosat photo. The first gives real elevations. The second only gives shapes. That split is exactly what the problem statement asks for.</p>
+    <p><strong>Normalisation.</strong> Work out how many metres each pixel covers, then resize the photo so each pixel covers 0.3 m.</p>
+    <p>Why this matters: the model cuts the image into 14 by 14 pixel squares. At 0.3 m per pixel, one square covers 4.2 m of ground — about part of a roof. If you feed it a blurrier photo at 0.6 m per pixel, each square now covers 8.4 m, so a small building gets mixed in with the ground around it and comes out too short. Resizing fixes that.</p>
+    <p><strong>The model.</strong> Two parts. An encoder that understands the image, and a decoder that turns that understanding back into a detailed answer for every pixel.</p>
+    <p><strong>Dual head.</strong> Two outputs per pixel: the height, and how unsure the model is.</p>
+    <p><strong>Post-processing.</strong> Cut into 518 pixel squares, blend the overlaps, run each square several times for accuracy, then add ground elevation.</p>
+    <p><strong>Output.</strong> A height map file, a confidence map, and the 3D scene in the browser.</p>
+    <dl class="terms">
+      <div class="ti"><dt>ViT</dt><dd>Vision Transformer. A type of network that cuts an image into fixed squares and lets every square take account of every other square, instead of only nearby ones.</dd></div>
+      <div class="ti"><dt>Encoder</dt><dd>The part that turns an image into an internal description of what is in it.</dd></div>
+      <div class="ti"><dt>DPT</dt><dd>Dense Prediction Transformer. The part that turns a coarse grid of squares back into a full-detail answer for every pixel. "Dense" just means every pixel gets an answer.</dd></div>
+      <div class="ti"><dt>Neck</dt><dd>The middle stage between the encoder and the final output.</dd></div>
+      <div class="ti"><dt>Mu</dt><dd>The predicted value. Here, the height in metres.</dd></div>
+      <div class="ti"><dt>Log-variance</dt><dd>A way of storing the uncertainty. Using the logarithm keeps the value positive automatically and makes training more stable.</dd></div>
+      <div class="ti"><dt>Fine-tuned</dt><dd>Taking a model someone else trained and training it further on your own data.</dd></div>
+      <div class="ti"><dt>Tiling</dt><dd>Cutting a big photo into overlapping small pieces and blending the joins so no seams show.</dd></div>
+      <div class="ti"><dt>TTA</dt><dd>Test-Time Augmentation. Running the same piece through the model several times, flipped and rotated, then averaging. Slower but more accurate.</dd></div>
+      <div class="ti"><dt>Scale anchor</dt><dd>The thing that turns "height above the ground" into "height above sea level".</dd></div>
+      <div class="ti"><dt>GLO-30</dt><dd>A free worldwide elevation map with one value every 30 metres.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>The four adoption steps</h4>
+    <ol>
+      <li><strong>Start with data that is already free.</strong> Run it over ISRO's freely available tiles and publish results for each landscape type rather than one average.</li>
+      <li><strong>Test against real Indian measurements.</strong> If ISRO shares their own survey data, your Sikkim comparison becomes a real accuracy figure.</li>
+      <li><strong>Package it for their systems.</strong> It ships as a self-contained package that their other software can call, and the viewer needs no server.</li>
+      <li><strong>Run it across the whole archive.</strong> Process the back catalogue in bulk. Every existing photo gains a height layer without commanding a satellite to take anything new.</li>
+    </ol>
+    <dl class="terms">
+      <div class="ti"><dt>Bhoonidhi</dt><dd>ISRO's public data website. You are registered on it.</dd></div>
+      <div class="ti"><dt>CartoDEM</dt><dd>ISRO's Indian elevation map. Free only to Indian government bodies, not to students.</dd></div>
+      <div class="ti"><dt>LISS-4</dt><dd>A camera on ISRO's Resourcesat satellites, about 5.8 m per pixel.</dd></div>
+      <div class="ti"><dt>SAC</dt><dd>Space Applications Centre in Ahmedabad. The ISRO centre that set this problem.</dd></div>
+      <div class="ti"><dt>DGPS</dt><dd>A more accurate form of GPS, corrected using a fixed station on the ground. Accurate to centimetres, so it can be used as truth.</dd></div>
+      <div class="ti"><dt>Container</dt><dd>Software packaged with everything it needs, so it runs the same way on any computer.</dd></div>
+      <div class="ti"><dt>API</dt><dd>A way for other software to use your software automatically, instead of a person clicking buttons.</dd></div>
+      <div class="ti"><dt>Tasking</dt><dd>Instructing a satellite to photograph a particular place. It costs money. Your point is that reprocessing old photos costs nothing extra.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>Decisions, and why</h4>
+    <p>Four claims, each backed by a measurement. The point of this block is to show your choices were tested, not guessed.</p>
+    <p><strong>1. "The head was chosen by measurement. All three land at a 0.43–0.49 slope."</strong></p>
+    <p>Here is what slope means. Draw a graph. Real height along the bottom, your predicted height up the side. Plot every building as a dot.</p>
+    <p>If the model were perfect, the dots would form a diagonal line rising at 45 degrees. That is a slope of 1.0.</p>
+    <p>Your dots form a flatter line, slope about 0.47. That means as buildings get taller, your predictions do not rise fast enough.</p>
+    <div class="tw"><table>
+      <tr><th>Real height</th><th>Your model says</th></tr>
+      <tr><td>5 m</td><td>about 5 m</td></tr>
+      <tr><td>20 m</td><td>about 12 m</td></tr>
+      <tr><td>100 m</td><td>about 50 m</td></tr>
+    </table></div>
+    <p>You tried three different designs for the final part of the model. All three gave a slope between 0.43 and 0.49, so all three were equally affected. Since none was better, you kept the simplest.</p>
+    <p><strong>2. "Uncertainty is calibrated."</strong> When the model says it is unsure, it really is wrong. Measured at +0.829, where 1.0 would be perfect.</p>
+    <p><strong>3. "Export is checked, not assumed."</strong> You converted the model to a portable format, then ran 804,972 test inputs through both versions to confirm they gave the same answers.</p>
+    <p><strong>4. "Resolution is handled explicitly."</strong> Your resizing step recovers all but 3.6% of the accuracy lost on blurrier photos.</p>
+    <dl class="terms">
+      <div class="ti"><dt>ECE</dt><dd>Expected Calibration Error. Measures whether stated confidence matches real accuracy. Yours is 0.077; lower is better.</dd></div>
+      <div class="ti"><dt>Rank correlation</dt><dd>Comparing the order of things rather than the values. +0.829 means the pixels flagged as least certain really are the most wrong.</dd></div>
+      <div class="ti"><dt>Held-out</dt><dd>Data the model has never been trained on.</dd></div>
+      <div class="ti"><dt>ONNX</dt><dd>A standard file format for neural networks. Lets the model run without installing PyTorch.</dd></div>
+      <div class="ti"><dt>int8</dt><dd>Storing the model's numbers with less precision to make the file 63% smaller. Costs 0.161 m of accuracy.</dd></div>
+      <div class="ti"><dt>Binned head</dt><dd>Predicting which height range a pixel falls into, instead of an exact number. Tried, no improvement.</dd></div>
+      <div class="ti"><dt>Head-tail cut</dt><dd>A published technique for separating roof pixels from ground pixels. It works, but it was not what was holding you back.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>How it was tested</h4>
+    <div class="tw"><table>
+      <tr><th>Thing</th><th>Your choice</th></tr>
+      <tr><td>How the data was split</td><td>By geographic region, not randomly</td></tr>
+      <tr><td>How much was tested</td><td>80 photos, about 12 million pixels, 3,090 buildings</td></tr>
+      <tr><td>How results are reported</td><td>Separately for city, open land, forest and mixed, and by building height</td></tr>
+      <tr><td>What is kept back</td><td>A final test set that has never been scored</td></tr>
+    </table></div>
+    <p>The region split is the one to be able to defend. If you shuffle photos randomly, neighbouring photos end up on both sides. They share the same streets, buildings and lighting. A model can then score well by memorising a neighbourhood instead of learning to judge height.</p>
+    <p>Splitting by whole region stops that. It makes your score worse and honest.</p>
+  </div>
+
+  <div class="el">
+    <h4>Technology list</h4>
+    <div class="onslide">Python 3.11 · PyTorch · Hugging Face · ONNX Runtime · NumPy / SciPy · OpenCV · GDAL / rasterio · three.js · React · Docker</div>
+    <dl class="terms">
+      <div class="ti"><dt>PyTorch</dt><dd>The software framework the model is built and trained in.</dd></div>
+      <div class="ti"><dt>Hugging Face</dt><dd>The website and library you download the pre-trained model from.</dd></div>
+      <div class="ti"><dt>ONNX Runtime</dt><dd>The program that runs your converted model without needing PyTorch.</dd></div>
+      <div class="ti"><dt>NumPy / SciPy</dt><dd>Libraries for doing maths on large grids of numbers.</dd></div>
+      <div class="ti"><dt>GDAL / rasterio</dt><dd>Libraries that read and write map image files and handle coordinate systems.</dd></div>
+      <div class="ti"><dt>three.js</dt><dd>The library that draws the 3D view inside a web browser.</dd></div>
+      <div class="ti"><dt>Docker</dt><dd>A way of packaging software with everything it needs so it runs anywhere.</dd></div>
+    </dl>
+    <div class="flag"><b>Three of these are not true</b><p><strong>React</strong> only appears in the scripts that build this PowerPoint, as the name of an icon. Your viewer uses no framework.</p><p><strong>OpenCV</strong> does not appear anywhere in your code.</p><p><strong>Python 3.11</strong> should say 3.10.7.</p><p>Remove the first two and correct the third. Saying "every dependency free and open" invites a judge to ask you to show them one.</p></div>
+  </div>
+</section>
+
+<!-- SLIDE 4 -->
+<section class="slide" id="s4">
+  <div class="shead">
+    <div class="snum">Slide 4</div>
+    <h3>Feasibility and viability</h3>
+    <p>This is where you admit your weaknesses. That sounds bad but it is a strength: a weakness you measured and explained looks like good engineering.</p>
+  </div>
+
+  <div class="el">
+    <h4>The four claims across the top</h4>
+    <div class="onslide">Technically proven · Operationally simple · Economically viable · Socially useful</div>
+    <p>Standard SIH structure. Yours are each backed by something real: it is built and measured, it needs one photo and no special hardware, everything it uses is free, and height data is genuinely used in planning, disaster response and forestry.</p>
+  </div>
+
+  <div class="el">
+    <h4>Accuracy across the four landscapes</h4>
+    <p>The problem statement specifically asks for stable performance across city, open, hilly and forested areas. So this block answers a requirement you are scored on.</p>
+    <div class="tw"><table>
+      <tr><th>Landscape</th><th>Error</th><th>Shape match</th></tr>
+      <tr><td>Open land</td><td class="n">1.837 m</td><td class="n">+0.583</td></tr>
+      <tr><td>Mixed</td><td class="n">2.723 m</td><td class="n">+0.824</td></tr>
+      <tr><td>Forest</td><td class="n">3.319 m</td><td class="n">+0.780</td></tr>
+      <tr class="hi"><td>City</td><td class="n">13.860 m</td><td class="n">+0.808</td></tr>
+    </table></div>
+    <p>The slide's wording is good: three of four are under 3.4 m, and the fourth is one specific identifiable problem. You name the weakness and immediately narrow it down.</p>
+    <div class="say"><b>Expect a question about hills</b><p>Hills are missing from this table because your training data has no hills. Jacksonville and Omaha are both flat. You cover hills using Sikkim imagery, but there is no laser data for Sikkim, so it is a visual check rather than a score. Say this before you are asked.</p></div>
+  </div>
+
+  <div class="el">
+    <h4>Breaking down the city error</h4>
+    <div class="onslide">"79% of squared error comes from 1.9% of buildings. Under 10 m — 94% of the stock — we are at 1.4 m."</div>
+    <p>This is the most important sentence on the slide.</p>
+    <p>It works because of how RMSE is calculated. Every mistake is squared before averaging, so a mistake of 20 m counts a hundred times more than a mistake of 2 m. A small number of badly wrong tall buildings can dominate the whole figure.</p>
+    <p>You are not making the error disappear. Those tall buildings really are wrong by about 17 m. You are showing that you know exactly which buildings fail and why.</p>
+  </div>
+
+  <div class="el">
+    <h4>The two real risks</h4>
+    <p><strong>Risk 1: no Indian ground truth.</strong> Your only Indian check compares against Google's building height data, and finds you 6.94 m lower on 168 buildings.</p>
+    <p>The slide states clearly that this is one estimate compared against another estimate, not a measurement of accuracy. You also quote the worse of the two available figures on purpose — the other one looks better but is less fair.</p>
+    <p><strong>Risk 2: tall buildings come out too short.</strong> This is a data problem, not a design problem. Your training photos only go up to 82.8 m, while your test photos reach 155.3 m.</p>
+    <p>Two possible fixes are named: a correction curve using known reference points, which cuts the error on tall buildings by 24.9%, and properly, getting training data with tall buildings in it.</p>
+    <dl class="terms">
+      <div class="ti"><dt>Bias</dt><dd>Whether you are consistently too high or too low, rather than randomly wrong.</dd></div>
+      <div class="ti"><dt>Footprint</dt><dd>The outline of a building seen from above.</dd></div>
+      <div class="ti"><dt>Compress toward the mean</dt><dd>Everything gets pulled toward the average. Tall things come out too short, very short things slightly too tall.</dd></div>
+      <div class="ti"><dt>Google Open Buildings</dt><dd>A Google dataset of building outlines and heights, worked out from much blurrier satellite photos. Useful as a comparison, never as truth.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>Reducing the India risk before you have Indian data</h4>
+    <div class="tw"><table>
+      <tr><th>Risk</th><th>What you did about it</th></tr>
+      <tr><td>Their photos are blurrier</td><td>Automatic resizing recovers all but 3.6%</td></tr>
+      <tr><td>Their camera angle differs</td><td>Your data already spans 4.8 to 28.9 degrees, so the effect can be measured on data you have</td></tr>
+      <tr><td>Indian terrain is steeper</td><td>Tested on 31-degree slopes. The model does not confuse slope with building height.</td></tr>
+      <tr><td>Licensing could block deployment</td><td>Everything you use is free and open</td></tr>
+    </table></div>
+    <dl class="terms">
+      <div class="ti"><dt>Off-nadir</dt><dd>How far the camera is tilted away from looking straight down. At 0 degrees it looks straight down. At 20 degrees you can see some building sides.</dd></div>
+      <div class="ti"><dt>Leakage</dt><dd>Here it means the model accidentally mistaking a steep hillside for a tall building. You tested for it and it does not happen.</dd></div>
+    </dl>
+  </div>
+</section>
+
+<!-- SLIDE 5 -->
+<section class="slide" id="s5">
+  <div class="shead">
+    <div class="snum">Slide 5</div>
+    <h3>Impact and benefits</h3>
+    <p>Who would use this and why it is worth funding. The least technical slide, but it has the abbreviations most likely to catch you out.</p>
+  </div>
+
+  <div class="el">
+    <h4>Who it serves</h4>
+    <div class="tw"><table>
+      <tr><th>Who</th><th>What they get</th></tr>
+      <tr><td>ISRO and SAC</td><td>Heights from photos they already have, with no new satellite passes</td></tr>
+      <tr><td>Urban planning</td><td>Building heights for checking legal limits and modelling shadows</td></tr>
+      <tr><td>Disaster response</td><td>A surface map straight after an event, without waiting for a survey</td></tr>
+      <tr><td>Forestry</td><td>Tree heights, used to estimate how much wood and carbon a forest holds</td></tr>
+      <tr><td>Telecom</td><td>Checking whether two towers can see each other, without a laser survey</td></tr>
+    </table></div>
+    <dl class="terms">
+      <div class="ti"><dt>FSI</dt><dd>Floor Space Index. The total floor area of a building divided by the size of its plot. Indian city rules limit it, so checking building heights checks whether the rule was followed.</dd></div>
+      <div class="ti"><dt>AMRUT</dt><dd>An Indian government scheme that funds city infrastructure improvements. Mentioned because it pays for exactly this kind of city data work.</dd></div>
+      <div class="ti"><dt>Shadow study</dt><dd>Working out what a new building will block sunlight from. Needs the heights of surrounding buildings.</dd></div>
+      <div class="ti"><dt>Canopy height</dt><dd>How tall the tree layer of a forest is.</dd></div>
+      <div class="ti"><dt>Biomass</dt><dd>The total weight of living plants in an area. Estimated from tree height, and used for carbon accounting.</dd></div>
+      <div class="ti"><dt>Encroachment</dt><dd>Illegal building or tree cutting on protected land. Visible as a change in height.</dd></div>
+      <div class="ti"><dt>Line-of-sight</dt><dd>Whether two points can see each other in a straight line. Needed for radio links between phone towers, and blocked by buildings and hills.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>The four numbers</h4>
+    <div class="tw"><table>
+      <tr><th>Number</th><th>What it means</th></tr>
+      <tr><td><strong>1</strong> image</td><td>You need one photo, not a pair</td></tr>
+      <tr><td><strong>0</strong> graphics cards</td><td>Half a second per tile on a normal processor</td></tr>
+      <tr><td><strong>36.8</strong> MB</td><td>The whole model, small enough to work offline</td></tr>
+      <tr><td><strong>4</strong> landscapes</td><td>Scored separately, never hidden in one average</td></tr>
+    </table></div>
+    <p><strong>Quantised</strong>, if it appears, means the model's numbers are stored with less precision to make the file smaller. That is what gets it down to 36.8 MB, and it costs 0.161 m of accuracy.</p>
+  </div>
+
+  <div class="el">
+    <h4>The closing line</h4>
+    <div class="onslide">"The cost avoided is the second acquisition, not the first."</div>
+    <p>This is the sharpest money argument in the deck.</p>
+    <p>You are not claiming to make satellite photos cheaper. You are saying: the photo has already been taken and already been paid for. You get a completely new product out of it without spending anything more.</p>
+    <p>That is much harder to argue with than a claim about being cheaper.</p>
+  </div>
+</section>
+
+<!-- SLIDE 6 -->
+<section class="slide" id="s6">
+  <div class="shead">
+    <div class="snum">Slide 6</div>
+    <h3>Research and references</h3>
+    <p>Proof that you know the field. Judges scan this to see whether you actually read the papers or just listed them.</p>
+  </div>
+
+  <div class="el">
+    <h4>Research that changed what you built</h4>
+    <div class="tw"><table>
+      <tr><th>Paper</th><th>What you took from it</th></tr>
+      <tr><td><strong>Depth Anything V2</strong> (2024)</td><td>The model you started from</td></tr>
+      <tr><td><strong>HTC-DC Net</strong> (2023)</td><td>A technique for separating roof pixels from ground pixels</td></tr>
+      <tr><td><strong>Depth Any Canopy</strong> (2024)</td><td>The method for adapting a depth model to aerial photos</td></tr>
+      <tr><td><strong>Beta-NLL</strong> (2022)</td><td>A fix that stops the height output from stalling during training</td></tr>
+      <tr><td><strong>IM2HEIGHT, TSE-Net</strong></td><td>Earlier attempts at this same problem, used as your comparison point</td></tr>
+    </table></div>
+    <dl class="terms">
+      <div class="ti"><dt>NeurIPS</dt><dd>The biggest machine learning conference in the world.</dd></div>
+      <div class="ti"><dt>TGRS</dt><dd>The leading journal for satellite and remote sensing research.</dd></div>
+      <div class="ti"><dt>ICLR</dt><dd>Another major machine learning conference.</dd></div>
+      <div class="ti"><dt>et al.</dt><dd>Latin for "and others". It means the paper had more authors than the one named.</dd></div>
+      <div class="ti"><dt>Beta-NLL</dt><dd>An adjustment to how the model is trained. Without it, teaching the model to report uncertainty can accidentally stop it improving its height estimates.</dd></div>
+      <div class="ti"><dt>Baseline</dt><dd>Earlier work that you measure yourself against.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>Tried, measured, rejected</h4>
+    <p>This is the most convincing block in the deck. Anyone can list what worked. Listing what failed, with the number that killed it, is what separates real testing from marketing.</p>
+    <div class="tw"><table>
+      <tr><th>Idea</th><th>Why it was dropped</th></tr>
+      <tr><td>Predict a height range instead of a number</td><td>No improvement</td></tr>
+      <tr><td>Measure shadows to get height</td><td>Even done perfectly it scores 0.503. Your model already scores 0.787.</td></tr>
+      <tr><td>Make training focus harder on tall buildings</td><td>The assumption was wrong. Tall pixels are 7.5% of the data but already cause 78.8% of the error.</td></tr>
+      <tr><td>Average two models together</td><td>Both models make almost identical mistakes, so averaging changes nothing.</td></tr>
+      <tr><td>Rescale all outputs to undo the squashing</td><td>Moves the error around instead of removing it.</td></tr>
+    </table></div>
+    <dl class="terms">
+      <div class="ti"><dt>Oracle</dt><dd>A pretend perfect version of something, used to find out the best it could possibly do. "Oracle shadows" means: even with flawless shadow measurement, this method only reaches 0.503, which is worse than what you already have. So it cannot help.</dd></div>
+      <div class="ti"><dt>Photogrammetry</dt><dd>Measuring real-world sizes and distances from photographs.</dd></div>
+      <div class="ti"><dt>LDS</dt><dd>A published technique for making training pay more attention to rare cases. Rejected because the assumption behind it did not hold for your data.</dd></div>
+      <div class="ti"><dt>Ensemble</dt><dd>Averaging several models together. Only helps when they make different mistakes. Yours make the same ones.</dd></div>
+    </dl>
+  </div>
+
+  <div class="el">
+    <h4>The probes</h4>
+    <p>A <strong>probe</strong> is a small experiment where you wrote down what you expected, and what result would prove you wrong, <em>before</em> running it.</p>
+    <div class="tw"><table>
+      <tr><th>Probe</th><th>What it found</th></tr>
+      <tr><td>01 Tall buildings</td><td>Not fixable with more training. The training data only goes up to 82.8 m.</td></tr>
+      <tr><td>03 Sharpening</td><td>Trying to square off roofs made every measurement worse.</td></tr>
+      <tr><td>04 Missing detail</td><td>Detail is limited by how much ground each square covers.</td></tr>
+      <tr><td>05 Resolution</td><td>Blurrier ISRO-style photos cost only 3.6% after automatic resizing.</td></tr>
+      <tr><td>06 Height squashing</td><td>Measured exactly: <span class="t">ours = 0.473 × truth + 2.66 m</span></td></tr>
+    </table></div>
+    <p><strong>Probe 06 is the one to understand properly.</strong> That formula lets you predict what your model will say for any building.</p>
+    <p>Take a 100 m building. Multiply by 0.473 to get 47.3. Add 2.66. You get about <strong>50 m</strong>.</p>
+    <p>Take a 5 m building. Multiply by 0.473 to get 2.37. Add 2.66. You get about <strong>5 m</strong>, which is correct.</p>
+    <p>So your entire weakness is described by one line. It also proves the error is predictable rather than random.</p>
+    <p>If a judge asks why you do not just divide by 0.473 to fix it — that is the "rescale" idea in the rejected list above. It does not work, because the model is not uniformly shrinking everything. It genuinely cannot tell a 26 m building from a 76 m one, and no amount of rescaling creates information that is not there.</p>
+  </div>
+
+  <div class="el">
+    <h4>The comparison table</h4>
+    <p>Seven rows, three columns: a laser or stereo survey, other researchers' single-photo work, and yours. Each row is marked yes, partly, or no.</p>
+    <p><strong>You lose two of the rows.</strong> A laser survey beats you on those two. You left them in deliberately.</p>
+    <div class="say"><b>The best line in the deck</b><p>"Two rows the alternatives win. A stereo survey gives absolute height directly and ships mature viewers — the table is only useful to a panel if the rows we lose are still in it."</p><p>The reasoning: if a comparison table shows you winning every single row, judges assume you chose the rows to flatter yourself. Nobody believes it. By showing the two rows where you lose, the five where you win become believable.</p></div>
+  </div>
+
+  <div class="el">
+    <h4>The benchmark, repeated</h4>
+    <div class="onslide">3.62 m per-building RMSE against airborne LiDAR, versus 5.9 m published for Asia. Scored on 3,090 buildings across 80 held-out tiles.</div>
+    <p>Same number as slide 1, so the same correction applies. Your real shipped figure is <strong>3.667 m</strong>. Fix both slides together.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Deck file: <span class="t">SIH2026-DevUp-SIH26175-DepthWizard-C.pptx</span>. Every figure was checked against your own measurement records, the official SIH portal page, and your source code. Where the deck disagreed with the evidence, it is flagged above.</p>
+</footer>
+
+</div>

@@ -1,0 +1,9 @@
+# Runtime only. Nothing here is for training, evaluation or analysis -- no matplotlib,
+# no pandas, no timm, no kaggle, no torchvision. Determined by reading the imports of
+# infer.py, train.py (for pick_precision), depthwizard/*, and tools/export_terrain.py.
+torch==2.11.0+cpu           # matches the 2.11 that wrote the checkpoint
+transformers>=4.44,<5      # AutoModelForDepthEstimation builds the DA-V2 backbone
+rasterio>=1.3              # GeoTIFF read/write; manylinux wheel bundles GDAL
+numpy>=1.24,<2
+scipy>=1.11                # ndimage: gaussian_filter, percentile_filter
+pillow>=10.0

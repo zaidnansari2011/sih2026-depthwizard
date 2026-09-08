@@ -1,0 +1,274 @@
+<div class="parthead">
+  <div class="pn">Part 4</div>
+  <h2>The model</h2>
+  <p>Depth Anything V2 Small, adapted to predict absolute height in metres with a per-pixel
+  uncertainty. Every layer, every parameter count, and every initialisation decision.</p>
+</div>
+
+<section>
+<h3>4.1 What the base model is</h3>
+<div class="dl">
+  <div class="di"><dt>Identifier</dt><dd><span class="t">depth-anything/Depth-Anything-V2-Small-hf</span> on Hugging Face</dd></div>
+  <div class="di"><dt>Licence</dt><dd>Apache-2.0. This is the only variant that can legally ship. Base, Large and Giant are CC-BY-NC-4.0.</dd></div>
+  <div class="di"><dt>Task it was trained for</dt><dd>Monocular relative depth estimation on natural, ground-level photographs.</dd></div>
+  <div class="di"><dt>Backbone</dt><dd><strong>DINOv2 ViT-S</strong> &mdash; a vision transformer, patch size 14, embedding dimension 384.</dd></div>
+  <div class="di"><dt>Neck</dt><dd><strong>DPT</strong> &mdash; Dense Prediction Transformer. Reassembles the coarse token grid back into a dense per-pixel feature map.</dd></div>
+  <div class="di"><dt>Constructed by</dt><dd>One call: <span class="t">AutoModelForDepthEstimation.from_pretrained(model_id)</span>. The backbone, neck and head are then taken apart and rewired.</dd></div>
+</div>
+
+<h4>What each of those words means</h4>
+<div class="dl">
+  <div class="di"><dt>Vision transformer</dt><dd>A network that cuts an image into a grid of small squares (&ldquo;patches&rdquo;), turns each into a vector (&ldquo;token&rdquo;), and lets every token exchange information with every other token. Unlike a convolutional network it has a global view from the first layer.</dd></div>
+  <div class="di"><dt>Patch size 14</dt><dd>Each square is 14&times;14 pixels. This single number constrains everything downstream &mdash; see the input-size trap in 4.5.</dd></div>
+  <div class="di"><dt>Embedding dimension 384</dt><dd>Each 14&times;14 patch is represented by a vector of 384 numbers.</dd></div>
+  <div class="di"><dt>DINOv2</dt><dd>A backbone trained with self-supervision &mdash; no human labels at all. It learned general visual structure from a very large image collection, which is why it transfers to imagery it never saw, including satellite photographs.</dd></div>
+  <div class="di"><dt>DPT</dt><dd>The decoder design that takes transformer tokens at several depths and progressively fuses and upsamples them into a full-resolution prediction.</dd></div>
+</div>
+
+<h3>4.2 Exact parameter counts</h3>
+<p>Measured on 6 September 2026 by constructing the model and summing
+<span class="t">numel()</span> over each submodule.</p>
+<div class="tw"><table>
+<tr><th>Component</th><th>Parameters</th><th>Share</th><th>What it does</th></tr>
+<tr><td>Backbone (DINOv2 ViT-S)</td><td class="n">22,056,576</td><td class="n">89.0%</td><td>Understands the image</td></tr>
+<tr><td>Neck (DPT)</td><td class="n">2,700,768</td><td class="n">10.9%</td><td>Turns tokens back into dense features</td></tr>
+<tr class="hi"><td>Head (all four convolutions)</td><td class="n">27,778</td><td class="n">0.1%</td><td>Turns features into metres and an error bar</td></tr>
+<tr class="hi"><td><strong>Total</strong></td><td class="n"><strong>24,785,122</strong> (24.79 M)</td><td class="n">100%</td><td></td></tr>
+</table></div>
+
+<div class="fact">
+  <b>The sentence this table is for</b>
+  <p>Almost all of the learned knowledge &mdash; 89% of it &mdash; lives in a backbone that was
+  downloaded, not trained here. The part that was <em>designed</em> for this problem is
+  0.1% of the parameters. That is not a weakness; it is the entire point of fine-tuning a
+  foundation model. But it means the honest claim is &ldquo;we adapted a pre-trained backbone,&rdquo;
+  never &ldquo;we built a 25-million-parameter network.&rdquo;</p>
+</div>
+
+<h4>The head, layer by layer</h4>
+<div class="tw"><table>
+<tr><th>Layer</th><th>Shape</th><th>Parameters</th><th>Origin</th></tr>
+<tr><td><span class="t">conv1</span></td><td>Conv2d 64 &rarr; 32, kernel 3&times;3</td><td class="n">18,464</td><td>Pretrained, kept</td></tr>
+<tr><td><span class="t">conv2</span></td><td>Conv2d 32 &rarr; 32, kernel 3&times;3</td><td class="n">9,248</td><td>Pretrained, kept</td></tr>
+<tr class="hi"><td><span class="t">conv_mu</span></td><td>Conv2d 32 &rarr; 1, kernel 1&times;1</td><td class="n">33</td><td>Pretrained <span class="t">conv3</span>, repurposed as the height branch</td></tr>
+<tr class="hi"><td><span class="t">conv_log_var</span></td><td>Conv2d 32 &rarr; 1, kernel 1&times;1</td><td class="n">33</td><td><strong>New.</strong> The uncertainty branch. Added by this project.</td></tr>
+</table></div>
+<p>The uncertainty head is <strong>33 parameters</strong>: 32 weights and one bias. That is the
+entire cost of the project's headline differentiator.</p>
+
+<h3>4.3 The four changes made to the stock model</h3>
+
+<h4>Change 1 &mdash; two outputs instead of one</h4>
+<p>The stock head ends in a single 32&rarr;1 convolution. That convolution is kept and becomes the
+<strong>mean branch</strong> (<span class="t">conv_mu</span>), because its weights are pretrained and
+worth keeping. A second 1&times;1 convolution is added as the <strong>log-variance branch</strong>
+(<span class="t">conv_log_var</span>). Both share <span class="t">conv1</span> and
+<span class="t">conv2</span>.</p>
+<p>This is the standard <strong>Kendall &amp; Gal arrangement</strong> for heteroscedastic
+uncertainty: one trunk, two thin heads, one predicting the value and one predicting how
+uncertain that value is. It costs almost nothing.</p>
+
+<h4>Change 2 &mdash; no final ReLU</h4>
+<p>The stock head clamps its output at zero, because relative depth cannot be negative. Height
+above ground is <em>almost</em> non-negative &mdash; but a hard ReLU has zero gradient everywhere
+it is active, so any pixel the model pushes below zero early in training is dead for the rest of
+the run. The ReLU is removed and the loss is left to handle plausibility.</p>
+
+<h4>Change 3 &mdash; output scaled to metres</h4>
+<p>The pretrained head emits values around 1. Height above ground runs to tens or hundreds of
+metres. Rather than force the head to learn a large gain through a 5&times;10<sup>-6</sup> learning
+rate, the network predicts in normalised units and the result is multiplied by
+<span class="t">height_scale</span>.</p>
+<div class="fact">
+  <b>height_scale = 13.223477220535276</b>
+  <p>This is not a round number and not a guess. It is the <strong>95th percentile of the
+  above-ground height distribution</strong> measured across all 2,783 training tiles. The
+  maximum would be wrong &mdash; that is a lone 204 m structure, and scaling by it would squash
+  every ordinary building toward zero. The p95 puts the bulk of the distribution in a sensible
+  numeric range.</p>
+  <p>The loss therefore sees metres directly, which means the RMSE printed during training is
+  already the number ISRO scores, while the network's internal range stays around 1.</p>
+</div>
+<p>Variance is predicted in the same normalised units, so converting it to metres is a shift of
+<span class="t">2&middot;log(height_scale)</span> in log space. Doing that inside the model rather
+than inside the loss keeps the loss unit-agnostic and the reported &sigma; in metres.</p>
+
+<h4>Change 4 &mdash; a useful accident of polarity</h4>
+<p>Depth Anything V2 predicts <em>inverse</em> relative depth: nearer is a larger number. Viewed
+from orbit, nearer means taller. So the pretrained head's sign convention already matches height,
+and the fine-tune starts from a sensible initialisation rather than fighting one.</p>
+
+<h3>4.4 Initialisation, and why each choice is deliberate</h3>
+<div class="dl">
+  <div class="di w"><dt>conv_log_var weights</dt><dd>Initialised to <strong>zero</strong>, bias to <span class="t">2&middot;log(init_sigma / height_scale)</span> with <span class="t">init_sigma = 5.0 m</span>. So &sigma; starts uniform at 5 m everywhere and only becomes spatially varying once the data gives it a reason to. Random initialisation here lets the variance term shove the mean head around before the mean head knows anything.</dd></div>
+  <div class="di w"><dt>conv_mu, default</dt><dd><span class="t">init_mu="pretrained"</span> &mdash; keeps the pretrained readout. This is what runs 01&ndash;04 used, and keeping it as the default means those runs stay bit-comparable.</dd></div>
+  <div class="di w"><dt>conv_mu, alternative</dt><dd><span class="t">init_mu="constant"</span> &mdash; zero the weights and set the bias to a chosen constant height. Added after run05 died. See below.</dd></div>
+</div>
+
+<div class="warn">
+  <b>The initialisation bug that cost nine GPU-hours</b>
+  <p>The pretrained readout emits <strong>disparity</strong>, and its output scale is a property
+  of the checkpoint's feature magnitudes, not of the task. Measured on real crops with
+  <span class="t">tools/preflight.py</span>: the median absolute residual at initialisation is
+  <strong>16.5 m for DA-V2-Small</strong> but <strong>666 m for DA-V1-Large</strong>. The two
+  model families' necks do not emit features of the same magnitude, even though their
+  <span class="t">conv3</span> weights are comparable in size (mean |w| 0.088 against 0.100).</p>
+  <p>A 666 m residual drives <span class="t">log_var</span> into its clamp on the very first NLL
+  step. The clamp then zeroes the variance head's gradient <em>and</em> suppresses the mean
+  head's by roughly 1,100&times; (measured by <span class="t">tools/nll_deadlock_probe.py</span>).
+  That is what killed run05: it diverged to NaN at epoch 6 and produced no information at all.
+  The fix is <span class="t">init_mu="constant"</span>, which discards a 32&rarr;1 linear readout
+  of disparity that would have to be relearned as height anyway, while keeping the backbone,
+  the neck and conv1/conv2.</p>
+</div>
+
+<h3>4.5 The input-size constraint &mdash; a trap that fails silently</h3>
+<div class="warn">
+  <b>Patch size 14 governs every image dimension in this project</b>
+  <p>The head computes <span class="t">patch_h = H // 14</span> and then interpolates its output
+  to <span class="t">patch_h &times; 14</span>. Feed it a 256&times;256 crop &mdash; the size the
+  Depth Any Canopy recipe uses &mdash; and you get <strong>252&times;252</strong> back, with no
+  warning and no error.</p>
+  <p>Crops are therefore <strong>518</strong>, which is 14 &times; 37 and is also DA-V2's native
+  training resolution. A stride of <strong>506</strong> tiles a 1024&times;1024 image exactly
+  2&times;2. <span class="t">model.check_input_size()</span> raises a
+  <span class="t">ValueError</span> naming the nearest valid sizes rather than letting a
+  mismatch reach the loss, where it would surface as a confusing broadcast error or, worse,
+  silently work after an accidental resize.</p>
+</div>
+
+<h3>4.6 The forward pass, in order</h3>
+<pre>1.  check_input_size(H, W, 14)                     raise if not a multiple of 14
+2.  ph, pw = H // 14, W // 14                       token grid dimensions
+3.  out = backbone.forward_with_filtered_kwargs(x)  DINOv2 ViT-S -> feature maps
+4.  hidden = neck(out.feature_maps, ph, pw)         DPT reassemble + fuse
+5.  feat = hidden[head_in_index]                    head_in_index = -1, the last stage
+6.  x = conv1(feat)                                 64 -> 32 channels
+7.  x = interpolate(x, (ph*14, pw*14), bilinear)    upsample, exactly as in the DPT paper
+8.  x = activation1(conv2(x))                       32 -> 32, ReLU
+9a. mu      = conv_mu(x) * height_scale             metres
+9b. log_var = conv_log_var(x) + 2*log(height_scale) log-variance in metres-squared
+10. return mu, log_var</pre>
+<p><span class="t">model.predict()</span> wraps this, converts log-variance to
+<span class="t">sigma = exp(0.5 &middot; log_var)</span>, and returns
+<span class="t">(height_m, sigma_m)</span> as two <span class="t">(B, 1, H, W)</span> tensors.</p>
+
+<h3>4.7 The optional binned head (built, measured, not shipped)</h3>
+<p>A second head design exists behind <span class="t">--bins N</span>, defaulting to
+<span class="t">0</span> (off). It implements the architecture from HTC-DC Net, IEEE TGRS 2023:</p>
+<div class="dl">
+  <div class="di"><dt>Adaptive bins</dt><dd>A small MLP over the pooled feature map predicts N bin <em>widths</em> per image via softmax, so widths are strictly positive and always sum to the full height range. Edges are the cumulative sum from <span class="t">bin_min</span>.</dd></div>
+  <div class="di"><dt>Soft-argmax</dt><dd>The output is the expectation <span class="t">H = &Sigma; P&#7522;c&#7522;</span> over bin centres &mdash; a continuous value from a classification head, with no discretisation artefacts.</dd></div>
+  <div class="di"><dt>Head-tail cut</dt><dd>Foreground is defined as height &gt; 1 m. Foreground and background get their <em>own</em> distribution over bins, selected per pixel by a binary classifier. Measured on our shards, 35.6% of valid pixels sit above 1 m, so the binary problem is close to balanced.</dd></div>
+  <div class="di"><dt>Warmup routing</dt><dd>During the first 500 steps the ground truth does the routing, not the gate. Measured at initialisation, a randomly initialised gate fired on either 0.0% or 99.4% of pixels depending on the random projection &mdash; whichever branch loses gets no gradient at all. Truth-routing removes that lottery.</dd></div>
+  <div class="di"><dt>Configuration</dt><dd>N = 128 bins over a measured range of [&minus;3, 120] m. 128 rather than the conventional 256 because ablations show gains saturate early and 128 is what fits in 12 GB at 518&times;518.</dd></div>
+</div>
+<p><strong>It lost.</strong> run03 scored 6.950 m whole-tile against run02's 6.454 m &mdash; 7.7%
+worse overall and 8.8% worse on buildings, which is the thing it was built to fix. The full
+result is in Part 13. The code is kept because it exports to ONNX cleanly and is the right
+starting point if the approach is revisited.</p>
+
+<h3>4.8 Parameter groups and learning rates</h3>
+<p><span class="t">model.param_groups()</span> returns four groups:</p>
+<div class="tw"><table>
+<tr><th>Group</th><th>Learning rate</th><th>Weight decay</th></tr>
+<tr><td>backbone, weights</td><td class="n">5e-6</td><td class="n">0.01</td></tr>
+<tr><td>backbone, biases and norms</td><td class="n">5e-6</td><td class="n">0.0</td></tr>
+<tr><td>head (neck + conv1 + conv2 + conv_mu + conv_log_var), weights</td><td class="n">2.5e-4 (50&times;)</td><td class="n">0.01</td></tr>
+<tr><td>head, biases and norms</td><td class="n">2.5e-4</td><td class="n">0.0</td></tr>
+</table></div>
+<p>The backbone is a well-conditioned pretrained representation and wants the small rate the
+Depth Any Canopy recipe uses. The head is doing something the pretrained weights were never asked
+to do &mdash; emit metres, and emit a variance from a freshly initialised convolution &mdash; so it
+needs a materially larger rate or it spends the whole budget catching up. Excluding biases and
+normalisation parameters from weight decay is standard practice for vision transformers.</p>
+
+<h3>4.9 Reconstructing a model from a checkpoint</h3>
+<p><span class="t">model.config()</span> returns everything needed to rebuild:
+<span class="t">model_id</span>, <span class="t">height_scale</span>,
+<span class="t">predict_uncertainty</span>, <span class="t">bins</span>,
+<span class="t">bin_min</span>, <span class="t">bin_max</span>, <span class="t">htc</span>.
+It exists in one place because three separate tools reconstruct a model from a checkpoint, and
+each used to hardcode the keys it knew about &mdash; adding the binned head would have broken all
+three silently. <span class="t">from_checkpoint()</span> defaults
+<span class="t">htc</span> to <span class="t">False</span> for older checkpoints, because any
+checkpoint written before the head-tail cut existed was trained without it.</p>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 5</div>
+  <h2>The loss functions</h2>
+  <p>Why the model predicts a distribution rather than a number, what each loss term buys, and
+  the tests that prove the uncertainty head recovers a known answer.</p>
+</div>
+
+<section>
+<h3>5.1 The core objective &mdash; heteroscedastic Gaussian negative log-likelihood</h3>
+<pre>L = 0.5 * ( log_var + (y - mu)^2 / exp(log_var) )</pre>
+<p>Read the two terms as a trade. The model can lower the residual term by admitting uncertainty
+&mdash; but it pays <span class="t">log_var</span> for doing so. It cannot buy a free pass by
+predicting huge variance everywhere, because the first term grows.</p>
+<p><strong>Heteroscedastic</strong> means the uncertainty is predicted per pixel rather than being
+one number for the whole image. That is the useful version: a flat car park and a cluttered rooftop
+edge genuinely do not deserve the same error bar.</p>
+<p>Predicting <em>log</em>-variance rather than variance keeps it positive without a clamp and
+keeps gradients well-scaled.</p>
+
+<h3>5.2 Every term in the composite loss</h3>
+<div class="tw"><table>
+<tr><th>Term</th><th>Default weight</th><th>What it does</th></tr>
+<tr class="hi"><td>Gaussian NLL</td><td class="n">1.0</td><td>The main objective. Fits the height and its uncertainty jointly.</td></tr>
+<tr><td>Gradient matching</td><td class="n">0.5 (<span class="t">--grad-weight</span>)</td><td>Matches the spatial gradient of the prediction to the gradient of the truth. Sharpens edges; without it surfaces read as rounded mounds.</td></tr>
+<tr><td>MSE warm-up</td><td class="n">first 200 steps</td><td>Plain mean-squared error for the first 200 steps so <span class="t">mu</span> becomes reasonable before the variance head starts shaping gradients.</td></tr>
+<tr><td>&beta;-NLL</td><td class="n">0.5 in run02 (<span class="t">--beta</span>)</td><td>Detach-weighting of the residual term, per Seitzer et al. 0 is standard NLL. Small positive values stabilise very early training.</td></tr>
+<tr><td>Chamfer (binned head only)</td><td class="n">0.01</td><td>Pulls the bin <em>edges</em> onto the quantiles of the truth &mdash; the edges, not the centres, which is what HTC-DC Net supervises.</td></tr>
+<tr><td>Distribution constraint (binned only)</td><td class="n">1.0</td><td>Cross-entropy against a Gaussian centred on the truth, supervising the <em>shape</em> of the per-pixel distribution rather than only its mean.</td></tr>
+<tr><td>Head-tail cross-entropy (binned only)</td><td class="n">1.0</td><td>Trains the foreground/background gate directly against (truth &gt; 1 m).</td></tr>
+</table></div>
+
+<h3>5.3 Clamps and guards</h3>
+<div class="dl">
+  <div class="di"><dt>log_var range</dt><dd>Clamped to [&minus;7, +7] (<span class="t">--log-var-max 7.0</span>). Guards against <span class="t">exp()</span> overflow and against the model escaping into &ldquo;infinitely uncertain everywhere.&rdquo;</dd></div>
+  <div class="di"><dt>Validity mask</dt><dd>Every loss takes a mask. LiDAR void pixels and no-data regions contribute nothing.</dd></div>
+  <div class="di"><dt>Gradient clipping</dt><dd>Norm clipped at 1.0 (<span class="t">--clip</span>).</dd></div>
+  <div class="di"><dt>Rail tripwire</dt><dd>If <span class="t">log_var</span> sits at its clamp for <span class="t">--rail-patience 50</span> consecutive steps, the run aborts. This is the guard that run05 did not have.</dd></div>
+  <div class="di"><dt>Sanity gates</dt><dd>A run is killed if RMSE exceeds <span class="t">--gate-rmse 25.0</span> or correlation falls below <span class="t">--gate-corr 0.20</span>. <span class="t">tools/tripwire_selftest.py</span> proves both that the tripwires fire on a broken run and that they do <em>not</em> fire on a healthy one.</dd></div>
+</div>
+
+<h3>5.4 The test that proves the uncertainty head works</h3>
+<div class="fact">
+  <b>Recovery of a known heteroscedastic sigma</b>
+  <p>A synthetic dataset is built with two regions of deliberately different noise:
+  true &sigma; = <strong>0.50</strong> in one and <strong>3.00</strong> in the other. The head is
+  trained on it and asked what &sigma; it thinks each region has. It recovers
+  <strong>0.497</strong> and <strong>2.99</strong>, and separates the two regimes with a ratio of
+  6.02 against a true ratio of 6.0.</p>
+  <p>This matters because &ldquo;the model reports uncertainty&rdquo; is a claim that is easy to
+  make and hard to check on real data, where the true uncertainty is unknown. On synthetic data
+  the true answer <em>is</em> known, and the head returns it.</p>
+</div>
+<p><strong>Test suite status, run on 6 September 2026:</strong>
+<span class="t">tests/test_losses.py</span> reports <strong>19 passed, 0 failed</strong>.
+<span class="t">tests/test_gcp_affine.py</span> reports <strong>all 9 tests passed</strong>,
+including exact recovery of a known ratio error &mdash; a fitted exponent of 1.3889 against a true
+1.3889, with a residual root-mean-square of 7.74&times;10<sup>-7</sup> m.</p>
+<p>Both files must be run with <span class="t">PYTHONPATH</span> set to the repository root; there
+is no <span class="t">pytest</span> in the virtual environment, and each file carries its own
+<span class="t">__main__</span> runner.</p>
+
+<h3>5.5 Why uncertainty is a differentiator and not decoration</h3>
+<p>Single-view height is ill-posed. A model that outputs one confident number per pixel is hiding
+that fact. Three consequences make the uncertainty head worth its 33 parameters:</p>
+<ul>
+<li><strong>It scores in both halves of the marking scheme.</strong> It is an accuracy claim
+(&ldquo;calibrated confidence&rdquo;) and a visualisation feature (a display mode in the viewer).</li>
+<li><strong>It is operationally usable.</strong> The rank correlation between predicted &sigma; and
+actual error is <strong>+0.829</strong>. Where the model says it is unsure, it <em>is</em> wrong,
+monotonically. That makes the uncertainty layer usable for triage &mdash; deciding which parts of
+an output need a human to look at them.</li>
+<li><strong>It feeds the measurement tool.</strong> A height difference between two clicked points
+carries an error bar derived from the two &sigma; values, which is what turns a picture into an
+instrument.</li>
+</ul>
+</section>

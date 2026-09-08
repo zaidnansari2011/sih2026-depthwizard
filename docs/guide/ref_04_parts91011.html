@@ -1,0 +1,617 @@
+<div class="parthead">
+  <div class="pn">Part 9</div>
+  <h2>Results</h2>
+  <p>Every measured number, with the protocol that produced it. Mixing protocols is the most
+  common way to say something false about this project, so the protocols come first.</p>
+</div>
+
+<section>
+<h3>9.1 The four evaluation protocols</h3>
+<div class="tw"><table>
+<tr><th>#</th><th>Protocol</th><th>Data</th><th>Produced by</th></tr>
+<tr><td class="n">1</td><td>in-training validation</td><td>518&times;518 crops from <span class="t">val_*</span> shards, valid pixels subsampled</td><td><span class="t">train.py</span> &rarr; <span class="t">train_log.jsonl</span></td></tr>
+<tr class="hi"><td class="n">2</td><td><strong>whole-tile validation</strong></td><td>80 whole 1024&times;1024 val tiles, sliding window 518 / overlap 140</td><td><span class="t">tools/evaluate.py --split val</span></td></tr>
+<tr><td class="n">3</td><td>whole-tile test</td><td>the same, on the held-out test regions</td><td><span class="t">tools/evaluate.py --split test</span></td></tr>
+<tr><td class="n">4</td><td>India cross-check</td><td>Sikkim crops against Google Open Buildings 2.5D</td><td><span class="t">tools/compare_open_buildings.py</span></td></tr>
+</table></div>
+<div class="warn">
+  <b>Protocols 1 and 2 differ by about 1.5 m on the same checkpoint and the same split</b>
+  <p>run02 at epoch 11 reads <strong>7.980 crop-wise</strong> against <strong>6.454
+  whole-tile</strong>. Overlap averaging in the sliding window plus a different pixel population
+  account for it. Neither is wrong; they are simply not the same measurement.</p>
+  <p>This was discovered on 27 August 2026 after two numbers from the same checkpoint appeared to
+  contradict each other. <strong>There was no bug.</strong> They were different splits, and nothing
+  in the tooling made that visible at the call site. Both tools now take
+  <span class="t">--split</span>, defaulting to val, and scoring test prints a warning.</p>
+</div>
+
+<h3>9.2 How the shipping numbers were measured</h3>
+<pre>python tools/evaluate.py --ckpt checkpoints/run02/best.pt --tta \
+    --fuse-zoom 2 --fuse-sigma 8 --out out/eval_run02_ship
+python tools/make_figures.py --metrics out/eval_run02_ship/metrics.json</pre>
+<div class="dl">
+  <div class="di"><dt>Data</dt><dd>IEEE GRSS DFC2019 Track 1 (US3D), Jacksonville and Omaha, 0.3 m GSD</dd></div>
+  <div class="di"><dt>Reference</dt><dd>Airborne LiDAR &mdash; the same source the field benchmarks against</dd></div>
+  <div class="di"><dt>Split</dt><dd>Region-disjoint, seed 1337</dd></div>
+  <div class="di"><dt>Sample</dt><dd>80 whole tiles, 11,983,760 valid pixels, 3,090 buildings</dd></div>
+  <div class="di"><dt>Configuration</dt><dd><strong>The shipping configuration</strong> &mdash; TTA plus zoom-2 fusion &mdash; not a favourable variant</dd></div>
+</div>
+
+<h3>9.3 Headline &mdash; protocol 2</h3>
+<div class="tw"><table>
+<tr><th>Metric</th><th>Value</th></tr>
+<tr class="hi"><td><strong>Per-building RMSE</strong></td><td class="n"><strong>3.667 m</strong></td></tr>
+<tr><td>Per-building MAE</td><td class="n">1.498 m</td></tr>
+<tr><td>Per-building bias</td><td class="n">&minus;0.237 m</td></tr>
+<tr><td>Per-building median absolute error</td><td class="n">0.894 m</td></tr>
+<tr><td>Per-building correlation</td><td class="n">+0.778</td></tr>
+<tr><td>Whole-tile RMSE</td><td class="n">6.401 m</td></tr>
+<tr><td>Whole-tile MAE</td><td class="n">1.812 m</td></tr>
+<tr><td>Whole-tile correlation</td><td class="n">+0.803</td></tr>
+<tr><td>Median absolute error, all pixels</td><td class="n">0.278 m</td></tr>
+</table></div>
+<p>For scale: the median building in this validation set is <strong>4.22 m</strong> tall and the
+90th percentile is 7.53 m.</p>
+
+<div class="fact">
+  <b>Why per-building, not per-pixel, is the headline</b>
+  <p>Per-pixel building error is dominated by roof edges, where the prediction crosses from ground
+  to roof and is briefly wrong by the whole building height. It is not comparable to any published
+  figure. The field reports one height per building, so we do too &mdash; taking the
+  <strong>median on both sides</strong>. Using a higher percentile of ours against their median
+  manufactures accuracy: measured at <strong>+1.3 m</strong> when that mistake was made.</p>
+  <p>Components smaller than 25 m&sup2; are dropped, which is the convention HTC-DC Net and
+  GlobalBuildingAtlas use.</p>
+</div>
+
+<h3>9.4 The benchmark being beaten</h3>
+<p><strong>GlobalBuildingAtlas</strong> reports <strong>5.9 m</strong> per-building RMSE over Asia.
+Our 3.667 m is <strong>38% better</strong>, on the same kind of metric.</p>
+<p>The comparison is honest in form &mdash; both are per-building RMSE against reference heights
+&mdash; but it is not the same geography, and that must be said. It is a benchmark to place our
+number against, not a head-to-head result.</p>
+
+<h3>9.5 By semantic class &mdash; protocol 2</h3>
+<div class="tw"><table>
+<tr><th>Class</th><th>RMSE</th><th>Reading</th></tr>
+<tr class="ok"><td>Water</td><td class="n">1.324 m</td><td>Flat, easy</td></tr>
+<tr class="ok"><td><strong>Ground</strong></td><td class="n"><strong>1.906 m</strong></td><td>Under 2 m. This is what an absolute DSM stands on, and the surface a flood or landslide model integrates over.</td></tr>
+<tr><td>Vegetation</td><td class="n">4.237 m</td><td>A camera cannot see through leaves</td></tr>
+<tr><td>Bridge</td><td class="n">4.250 m</td><td>Thin structures over voids</td></tr>
+<tr class="bad"><td>Building (per pixel)</td><td class="n">16.256 m</td><td>Roof edges dominate. Not comparable to published figures &mdash; use the per-building number instead.</td></tr>
+</table></div>
+
+<h3>9.6 Where the error actually lives</h3>
+<div class="tw"><table>
+<tr><th>True height</th><th>Buildings</th><th>RMSE</th><th>Bias</th></tr>
+<tr class="ok"><td>0&ndash;3 m</td><td class="n">166</td><td class="n">1.282 m</td><td class="n">+0.49</td></tr>
+<tr class="ok"><td>3&ndash;6 m</td><td class="n">2,305</td><td class="n"><strong>1.429 m</strong></td><td class="n">+0.29</td></tr>
+<tr><td>6&ndash;10 m</td><td class="n">443</td><td class="n">1.947 m</td><td class="n">&minus;0.77</td></tr>
+<tr><td>10&ndash;20 m</td><td class="n">116</td><td class="n">4.034 m</td><td class="n">&minus;1.03</td></tr>
+<tr class="bad"><td><strong>above 20 m</strong></td><td class="n"><strong>60</strong></td><td class="n"><strong>23.451 m</strong></td><td class="n"><strong>&minus;17.16</strong></td></tr>
+</table></div>
+<div class="fact">
+  <b>79% of the total squared error comes from 1.9% of the buildings</b>
+  <p>Under 10 m &mdash; which is 94% of the building stock &mdash; the error is 1.4 m. Above 20 m
+  it collapses to 23 m, and the model is on average 17 m too <em>short</em>.</p>
+  <p>Say this before a judge finds it. The direction matters: we under-call, never over-call, so
+  the failure is conservative.</p>
+</div>
+<p><strong>The tail is a data problem, and that was proved rather than assumed.</strong> Training
+data holds 166 buildings above 30 m and tops out at <strong>82.8 m</strong>, while validation
+reaches <strong>155.3 m</strong>. Fine-tuning hard on the tall buildings we do have moved transfer
+bias the <em>wrong</em> way, from &minus;18.22 to &minus;19.10 m, while the fit improved &mdash;
+textbook overfitting of a tiny sample. More training will not fix this. More tall buildings would.</p>
+
+<h3>9.7 Stability across landscapes &mdash; the criterion ISRO names</h3>
+<div class="tw"><table>
+<tr><th>Landscape</th><th>Whole-tile RMSE</th><th>MAE</th><th>Correlation</th></tr>
+<tr class="ok"><td>Sparse</td><td class="n">1.837 m</td><td class="n">0.655 m</td><td class="n">+0.583</td></tr>
+<tr class="ok"><td>Mixed</td><td class="n">2.723 m</td><td class="n">1.356 m</td><td class="n">+0.824</td></tr>
+<tr><td>Forested</td><td class="n">3.319 m</td><td class="n">2.254 m</td><td class="n">+0.780</td></tr>
+<tr class="bad"><td><strong>Urban</strong></td><td class="n"><strong>13.860 m</strong></td><td class="n">4.759 m</td><td class="n">+0.808</td></tr>
+</table></div>
+<p>Urban is 4&ndash;7&times; the others, and it is the same story as the tail: cities are where the
+buildings above 20 m are. <strong>Correlation stays high at +0.808</strong> &mdash; the
+<em>shape</em> is right; the <em>scale</em> of tall structures is not.</p>
+<p><strong>Forested ground error is 2.50 m against sparse's 0.87 m, and that is not a model
+defect.</strong> LiDAR pulses penetrate canopy and measure the actual ground; a camera physically
+cannot see through leaves. That is optics, not accuracy &mdash; and it is why the same model reaches
+0.87 m on open ground a few hundred kilometres away.</p>
+<p><strong>Hilly is not in this table because DFC2019 has no hills.</strong> Jacksonville and Omaha
+are both flat. That case is covered by Sikkim below, which has no LiDAR, so it is reported as a
+cross-check rather than as an accuracy figure.</p>
+
+<h3>9.8 Does the model know when it is wrong?</h3>
+<div class="tw"><table>
+<tr><th>Metric</th><th>Value</th><th>Meaning</th></tr>
+<tr><td>Expected calibration error</td><td class="n"><strong>0.077</strong></td><td>When the model says it is 68% confident, it is right about 68% of the time, to within about 8 percentage points</td></tr>
+<tr class="hi"><td>&sigma;-versus-error rank correlation</td><td class="n"><strong>+0.829</strong></td><td>Where the model says it is unsure, it <em>is</em> wrong &mdash; monotonically. This is the number that matters operationally.</td></tr>
+<tr><td>Mean predicted &sigma;</td><td class="n">1.082 m</td><td>The typical error bar</td></tr>
+</table></div>
+<p>The rank correlation is what makes the uncertainty layer usable for triage rather than
+decoration. It means an operator can sort by confidence and know that the low-confidence regions
+really are the ones to check.</p>
+
+<h4>The measurement tool applies a measured correction on top of this</h4>
+<p>Naive <span class="t">hypot(&sigma;a, &sigma;b)</span> assumes the two pixels' errors are
+independent, and they are not. Measured on 20 validation tiles from run02:</p>
+<div class="tw"><table>
+<tr><th>Separation between the two points</th><th>Correction applied to the naive error bar</th></tr>
+<tr><td>0.6 &ndash; 3 m</td><td class="n">&times;0.282</td></tr>
+<tr><td>3 &ndash; 15 m</td><td class="n">&times;0.698</td></tr>
+<tr><td>15 &ndash; 60 m</td><td class="n">&times;1.163</td></tr>
+<tr><td>60 &ndash; 300 m</td><td class="n">&times;1.388</td></tr>
+</table></div>
+<p>Error correlation is +0.94 across a metre and only reaches zero past about 60 m. So the naive
+error bar is roughly <strong>3.5&times; too wide</strong> on a single rooftop and
+<strong>too narrow</strong> across a neighbourhood. <span class="t">tools/pair_calibration.py</span>
+fits this curve per checkpoint; it ships as <span class="t">viewer/calibration.json</span>.</p>
+
+<h3>9.9 Fine-tuning against doing nothing &mdash; protocol 2, identical 80 tiles</h3>
+<div class="tw"><table>
+<tr><th>Method</th><th>RMSE</th><th>MAE</th><th>Bias</th><th>Bldg RMSE</th><th>Bldg bias</th><th>Grnd RMSE</th></tr>
+<tr><td>Zero-shot DA-V2, raw</td><td class="n">9.998</td><td class="n">3.856</td><td class="n">&minus;2.047</td><td class="n">25.38</td><td class="n">&minus;13.72</td><td class="n">1.85</td></tr>
+<tr><td>Zero-shot + global affine <em>(deployable baseline)</em></td><td class="n">9.308</td><td class="n">4.528</td><td class="n">+0.230</td><td class="n">22.47</td><td class="n">&minus;9.64</td><td class="n">4.17</td></tr>
+<tr><td>Zero-shot + oracle affine <em>(not deployable)</em></td><td class="n">7.285</td><td class="n">3.147</td><td class="n">&minus;0.000</td><td class="n">17.33</td><td class="n">&minus;2.64</td><td class="n">2.99</td></tr>
+<tr><td>DepthWizard run01 (ep1)</td><td class="n">6.811</td><td class="n">2.224</td><td class="n">&minus;0.752</td><td class="n">16.72</td><td class="n">&minus;3.23</td><td class="n">2.39</td></tr>
+<tr class="hi"><td><strong>DepthWizard run02 (ep11)</strong></td><td class="n"><strong>6.454</strong></td><td class="n"><strong>1.840</strong></td><td class="n">&minus;0.569</td><td class="n"><strong>16.37</strong></td><td class="n">&minus;4.70</td><td class="n"><strong>1.92</strong></td></tr>
+</table></div>
+<p><strong>Fine-tuning beats the deployable zero-shot baseline by 30.7%</strong> (9.308 &rarr;
+6.454), and beats the <em>oracle</em> affine variant &mdash; which is allowed to fit scale and shift
+from each tile's own ground truth and is therefore not deployable at all.</p>
+<div class="warn">
+  <b>Never quote the oracle affine as a result</b>
+  <p>It refits scale and shift using the test tile's own ground truth. It bounds what a purely
+  linear correction could achieve; it is not deployable, because it needs the answer in order to
+  compute the answer.</p>
+</div>
+
+<h3>9.10 India &mdash; protocol 4, where there is no LiDAR</h3>
+<p>No airborne LiDAR reference exists for our Indian scenes, so this is a <strong>cross-check
+against another model</strong>, not an accuracy measurement. Google Open Buildings 2.5D Temporal is
+derived from Sentinel-2 at roughly 4 m effective resolution; we run at 0.31 m.</p>
+<div class="tw"><table>
+<tr><th>Their confidence band</th><th>Buildings</th><th>Bias (ours &minus; theirs)</th><th>MAE</th><th>r</th></tr>
+<tr><td>&gt; 0.00 (raw outline)</td><td class="n">585</td><td class="n">&minus;1.15 m</td><td class="n">2.34 m</td><td class="n">+0.269</td></tr>
+<tr><td>&gt; 0.50</td><td class="n">581</td><td class="n">&minus;3.94 m</td><td class="n">4.30 m</td><td class="n">+0.336</td></tr>
+<tr><td>&gt; 0.70</td><td class="n">392</td><td class="n">&minus;5.35 m</td><td class="n">5.49 m</td><td class="n">+0.418</td></tr>
+<tr class="hi"><td><strong>&gt; 0.85 (confident)</strong></td><td class="n">168</td><td class="n"><strong>&minus;6.94 m</strong></td><td class="n">7.04 m</td><td class="n">+0.452</td></tr>
+</table></div>
+<div class="fact">
+  <b>&minus;6.94 m is the honest headline, not &minus;1.15 m</b>
+  <p>Open Buildings' low-confidence outlines are dilated blobs that spill onto surrounding ground
+  and canopy, which drags the disagreement toward zero. The larger, less flattering number comes
+  from the footprints it is most sure about. Correlation <em>improves</em> as the threshold rises,
+  so this is not noise thinning out &mdash; it is a real, monotone effect.</p>
+  <p>And it is consistent with our known behaviour: we under-call tall buildings, and Sikkim's hill
+  town is dense and vertical. <strong>Two independent datasets, on two continents, against two
+  different references, now say the same thing.</strong></p>
+  <p>Do not quote &minus;1.15 m as the India result. Anyone who knows the dataset will ask which
+  band was thresholded.</p>
+</div>
+
+<h4>Terrain leakage on 30-degree slopes: tested, and clean</h4>
+<p>AGL is terrain-removed by definition, so a correct model reads the same on a rooftop at 1,200 m
+as on one at 400 m. Flat Jacksonville and Omaha can never test that. Copernicus GLO-30 over this
+crop gives <strong>947 m of relief at a median slope of 31.4&deg;</strong>.</p>
+<div class="tw"><table>
+<tr><th>Correlation</th><th>r</th><th>Effect size</th></tr>
+<tr class="ok"><td>AGL vs <strong>slope</strong></td><td class="n">&minus;0.044</td><td class="n">&minus;0.005 m per degree</td></tr>
+<tr><td>AGL vs <strong>elevation</strong></td><td class="n">+0.538</td><td class="n">+0.0026 m per metre</td></tr>
+</table></div>
+<p><strong>No slope leakage.</strong> The ground's tilt is not being read as height, which is the
+failure we most feared and the one that would have invalidated the whole hilly-terrain claim. The
+elevation term correlates but is tiny in effect &mdash; 2.5 m of drift across the entire 947 m of
+relief &mdash; and it is confounded, because in the Himalaya vegetation and settlement both change
+with altitude. Report it as a bounded association, not a proven bias.</p>
+
+<h4>Three method choices that change the answer</h4>
+<ul>
+<li><strong>Per building, not per pixel</strong>, because their footprint edges are Sentinel-2
+blurry and a pixel score would mostly measure their blur.</li>
+<li><strong>Confidence intervals resample buildings, never pixels.</strong></li>
+<li><strong>A global shift is recovered by FFT phase correlation first</strong>, because at 26&deg;
+off-nadir a roof sits about 5 m from its own footprint while theirs come from near-nadir
+Sentinel-2. The recovered shift helps (r +0.436 without, +0.537 with) and its magnitude, 7.2 m, is
+the right order &mdash; but the correlation peak is only <strong>0.041</strong> against 0.40 on a
+synthetic self-test, so it is not a confident registration. Both numbers are reported together,
+never the better one alone.</li>
+</ul>
+<div class="warn">
+  <b>Erosion was a hypothesis, and it was wrong</b>
+  <p>Shrinking their footprint was expected to strip a blur halo and move the bias toward zero.
+  Measured: &minus;1.92 m at 0 m erosion, &minus;2.72 at 2 m, &minus;3.14 at 3 m &mdash; the wrong
+  direction, because erosion drops small components first and so selects for the taller buildings
+  we under-call most. The default is 0 and the sweep prints.</p>
+</div>
+
+<h3>9.11 Standalone deployment, verified</h3>
+<p>Exported 28 August 2026 from the shipping checkpoint with
+<span class="t">tools/export_onnx.py --ckpt checkpoints/run02/best.pt --quantize</span>, with
+agreement against PyTorch checked rather than assumed:</p>
+<div class="tw"><table>
+<tr><th></th><th>ONNX fp32</th><th>ONNX int8</th></tr>
+<tr><td>Size</td><td class="n">100,672,732 bytes (100.7 MB), self-contained</td><td class="n"><strong>36,814,825 bytes (36.8 MB) &mdash; 63% smaller</strong></td></tr>
+<tr><td>Maximum divergence vs PyTorch</td><td class="n"><strong>0.0010 cm</strong> height, 0.0006 cm sigma, over 804,972 inputs</td><td class="n"><strong>0.161 m</strong> height</td></tr>
+<tr><td>Verdict</td><td>PASS at a 5 cm tolerance</td><td>Lossy by construction &mdash; a real trade, not a free win</td></tr>
+</table></div>
+<div class="fact">
+  <b>CPU inference is 509 ms per 518&times;518 tile</b>
+  <p>0.53 megapixels per second in a single ONNX Runtime session. The model runs with
+  <strong>no GPU at all</strong>, which is the claim that matters for a deployable module.</p>
+</div>
+<p><strong>The export is fixed at 518&times;518.</strong> Dynamic shapes fail at runtime &mdash;
+546&times;546 raises a <span class="t">RUNTIME_EXCEPTION</span>. This is acceptable because
+<span class="t">infer.py</span> is sliding-window at exactly 518, but a
+<span class="t">dynamic_axes</span> argument in the export call would imply a flexibility that is
+not there.</p>
+
+<h4>The single-file viewer was verified by loading it, not by inspecting it</h4>
+<p>28 August 2026, headless Chrome against
+<span class="t">file:///.../viewer_standalone.html</span> &mdash; the path a judge takes when they
+unzip the submission and double-click:</p>
+<div class="tw"><table>
+<tr><th>Check</th><th>Result</th></tr>
+<tr class="ok"><td>External <span class="t">src</span>/<span class="t">href</span> references</td><td><strong>None</strong> &mdash; nothing to block under <span class="t">file://</span></td></tr>
+<tr class="ok"><td>Leftover ES <span class="t">import</span> statements</td><td class="n"><strong>0</strong> &mdash; the module rewrite holds</td></tr>
+<tr class="ok"><td>Embedded model</td><td><span class="t">run02</span>, with <strong>zero</strong> mentions of <span class="t">zeroshot</span></td></tr>
+<tr class="ok"><td>Renderer actually started</td><td>Source has <strong>0</strong> <span class="t">&lt;canvas&gt;</span> tags; the rendered DOM has <strong>1</strong>, tagged <span class="t">data-engine="three.js r169"</span> at 764&times;429</td></tr>
+</table></div>
+<p>The canvas is the proof: it does not exist in the file and is created only if the inlined
+Three.js executes and WebGL initialises. Verified under SwiftShader software rendering, so a
+machine with a real GPU is strictly more capable than what this test passed on.</p>
+<p><strong>Not verified:</strong> that every scene's geometry and textures are visually correct.
+That needs a human looking at it, and it is the one deployment check still owed.</p>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 10</div>
+  <h2>The 3D viewer</h2>
+  <p>Half the marks. The design rules it is built to, every feature, every label, and how it
+  becomes a single double-clickable file.</p>
+</div>
+
+<section>
+<h3>10.1 What is being scored</h3>
+<p>ISRO's wording: &ldquo;projection accuracy, visual fidelity, navigability of the flythrough,
+interface intuitiveness, stability, and successful standalone deployment.&rdquo; That is 50% of the
+total marks.</p>
+
+<h3>10.2 The three rules that outrank every feature</h3>
+<div class="dl">
+  <div class="di w"><dt>1. Usable without explanation</dt><dd>A juror should understand what they are looking at in five seconds, with no caption, no legend to study, and no term they have to already know. If a control needs explaining, the label is wrong. This does <strong>not</strong> mean hiding the rigour: the plain word goes on the button and the precise number goes in the readout. &ldquo;How sure we are, &plusmn;2.1 m&rdquo; beats &ldquo;sigma (m)&rdquo; and carries strictly more information.</dd></div>
+  <div class="di w"><dt>2. No decoration that carries no information</dt><dd>No purple gradients, no glassmorphism, no emoji headings, no hero section, no controls that exist to look busy. The jury are Space Applications Centre image-processing specialists who have used QGIS for twenty years. The data is the only saturated thing on screen; the interface stays near-neutral. <strong>Never a rainbow or jet colormap</strong> &mdash; it is the classic amateur signal in remote sensing.</dd></div>
+  <div class="di w"><dt>3. Light theme</dt><dd>It survives a projector in a demo hall, screenshots drop into a submission PDF without inverting, and it puts the viewer in the same visual register as QGIS and ArcGIS Pro rather than a game engine.</dd></div>
+</div>
+<p>Two things a light background forces, both done: the canvas is <span class="t">#eef1f4</span>
+and never pure white, or the surface silhouette disappears and every edge glares; and the ramps run
+light&rarr;dark rather than dark&rarr;bright, or the low end dissolves into the page. All three ramps
+are monotonic in lightness, so they survive greyscale printing. Ambient light is set much stronger
+than a dark scene needs (hemisphere 1.15) or the terrain reads as a dark blob cut out of the page.</p>
+
+<h3>10.3 Label discipline &mdash; the actual translations</h3>
+<div class="tw"><table>
+<tr><th>Jargon avoided</th><th>What the interface says</th></tr>
+<tr><td>sigma / &sigma; (m)</td><td><strong>How sure we are</strong> &mdash; &ldquo;&plusmn;2.1 m&rdquo;</td></tr>
+<tr><td>Signed error vs ground truth</td><td><strong>Where we're wrong</strong> &mdash; &ldquo;blue = we said too low, red = too high&rdquo;</td></tr>
+<tr><td>Vertical exaggeration &times;3</td><td><strong>Height boost &times;3</strong></td></tr>
+<tr><td>nDSM / AGL</td><td><strong>Height above ground</strong></td></tr>
+<tr><td>GSD 0.31 m</td><td><strong>Each pixel is 31 cm on the ground</strong></td></tr>
+<tr><td>Hillshade azimuth</td><td><strong>Sun direction</strong></td></tr>
+</table></div>
+<p>Other labels visible in the interface: Satellite image &middot; Height above ground &middot;
+Height above sea &middot; Steepness &middot; Our model &middot; Real LiDAR &middot; Compare with
+real LiDAR &middot; Checked against LiDAR &middot; No LiDAR here &middot; Error per pixel &middot;
+Error per building &middot; Tallest we found &middot; Tallest really there &middot; Typical
+confidence &middot; The ground underneath &middot; Rise across scene &middot; Area covered &middot;
+Distance on ground &middot; Height difference &middot; Straight-line distance &middot; Mesh lines
+&middot; Reset view &middot; Fly-through &middot; Upload a satellite image &middot; Your own image.</p>
+
+<h3>10.4 Features</h3>
+<div class="dl">
+  <div class="di"><dt>Four display modes</dt><dd><strong>Satellite drape</strong> (the original photo wrapped over the 3D surface), <strong>height ramp</strong> (sequential blue), <strong>uncertainty</strong> (sequential warm), <strong>slope</strong>. A fifth, <strong>error</strong>, appears only where LiDAR truth exists &mdash; diverging blue/pale/red centred on zero.</dd></div>
+  <div class="di"><dt>Drag-to-compare</dt><dd>A divider the user drags between our surface and real LiDAR. The clip plane is rebuilt from the camera every frame, so the divider keeps meaning the same thing while the user orbits. This is the most convincing five seconds available &mdash; the two pictures either match or they do not &mdash; and it is literally the &ldquo;validation&rdquo; half of the accuracy criterion.</dd></div>
+  <div class="di"><dt>Where we're wrong</dt><dd>The error map. LiDAR voids are greyed rather than reported as zero error.</dd></div>
+  <div class="di"><dt>Measurement</dt><dd>Two clicks give ground distance, height difference and straight-line distance in metres, with a <em>calibrated</em> error bar on the height difference (Part 9.8).</dd></div>
+  <div class="di"><dt>Sun direction</dt><dd>Hillshade azimuth slider, default 315&deg; &mdash; north-west, the cartographic convention. Lighting from the lower right inverts relief perception.</dd></div>
+  <div class="di"><dt>Height boost</dt><dd>Vertical exaggeration slider, starting at 1.5&times;. See the honesty note below.</dd></div>
+  <div class="di"><dt>Navigation</dt><dd>Click to look, <span class="t">WASD</span> to move, <span class="t">Q</span>/<span class="t">E</span> down and up, <span class="t">Shift</span> to sprint, <span class="t">Esc</span> to release the pointer.</dd></div>
+  <div class="di"><dt>Auto tour</dt><dd>A cinematic orbit path, used for the demo video.</dd></div>
+  <div class="di"><dt>Other</dt><dd>Wireframe toggle, reset view, legend, statistics panel, frames-per-second readout, grid size readout, upload panel.</dd></div>
+</div>
+
+<div class="fact">
+  <b>Why height boost exists, and why it is not cheating</b>
+  <p>A typical scene covers about 300 m of ground but its buildings are only 5&ndash;30 m tall.
+  Without exaggeration the 3D view looks almost completely flat and nothing is visible.</p>
+  <p>Three things make it honest: it stretches the <strong>picture</strong>, never the data &mdash;
+  the saved height file records no stretching at all; the measuring tool <strong>removes the
+  stretch</strong> before reporting any number; and the real LiDAR reference is stretched by the
+  same amount, so any comparison stays fair. The slider is labelled on screen and the panel says
+  &ldquo;the numbers stay true&rdquo;. Dragging it to 1.0 shows true proportions.</p>
+  <p>The strongest follow-up: stretching cannot be hiding anything, because we predict buildings
+  too <em>short</em>, not too tall. On the median urban test tile the tallest real building is
+  93.6 m and we say 33.9 m &mdash; even stretched by 1.5, it still appears shorter than it really is.</p>
+</div>
+
+<h3>10.5 The scenes that ship</h3>
+<div class="tw"><table>
+<tr><th>Scene</th><th>Size</th><th>GSD</th><th>Landscape</th><th>LiDAR truth</th></tr>
+<tr class="hi"><td>Mixed &mdash; Jacksonville <em>(default)</em></td><td class="n">1024&times;1024</td><td class="n">0.3 m</td><td>mixed</td><td>yes</td></tr>
+<tr><td>Urban &mdash; Omaha</td><td class="n">1024&times;1024</td><td class="n">0.3 m</td><td>urban</td><td>yes</td></tr>
+<tr><td>Sparse &mdash; Omaha</td><td class="n">1024&times;1024</td><td class="n">0.3 m</td><td>sparse</td><td>yes</td></tr>
+<tr><td>Forested &mdash; Jacksonville</td><td class="n">1024&times;1024</td><td class="n">0.3 m</td><td>forested</td><td>yes</td></tr>
+<tr><td>Hilly &mdash; Sikkim, India</td><td class="n">2048&times;2047</td><td class="n">0.977 m</td><td>hilly</td><td><strong>no</strong></td></tr>
+<tr><td>Detail &mdash; Sikkim town</td><td class="n">1638&times;1637</td><td class="n">0.305 m</td><td>detail</td><td><strong>no</strong></td></tr>
+</table></div>
+<p>The scene picker deliberately mirrors the four landscapes ISRO names. Labels put the terrain
+first &mdash; &ldquo;Urban &mdash; Omaha&rdquo;, not &ldquo;Omaha &mdash; urban&rdquo; &mdash; because
+&ldquo;urban&rdquo; tells a juror what they are about to look at and maps onto the stated criterion,
+while the place name does neither.</p>
+<p>Sikkim has no LiDAR, so the compare tool and the error map <strong>disable themselves</strong>
+and the panel says so, falling back to the Open Buildings cross-check labelled as a satellite
+estimate rather than truth.</p>
+
+<h4>Sikkim needed the mountain putting back</h4>
+<p>The model predicts height above ground, so the raw Sikkim output ranges 0&ndash;17.9 m: the
+Himalaya is exactly the thing AGL removes. Rendered on its own it is a flat plane with buildings on
+it, which answers nothing about hilly terrain.</p>
+<p>Fixed by fetching Copernicus GLO-30 for the tile, cubic-resampling it onto the 0.305 m crop grid,
+and shipping it as <span class="t">terrain.bin</span>. The viewer stacks our heights on top:
+<strong>248 m of relief across 500 m at a mean slope of 24&deg;</strong>, with our buildings standing
+on it. That is a real DSM &mdash; ground plus everything on it.</p>
+<p>Two rules keep it honest. <strong>Colour still comes from the above-ground value, never the mesh
+Y coordinate</strong>, or the height ramp silently becomes an elevation map. And the statistics
+panel names the provenance: the mountain is Copernicus at 30 m posts, everything standing on it is
+ours.</p>
+
+<h3>10.6 The scene bundle format</h3>
+<p>Each scene directory holds raw binaries plus a manifest:</p>
+<div class="tw"><table>
+<tr><th>File</th><th>Contents</th><th>Size for 1024&times;1024</th></tr>
+<tr><td><span class="t">height.bin</span></td><td>float32 metres above ground, row-major</td><td class="n">4,194,304 bytes</td></tr>
+<tr><td><span class="t">sigma.bin</span></td><td>float32 per-pixel uncertainty in metres</td><td class="n">4,194,304 bytes</td></tr>
+<tr><td><span class="t">truth.bin</span></td><td>float32 LiDAR reference, where it exists</td><td class="n">4,194,304 bytes</td></tr>
+<tr><td><span class="t">terrain.bin</span></td><td>float32 bare-earth elevation, where anchored</td><td>varies</td></tr>
+<tr><td><span class="t">texture.jpg</span></td><td>the original photograph, draped</td><td class="n">~280 KB</td></tr>
+<tr><td><span class="t">manifest.json</span></td><td>everything below</td><td class="n">~2 KB</td></tr>
+</table></div>
+<div class="fact">
+  <b>Why raw float32 and not a PNG</b>
+  <p>Browsers decode images through an 8-bit canvas. A 16-bit PNG of heights would be silently
+  quantised on the way in, and the metres would stop being metres. Raw
+  <span class="t">Float32Array</span> over <span class="t">fetch</span> is the only transport that
+  preserves them exactly.</p>
+</div>
+
+<h4>What the manifest carries</h4>
+<p>Provenance and geometry: the model that produced it (<span class="t">"run02 + TTA"</span>), the
+CRS and affine transform, the bounds, pixel size and its units, the ground sample distance
+<em>and where that GSD came from</em> (<span class="t">"gsd_source": "--gsd flag"</span>), the
+extent in metres, the vertical exaggeration baked in, and how many void pixels were filled.</p>
+<p>Statistics the panels display: height minimum and maximum, sigma minimum, maximum and mean,
+truth minimum and maximum, per-pixel RMSE / MAE / bias / 95th-percentile absolute error, building
+and ground per-pixel RMSE, the building pixel count, and a full
+<span class="t">building_wise</span> block with the number of buildings, RMSE, MAE, bias, median
+absolute error, correlation, and the truth median and 90th-percentile heights.</p>
+<p>Each numeric block carries a note explaining what it is comparable to. For example the per-pixel
+error note reads: <em>&ldquo;per-pixel, whole tile. Roof edges dominate; per-building error is the
+comparable figure.&rdquo;</em></p>
+
+<h3>10.7 The standalone build</h3>
+<p><span class="t">tools/build_standalone.py</span> inlines everything into one file:
+<strong>viewer_standalone.html, 15,156,848 bytes (15.16 MB)</strong>. Nothing in
+<span class="t">main.js</span> changes.</p>
+<div class="dl">
+  <div class="di"><dt>Three.js</dt><dd>Minified and ending in a single <span class="t">export{a as Vector3,&hellip;}</span>. Rewriting that to <span class="t">const THREE={Vector3:a,&hellip;}</span> makes it plain inline script.</dd></div>
+  <div class="di"><dt>fetch</dt><dd>Shimmed against an embedded asset table. Because the shim owns the bytes <span class="t">main.js</span> receives, heights are stored <strong>uint16-quantised</strong> and dequantised on the way out &mdash; half the file size for a few millimetres of precision, against a model whose error is measured in metres.</dd></div>
+  <div class="di"><dt>Textures</dt><dd>Routed through <span class="t">THREE.DefaultLoadingManager.setURLModifier</span>, which exists for exactly this.</dd></div>
+  <div class="di"><dt>Scoping</dt><dd><span class="t">main.js</span> is wrapped in its own block. Inlined, it would share scope with minified Three.js, which declares <span class="t">$</span>; the bundle then fails to parse and the page is blank with only a <span class="t">SyntaxError</span> to show for it.</dd></div>
+</div>
+<div class="warn">
+  <b>The deployment bug this caught</b>
+  <p><span class="t">index.html</span> loads as an ES module and fetches the scene binaries.
+  <strong>Both are blocked under <span class="t">file://</span>.</strong> A judge who unzipped the
+  submission and double-clicked would have seen an empty page &mdash; against a criterion that says
+  &ldquo;successful standalone deployment&rdquo; in as many words.</p>
+  <p><span class="t">run_viewer.bat</span> covers it by starting a local HTTP server. The
+  single-file build removes the Python dependency entirely and is what should ship.</p>
+</div>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 11</div>
+  <h2>Deployment</h2>
+  <p>The whole product runs publicly on an ordinary CPU web host. This part covers what runs
+  where, the measured timings, the guards, and the three constraints that shaped the design.</p>
+</div>
+
+<section>
+<h3>11.1 What is live</h3>
+<div class="dl">
+  <div class="di"><dt>Public URL</dt><dd><strong>https://project5.zaidansari.tech</strong> &mdash; verified HTTP 200 on 6 September 2026</dd></div>
+  <div class="di"><dt>Platform URL</dt><dd>https://depthwizard-sih2026.azurewebsites.net</dd></div>
+  <div class="di"><dt>Resource group</dt><dd><span class="t">sih2026-depthwizard</span></dd></div>
+  <div class="di"><dt>App Service plan</dt><dd><span class="t">dwz-plan</span>, Linux, SKU <strong>B2</strong> &mdash; 2 vCPU, 3.5 GB RAM</dd></div>
+  <div class="di"><dt>Region</dt><dd>Central India</dd></div>
+  <div class="di"><dt>First live</dt><dd>6 September 2026</dd></div>
+  <div class="di"><dt>Health endpoint</dt><dd><span class="t">/healthz</span> &mdash; returns 200</dd></div>
+  <div class="di"><dt>Startup command</dt><dd><span class="t">python tools/serve_app.py</span></dd></div>
+</div>
+<div class="fact">
+  <b>No GPU anywhere in the deployment</b>
+  <p>Viewer, baked scenes, and the full upload &rarr; DSM &rarr; 3D pipeline all run on two shared
+  CPU cores. That is a measured claim, not an aspiration.</p>
+</div>
+
+<h3>11.2 Measured timings</h3>
+<div class="tw"><table>
+<tr><th>Setting</th><th>Inference</th><th>Wall clock (incl. ~8 s model load)</th><th>Peak RSS</th></tr>
+<tr><td>Single pass, 9 windows &mdash; desktop CPU</td><td class="n">5.0 s</td><td class="n">13.3 s</td><td class="n">2.05 GB</td></tr>
+<tr><td>&times;8 D4 TTA + zoom-2 fusion &mdash; desktop CPU</td><td class="n">57.2 s</td><td class="n">86.2 s</td><td class="n">2.21 GB</td></tr>
+<tr class="hi"><td><strong>Fast mode on the live B2 plan</strong></td><td>&mdash;</td><td class="n"><strong>60 s</strong> POST to served scene</td><td>&mdash;</td></tr>
+</table></div>
+<p>Sixty seconds is about 4.5&times; the desktop's 13.3 s, which is what two shared vCPUs against six
+local cores predicts. <strong>That is the number to quote, not the desktop one.</strong></p>
+<p>Sixty seconds is usable for &ldquo;try it yourself&rdquo; and too slow to stand in front of.
+Demo from a baked scene; offer upload as the thing a judge does afterwards.</p>
+
+<h3>11.3 Why App Service and not containers</h3>
+<p>Both were tried. On an <strong>Azure for Students</strong> subscription:</p>
+<div class="tw"><table>
+<tr><th>Blocker</th><th>Error</th><th>Consequence</th></tr>
+<tr class="bad"><td>ACR Tasks is barred</td><td><span class="t">TasksOperationsNotAllowed</span></td><td><span class="t">az acr build</span> cannot build an image in the cloud. Building locally instead needs a Docker daemon.</td></tr>
+<tr class="bad"><td>Container App environments are capped per region</td><td><span class="t">MaxNumberOfEnvironmentsInSubExceeded</span></td><td>Central India's slot is already taken by another project.</td></tr>
+<tr class="bad"><td>Docker cannot run on this machine</td><td><span class="t">VirtualizationFirmwareEnabled: False</span></td><td><strong>SVM Mode is off in the BIOS</strong> of the Ryzen 5 5600G. WSL2 and Hyper-V both need it, so there is no software workaround &mdash; it is a BIOS trip plus <span class="t">wsl --install --no-distribution</span> as administrator.</td></tr>
+</table></div>
+<p>App Service's Python runtime sidesteps all three: <strong>Oryx</strong> installs the dependencies
+on the platform from <span class="t">requirements.txt</span>, so nothing local has to build or push
+an image. <span class="t">deploy/Dockerfile</span> is kept anyway &mdash; it is correct, and it is
+the route back to Container Apps on any subscription that permits ACR Tasks.</p>
+
+<h3>11.4 Staging &mdash; what gets deployed</h3>
+<p><span class="t">python deploy/stage.py</span> assembles the deployable tree. Total context:
+<strong>336.3 MB</strong>. Three things dominate the size and each is handled:</p>
+<div class="dl">
+  <div class="di w"><dt>Checkpoint stripped</dt><dd><strong>297.1 MB &rarr; 99.2 MB.</strong> <span class="t">best.pt</span> carries optimiser state, scheduler state, RNG state and the training arguments &mdash; everything needed to <em>resume</em> a run and nothing needed to serve one. Kept: <span class="t">model</span>, <span class="t">model_id</span>, <span class="t">height_scale</span>, <span class="t">model_config</span>, <span class="t">epoch</span>, <span class="t">val</span>. Epoch and val are kept because <span class="t">infer.py</span> prints them, and a served result that cannot name its checkpoint is not evidence.</dd></div>
+  <div class="di w"><dt>HF cache baked in</dt><dd><span class="t">model.py</span> builds the backbone with <span class="t">from_pretrained()</span>, which reaches Hugging Face on a cache miss. <span class="t">blobs/</span> is dropped because an HF cache stores every file twice &mdash; once under its SHA, once as a snapshot link &mdash; and only the snapshot is resolved at load time. <span class="t">HF_HUB_OFFLINE=1</span> turns any surviving download into a loud failure instead of a slow first request.</dd></div>
+  <div class="di w"><dt>Uploaded scenes excluded</dt><dd><span class="t">upload_*</span> scenes are produced at runtime and sit in the same directory as the baked ones. Without the filter the deployment would ship whatever happened to be on the development machine. <span class="t">index.json</span> is pruned to match, since an entry with no directory makes the viewer fetch a missing manifest and presents as the whole picker being broken.</dd></div>
+</div>
+<p><span class="t">stage.py</span> refuses to build a context with zero baked scenes rather than
+deploying an empty picker. The zip is built at compression level 1 on purpose: the bulk is
+<span class="t">.pt</span>, <span class="t">.safetensors</span>, <span class="t">.bin</span> and
+<span class="t">.jpg</span>, none of which compress, so level 9 buys a percent or two for several
+minutes.</p>
+
+<h3>11.5 Application settings</h3>
+<div class="tw"><table>
+<tr><th>Setting</th><th>Value</th><th>Why</th></tr>
+<tr><td><span class="t">SCM_DO_BUILD_DURING_DEPLOYMENT</span></td><td>true</td><td>Runs Oryx. Without it nothing is installed.</td></tr>
+<tr><td><span class="t">HF_HUB_OFFLINE</span></td><td class="n">1</td><td>Never call Hugging Face at request time</td></tr>
+<tr><td><span class="t">DW_WORK</span></td><td><span class="t">/tmp/depthwizard</span></td><td>Uploads and raw output on local disk, not the slow network share</td></tr>
+<tr><td><span class="t">DW_QUALITY</span></td><td>fast</td><td>Default; clients may request <span class="t">accurate</span></td></tr>
+<tr><td><span class="t">OMP_NUM_THREADS</span></td><td class="n">2</td><td>Matches the plan's core count</td></tr>
+<tr><td><span class="t">WEBSITES_CONTAINER_START_TIME_LIMIT</span></td><td class="n">1800</td><td>Loading torch is slow on first boot</td></tr>
+</table></div>
+<div class="warn">
+  <b>Oryx runs the app from /tmp/&lt;hash&gt;/, not /home/site/wwwroot</b>
+  <p>And that hash changes with every deployment. Absolute paths in application settings
+  (<span class="t">DW_CKPT</span>, <span class="t">HF_HOME</span>) silently point at nothing: the
+  site looks healthy and every upload dies on a missing checkpoint. This actually happened.</p>
+  <p>The fix is to derive paths from <span class="t">__file__</span> instead, which
+  <span class="t">tools/serve_app.py</span> now does &mdash; and the two absolute app settings were
+  deleted.</p>
+</div>
+<p><span class="t">requirements.txt</span> declares
+<span class="t">--extra-index-url https://download.pytorch.org/whl/cpu</span> in the file itself,
+because Oryx runs a plain <span class="t">pip install -r requirements.txt</span> and never sees
+command-line flags. Without it, pip resolves the default CUDA wheel &mdash; about 2.5 GB of
+libraries this plan has no GPU to use.</p>
+
+<h3>11.6 The public server</h3>
+<p><span class="t">tools/serve_app.py</span> is a <strong>separate entry point</strong> from
+<span class="t">tools/serve_viewer.py</span> rather than a flag on it. The local tool binds
+loopback, accepts 400 MB uploads and trusts whoever started it &mdash; the right defaults for a tool
+you run yourself and the wrong ones for a URL. Two files means neither can silently become the
+other.</p>
+<h4>Endpoints</h4>
+<div class="dl">
+  <div class="di"><dt>GET <span class="t">/healthz</span></dt><dd>Liveness probe. The platform restarts what it cannot probe.</dd></div>
+  <div class="di"><dt>GET <span class="t">/api/capabilities</span></dt><dd>Publishes the current limits so a client can warn before spending an upload. Live response on 6 Sep 2026: <span class="t">{"upload": true, "dem": false, "quality": "fast", "max_upload_mb": 50, "max_megapixels": 13.8, "max_side_px": 3713, "sec_per_megapixel": 33.0}</span></dd></div>
+  <div class="di"><dt>GET <span class="t">/api/job/&lt;id&gt;</span></dt><dd>Polls a running job.</dd></div>
+  <div class="di"><dt>POST <span class="t">/api/upload</span></dt><dd>Accepts an image, validates it, queues a job, runs inference and export, and registers the resulting scene.</dd></div>
+  <div class="di"><dt>Static</dt><dd>Everything under <span class="t">viewer/</span>, including the baked scene binaries.</dd></div>
+</div>
+
+<h3>11.7 Limits the server enforces</h3>
+<p>Not decoration: one request costs CPU-minutes, so an unbounded queue is a way to take the site
+down by being mildly popular.</p>
+<div class="tw"><table>
+<tr><th>Guard</th><th>Default</th><th>Environment variable</th></tr>
+<tr><td>Upload size</td><td class="n">50 MB</td><td><span class="t">DW_MAX_UPLOAD_MB</span></td></tr>
+<tr class="hi"><td><strong>Image area</strong></td><td class="n"><strong>13.8 Mpx (&asymp;3713&sup2;) in fast mode</strong></td><td>derived &mdash; see below</td></tr>
+<tr><td>Jobs in flight</td><td class="n">3, then HTTP 429</td><td><span class="t">DW_MAX_QUEUE</span></td></tr>
+<tr><td>Per-IP spacing</td><td class="n">20 s</td><td><span class="t">DW_IP_SPACING</span></td></tr>
+<tr><td>Uploaded scenes kept</td><td class="n">12, newest first</td><td><span class="t">DW_SCENE_BUDGET</span></td></tr>
+<tr><td>Job abandoned after</td><td class="n">600 s</td><td><span class="t">DW_TIMEOUT</span></td></tr>
+</table></div>
+
+<h4>Why an area cap when there is already a byte cap</h4>
+<p>Because the two are barely related for satellite imagery, and only one of them predicts cost.
+A Maxar visual strip is <strong>17408&times;17408 &mdash; 303 megapixels &mdash; in 12 MB</strong>,
+sparse and JPEG-compressed inside the TIFF. It passes a 50 MB byte cap comfortably and then needs
+about <strong>2.8 hours</strong>, so the job used to sit there and time out at 600 s having told
+the user nothing in the meantime.</p>
+<p>The cap is <em>derived</em>, not a magic number:</p>
+<pre>FIXED_S + megapixels * SEC_PER_MPX  &lt;=  BUDGET_FRAC * DW_TIMEOUT
+
+FIXED_S      = 25 s     checkpoint load, export, four array writes
+SEC_PER_MPX  = 33 s     from the 1024x1024 upload that takes 60 s on this plan
+BUDGET_FRAC  = 0.8
+TTA_FACTOR   = 11.4     57.2 s / 5.02 s -- drops the ceiling to ~1.2 Mpx in accurate mode</pre>
+<p>So the limit moves correctly if the timeout or the plan changes. The refusal is immediate and
+specific: it names the dimensions, the projected time, and the size to crop to. Reading the header
+also catches a <strong>truncated or still-downloading GeoTIFF</strong> in the same millisecond,
+instead of forty seconds into inference with a <span class="t">TIFFReadEncodedTile</span>
+traceback.</p>
+<div class="fact">
+  <b>A refusal does not consume the caller's turn</b>
+  <p>Only an accepted job counts against per-IP spacing. Rejecting someone and then making them
+  wait twenty seconds to try a smaller crop would be a worse experience than not having the guard
+  at all.</p>
+</div>
+<p>Baked scenes are never reaped. Per-IP spacing reads <span class="t">X-Forwarded-For</span>,
+which is client-supplied and therefore spoofable &mdash; that is fine, because it only paces polite
+users apart, and the queue cap is what actually bounds the work.</p>
+
+<h3>11.8 Custom domain and TLS</h3>
+<div class="tw"><table>
+<tr><th>Type</th><th>Name</th><th>Value</th><th>Proxy</th></tr>
+<tr><td>CNAME</td><td><span class="t">project5</span></td><td><span class="t">depthwizard-sih2026.azurewebsites.net</span></td><td><strong>DNS only</strong></td></tr>
+<tr><td>TXT</td><td><span class="t">asuid.project5</span></td><td>the app's <span class="t">customDomainVerificationId</span></td><td>&mdash;</td></tr>
+</table></div>
+<pre>az webapp config hostname add -g &lt;rg&gt; --webapp-name &lt;app&gt; --hostname project5.zaidansari.tech
+az webapp config ssl create   -g &lt;rg&gt; --name &lt;app&gt;       --hostname project5.zaidansari.tech
+az webapp config ssl bind     -g &lt;rg&gt; --name &lt;app&gt; --certificate-thumbprint &lt;tp&gt; --ssl-type SNI</pre>
+<p>The grey cloud is required <em>while the certificate is issued</em>: Azure's free managed
+certificate validates by resolving the CNAME to App Service, and Cloudflare's proxy breaks that
+check. Once issued, the proxy can be turned on with SSL mode Full (strict).</p>
+<div class="warn">
+  <b>The ssl create command reports a JSON parse error but still issues the certificate</b>
+  <p>It leaves the certificate <em>unbound</em>. The fix is to fetch the thumbprint and run
+  <span class="t">ssl bind</span> separately. A failure message is not proof that nothing happened.</p>
+</div>
+
+<h3>11.9 Persistence behaviour, measured twice</h3>
+<div class="fact">
+  <b>Uploaded scenes survive az webapp restart</b>
+  <p>Measured twice on 6 September 2026, contrary to the assumption written down first. A restart
+  reuses the extracted tree under <span class="t">/tmp/&lt;hash&gt;/</span>, so runtime scenes
+  persist.</p>
+  <p>What <em>does</em> clear them is anything that recreates the container &mdash; an SSL bind or a
+  redeploy &mdash; because the platform extracts a fresh tree and <span class="t">stage.py</span>
+  excludes <span class="t">upload_*</span>.</p>
+</div>
+<p>So <span class="t">DW_SCENE_BUDGET</span> is the only routine bound on disk growth, and a
+visitor's upload stays publicly listed until twelve more push it out. There is no delete endpoint;
+if a specific scene must go before then, redeploy.</p>
+
+<h3>11.10 Known gaps in the deployment</h3>
+<ul>
+<li><strong>The model reloads on every request</strong>, costing about 8 s of every upload, because
+<span class="t">run_job</span> shells out to <span class="t">infer.py</span> exactly as the local
+tool does. Holding it resident means reimplementing the auto-zoom, fusion and DEM logic inside
+<span class="t">infer.py</span>'s <span class="t">main()</span>, and duplicating the inference path
+is how a served result quietly stops matching the measured one. It stays until
+<span class="t">infer.py</span> exposes a reusable entry point.</li>
+<li><strong>DEM anchoring is off by default</strong> (<span class="t">DW_DEM=1</span> to enable),
+because <span class="t">--dem auto</span> reaches Copernicus during a request that is already
+slow.</li>
+<li><strong>The viewer does not yet warn about oversized images</strong> before upload, even though
+<span class="t">/api/capabilities</span> publishes <span class="t">max_megapixels</span>. The server
+refuses correctly; the client could refuse sooner.</li>
+</ul>
+</section>

@@ -1,0 +1,347 @@
+<div class="parthead">
+  <div class="pn">Part 1</div>
+  <h2>The problem statement</h2>
+  <p>Scraped verbatim from sih.gov.in/sih2026PS on 6 September 2026. This is ISRO's own
+  wording. Where any other document in the project disagrees with this, this wins.</p>
+</div>
+
+<section>
+<h3>1.1 Identification</h3>
+<div class="tw"><table>
+<tr><th>Field</th><th>Value</th></tr>
+<tr><td>Problem Statement ID</td><td class="n">26175 (written SIH26175)</td></tr>
+<tr class="hi"><td>Title</td><td>DepthWizard - Single-View Height Estimation and 3D Flythrough</td></tr>
+<tr><td>Organisation</td><td>Indian Space Research Organisation (ISRO)</td></tr>
+<tr><td>Department</td><td>Department of Space / Indian Space Research Organisation</td></tr>
+<tr><td>Category</td><td>Software</td></tr>
+<tr class="hi"><td>Theme</td><td>Disaster Management</td></tr>
+<tr><td>Submissions at scrape time</td><td class="n">0 of 500, as of 6 Sep 2026</td></tr>
+<tr class="hi"><td>Deadline</td><td class="n">30 September 2026</td></tr>
+<tr><td>Reference repository</td><td>github.com/IMG-PROCESS-SAC/SIH-DepthWizard-2026</td></tr>
+<tr><td>Recommended dataset</td><td>GAMUS &mdash; huggingface.co/datasets/earthflow/GAMUS</td></tr>
+<tr><td>Our team</td><td>Dev Up, Team ID 47</td></tr>
+</table></div>
+
+<div class="warn">
+  <b>A date correction that matters</b>
+  <p>Three internal documents in this project (PLAN.md, README.md and the original team brief)
+  say the deadline is 20 September 2026. The portal prints <strong>30 September 2026</strong> in
+  all 233 problem-statement rows, with no other date anywhere on the page. The portal is right.</p>
+</div>
+
+<h3>1.2 Background, as ISRO wrote it</h3>
+<p>&ldquo;Accurate Digital Elevation Models (DEMs) and Digital Surface Models (DSMs) are
+fundamental to urban planning, disaster management, and military reconnaissance. Traditionally,
+elevation data is acquired through stereo-imaging pairs, LiDAR, or Interferometric Synthetic
+Aperture Radar (InSAR). These approaches can be cost-prohibitive, dependent on specific sensor
+availability, and computationally intensive. Single-view height estimation offers an agile
+alternative, but foundational monocular depth models are trained largely on natural egocentric
+imagery and predict relative depth. When applied to remote sensing, they face domain gaps,
+structural variations, and a lack of absolute-scale mapping. Converting relative depth into
+metric elevation remains a critical challenge, alongside the operational need to transform
+static elevation profiles into interactive 3D assets that can be navigated in real time.&rdquo;</p>
+
+<h3>1.3 Description, as ISRO wrote it</h3>
+<p>&ldquo;Develop an end-to-end software pipeline that transforms single-view optical RGB
+remote-sensing images into high-precision elevation maps. The framework must support both
+non-georeferenced and georeferenced imagery.&rdquo;</p>
+<ul>
+<li><strong>Non-Georeferenced RGB Imagery</strong> (for example, PNG or JPG): produce a
+<strong>Relative Digital Surface Model (rDSM)</strong> for images without spatial metadata.</li>
+<li><strong>Georeferenced RGB Imagery</strong> (for example, GeoTIFF): produce an
+<strong>Absolute Digital Surface Model (DSM)</strong> with metric height values for images
+containing coordinate-system metadata.</li>
+</ul>
+<p>&ldquo;The solution should use a pre-trained monocular depth-estimation backbone to generate
+initial relative-depth maps. For georeferenced imagery, a lower-resolution DEM source such as
+SRTM or a limited set of Ground Control Points may be used to map scale-agnostic depth features
+to absolute metric elevations. For non-georeferenced imagery, relative height may be used
+directly in the visualization stage.&rdquo;</p>
+<p>&ldquo;After computing the elevation map, the system should project the original optical
+image onto a generated 3D terrain mesh and integrate the result with a rendering engine such as
+Unity, Three.js, or Babylon.js. The interface should support seamless first-person navigation
+and analysis of structural heights and slopes from arbitrary aerial perspectives.&rdquo;</p>
+
+<h3>1.4 The three key milestones</h3>
+<div class="dl">
+  <div class="di w"><dt>Elevation Extraction</dt><dd>Use a robust pre-trained monocular depth model to extract geometric and structural representations from single-view optical imagery.</dd></div>
+  <div class="di w"><dt>Scale Calibration</dt><dd>Develop a module that converts relative depth to absolute height using scene-level statistics, low-resolution DEMs, semantic priors, or minimal Ground Control Points for georeferenced inputs.</dd></div>
+  <div class="di w"><dt>Visualization Layer</dt><dd>Build an immersive, preferably interactive, rendering pipeline that converts the optical texture and derived depth map into a navigable 3D environment deployable as a standalone application.</dd></div>
+</div>
+
+<h3>1.5 Evaluation criteria &mdash; this drives every decision in the project</h3>
+<div class="tw"><table>
+<tr><th>Weight</th><th>Criterion, as written</th></tr>
+<tr class="hi"><td class="n">50%</td><td><strong>DSM Estimation &mdash; Accuracy and Validation.</strong> Evaluate RMSE, MAE, and correlation against LiDAR or reference data, including performance stability across <strong>urban, sparse, hilly, and forested</strong> landscapes.</td></tr>
+<tr class="hi"><td class="n">50%</td><td><strong>Visualization &mdash; Rendering Quality and User Experience.</strong> Assess projection accuracy, visual fidelity, navigability of the 3D flythrough, interface intuitiveness, software stability, and <strong>successful standalone deployment</strong>.</td></tr>
+</table></div>
+<p><strong>Half the marks are the front end.</strong> This is the single most consequential fact
+in the problem statement, and it is why roughly half of the engineering effort in this project
+went into the viewer and the deployment rather than into the model.</p>
+
+<h3>1.6 Expected deliverables</h3>
+<p>&ldquo;Deliver a fully integrated software suite with complete source code and technical
+documentation. The solution must be deployable as a unified module containing the following
+components:&rdquo;</p>
+<ul>
+<li><strong>Elevation Estimation Module:</strong> accept single-view optical satellite imagery
+in PNG, JPG, or TIFF format and output a high-fidelity DSM in a standard geospatial format.</li>
+<li><strong>Interactive Visualization Platform:</strong> provide a user-friendly 3D flythrough
+experience that lets users upload imagery, visualize reconstructed terrain, and validate
+estimated height values against reference datasets.</li>
+</ul>
+
+<h3>1.7 The dataset field, and the fact that it is truncated</h3>
+<p>The portal prints, and cuts off mid-word:</p>
+<pre>Any high-resolution remote-sensing dataset openly available on the internet may be used
+for development. Reference dataset: https://github.com/IMG-PROCESS-SAC/SIH2026/. A
+lower-resolution DEM source such as SRTM 30 m may be used to map scale-agnostic depth
+features to absolute metric elevations. During final evaluation, ISRO RGB-band optical
+satellite i</pre>
+<p>The visible direction is that <strong>final evaluation uses ISRO RGB-band optical satellite
+imagery</strong> &mdash; a different sensor and a different ground resolution from any training
+set available to us. Cross-sensor generalisation is therefore a scored risk, not a nicety. This
+is the reason the <span class="t">--auto-zoom</span> resolution-matching path exists (Part 8.5).</p>
+
+<h3>1.8 What ISRO's own repository adds</h3>
+<p><span class="t">IMG-PROCESS-SAC/SIH2026</span> redirects to
+<span class="t">IMG-PROCESS-SAC/SIH-DepthWizard-2026</span>. Its README restates the portal text
+and adds a dataset recommendation:</p>
+<div class="dl">
+  <div class="di"><dt>GAMUS</dt><dd>Provider Earthflow, CC-BY-4.0, described as the &ldquo;recommended open-source foundation.&rdquo;</dd></div>
+  <div class="di"><dt>Structure</dt><dd><span class="t">images/</span>, <span class="t">heights/</span> (as <span class="t">*_AGL.h5</span>), <span class="t">classes/</span></dd></div>
+  <div class="di"><dt>Size</dt><dd>5,004 train / 859 val / 2,861 test = 8,724 tiles</dd></div>
+  <div class="di"><dt>Cities</dt><dd>Philadelphia 4,398 &middot; New York 2,167 &middot; Washington DC 2,159 &mdash; all dense US urban</dd></div>
+  <div class="di"><dt>Dataloader</dt><dd>github.com/EarthNets/RSI-MMSegmentation</dd></div>
+  <div class="di"><dt>Escape hatch</dt><dd>&ldquo;While GAMUS is recommended, you are free to utilize any open-source dataset containing remote-sensing depth data, provided it supports both relative depth training and metric scale calibration.&rdquo;</dd></div>
+  <div class="di"><dt>Stated purpose</dt><dd>&ldquo;Use this data to overcome the domain gap between natural egocentric imagery&hellip; and top-down remote sensing imagery.&rdquo;</dd></div>
+</div>
+
+<h3>1.9 Five deltas between the portal and what the team had assumed</h3>
+<ol>
+<li><strong>Deadline is 30 September, not 20 September.</strong></li>
+<li><strong>GAMUS is the sponsor-recommended dataset; this project was built on DFC2019.</strong>
+DFC2019 remains permitted &mdash; the escape hatch above says so explicitly &mdash; but GAMUS is
+three times the tiles and carries the sponsor's endorsement. Integration status is in Part 6.6.</li>
+<li><strong>Structural height and slope analysis is required, not a differentiator.</strong>
+&ldquo;analysis of structural heights and slopes from arbitrary aerial perspectives&rdquo; sits in
+the Description. The measurement tool is therefore a requirement, not a bonus.</li>
+<li><strong>&ldquo;Standalone application&rdquo; / &ldquo;standalone deployment&rdquo; appears three
+times</strong>, including inside the 50% rendering score. This is why
+<span class="t">viewer_standalone.html</span> exists as a single double-clickable file.</li>
+<li><strong>The theme is Disaster Management</strong>, not Space Technology.</li>
+</ol>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 2</div>
+  <h2>What the system does, end to end</h2>
+  <p>One optical satellite image goes in. A navigable, measurable 3D surface comes out.
+  This part traces every stage of that path and names the file that performs it.</p>
+</div>
+
+<section>
+<h3>2.1 The one-sentence description</h3>
+<div class="fact">
+  <b>The claim, stated precisely</b>
+  <p>DepthWizard takes a <strong>single</strong> optical satellite photograph and produces a
+  per-pixel map of height above ground in <strong>metres</strong>, together with a per-pixel
+  statement of how uncertain each of those metres is, then renders that map as a textured 3D
+  surface a user can fly through and take measurements on in a web browser &mdash; with no
+  graphics card anywhere in the chain.</p>
+</div>
+
+<h3>2.2 Why one image is hard</h3>
+<p>Height from imagery is normally obtained one of three ways, and all three need something we
+are refusing to require:</p>
+<div class="tw"><table>
+<tr><th>Conventional method</th><th>What it needs</th><th>Why that is a problem</th></tr>
+<tr><td>Stereo photogrammetry</td><td>Two photographs of the same ground from different angles</td><td>Cannot be applied retrospectively. Decades of single-view archive imagery can never gain height.</td></tr>
+<tr><td>Airborne LiDAR</td><td>A laser scanner flown over the area</td><td>Expensive, slow, requires a flight campaign per area.</td></tr>
+<tr><td>InSAR</td><td>Radar satellite pairs with controlled baselines</td><td>Specific sensor availability; computationally heavy.</td></tr>
+</table></div>
+<p>Single-view height estimation is <strong>ill-posed</strong>: infinitely many three-dimensional
+scenes project to the same flat photograph. There is no unique correct answer. That is not a
+detail &mdash; it is the reason this project predicts a <em>distribution</em> per pixel rather than
+a number, which is covered in Part 5.</p>
+
+<h3>2.3 The full pipeline</h3>
+<pre>  RAW ARCHIVE                DFC2019 zip archives (RGB + LiDAR truth + semantic classes)
+        |                    tools/prepare_data.py   extract -> probe -> shard
+        v
+  SHARDED DATA               data/shards/*.npz    518x518 crops, region-disjoint split
+        |                    train.py             DA-V2 backbone + twin (mu, log-var) head
+        v
+  CHECKPOINT                 checkpoints/run02/best.pt   297.1 MB (99.2 MB stripped for serving)
+        |                    infer.py             sliding window 518 / overlap 140, cosine blend
+        v
+  RASTER PRODUCTS            scene.height.tif  scene.sigma.tif   float32 GeoTIFF, metres
+        |                    tools/export_terrain.py
+        v
+  BROWSER BUNDLE             viewer/scenes/&lt;name&gt;/  height.bin sigma.bin truth.bin texture.jpg
+        |                                          + manifest.json
+        v
+  3D FLYTHROUGH              viewer/index.html + main.js + three.js  -> WebGL mesh, measurable</pre>
+
+<h3>2.4 Stage by stage, with the responsible file</h3>
+<div class="dl">
+  <div class="di"><dt>1. Ingest</dt><dd><span class="t">tools/prepare_data.py</span> unpacks the DFC2019 archives, <em>measures</em> what the documentation does not state (pixel size, void encoding, height range), and writes compressed shards. The probe step exists because the DFC2019 tiles were rewritten by <span class="t">tifffile</span> at some point in their history and lost all georeferencing &mdash; nothing in the files says a pixel is 30 cm.</dd></div>
+  <div class="di"><dt>2. Split</dt><dd>Regions are assigned whole to train, validation or test with seed 1337. No tile from a training region can appear in validation. 76 / 16 / 16 regions.</dd></div>
+  <div class="di"><dt>3. Train</dt><dd><span class="t">train.py</span> fine-tunes Depth Anything V2 Small with a Gaussian negative-log-likelihood objective, two learning rates, and a software thermal governor for the GPU.</dd></div>
+  <div class="di"><dt>4. Score</dt><dd><span class="t">tools/evaluate.py</span> runs whole 1024&times;1024 tiles through a sliding window and reports RMSE, MAE, correlation, bias, per-semantic-class error, per-terrain error, per-building error, calibration error, and the &sigma;-versus-error rank correlation.</dd></div>
+  <div class="di"><dt>5. Infer</dt><dd><span class="t">infer.py</span> runs a scene of any size: tiles it at 518&times;518 with 140 px overlap, blends with a cosine window, optionally applies 8-fold test-time augmentation, optionally fuses a second pass at 2&times; zoom, optionally matches the input resolution to the training resolution, optionally anchors to a coarse DEM or to ground control points. Writes GeoTIFFs.</dd></div>
+  <div class="di"><dt>6. Export</dt><dd><span class="t">tools/export_terrain.py</span> converts the rasters into a browser bundle: raw float32 binaries plus a JSON manifest carrying provenance, geometry, and every statistic the viewer's panels display.</dd></div>
+  <div class="di"><dt>7. Render</dt><dd><span class="t">viewer/main.js</span> builds a Three.js mesh from the float32 heights, drapes the original photograph over it, and provides four display modes, a drag-to-compare against LiDAR, an error map, a sun-direction control, a tour path, and a two-click measuring tool with calibrated error bars.</dd></div>
+  <div class="di"><dt>8. Serve</dt><dd><span class="t">tools/serve_app.py</span> exposes the whole thing publicly: the viewer, the baked scenes, and an upload endpoint that runs stages 5&ndash;6 on demand.</dd></div>
+  <div class="di"><dt>9. Package</dt><dd><span class="t">tools/build_standalone.py</span> inlines everything &mdash; Three.js, the application code, every scene binary, every texture &mdash; into a single 15.16 MB HTML file that runs offline from a double-click.</dd></div>
+</div>
+
+<h3>2.5 The two output products the problem statement asks for</h3>
+<div class="tw"><table>
+<tr><th>Input</th><th>Product</th><th>How it is produced</th></tr>
+<tr><td>PNG / JPG, no spatial metadata</td><td><strong>rDSM</strong> &mdash; relative surface model</td><td>The model's height output is used directly. It is metric in the sense that the head was trained to regress metres, but with no location there is no datum to anchor it to, so it is reported as relative.</td></tr>
+<tr><td>GeoTIFF with a CRS and transform</td><td><strong>Absolute DSM</strong> &mdash; metric elevation</td><td><span class="t">DSM = terrain elevation + above-ground height</span>. The terrain comes from Copernicus GLO-30 fetched for the scene's bounds; the above-ground height is ours. Enabled with <span class="t">--dem auto</span>.</td></tr>
+</table></div>
+
+<div class="fact">
+  <b>The distinction that most confuses readers</b>
+  <p>The model predicts <strong>AGL</strong> &mdash; above ground level, also called nDSM or
+  normalised DSM. A 10 m building on a 100 m hill reads 10 m, not 110 m. That is deliberate: it
+  is the quantity that transfers between places, because it does not depend on where sea level
+  is. A <strong>DSM</strong> is elevation above a vertical datum, so producing one means adding
+  the terrain back. Part 8.6 covers how.</p>
+</div>
+
+<h3>2.6 What makes this more than a depth model with a camera flying through it</h3>
+<ol>
+<li><strong>Every pixel carries an error bar.</strong> The network predicts a Gaussian per pixel,
+trained with heteroscedastic negative log-likelihood. The claim is falsifiable and was tested:
+expected calibration error is 0.077 and the rank correlation between predicted uncertainty and
+actual error is +0.829.</li>
+<li><strong>The viewer is a measuring instrument.</strong> Two clicks give ground distance, height
+difference and slope distance in metres, with the uncertainty on the height difference propagated
+&mdash; and <em>calibrated</em>, because the naive combination of two error bars is wrong by a
+factor of about 3.5 on a single rooftop.</li>
+<li><strong>Heights survive the trip to the browser exactly.</strong> Terrain ships as raw float32,
+not as a 16-bit PNG. Browsers decode images through an 8-bit canvas and would silently quantise
+the metres.</li>
+<li><strong>It runs with no GPU.</strong> ONNX export, int8 quantisation, CPU inference measured
+at 509 ms per 518&times;518 tile, and a live public deployment on a 2-vCPU virtual machine.</li>
+</ol>
+</section>
+
+
+<div class="parthead">
+  <div class="pn">Part 3</div>
+  <h2>The complete technology stack</h2>
+  <p>Every language, library, service and format used anywhere in the project, with the version
+  constraint that is actually declared and the reason it is there.</p>
+</div>
+
+<section>
+<h3>3.1 Languages and runtimes</h3>
+<div class="tw"><table>
+<tr><th>Technology</th><th>Version</th><th>Where it is used</th></tr>
+<tr class="hi"><td><strong>Python</strong></td><td class="n">3.10.7</td><td>Everything server-side: data preparation, training, inference, evaluation, export, the HTTP server, the deck generators. 19,713 lines across 62 modules.</td></tr>
+<tr class="hi"><td><strong>JavaScript</strong> (ES modules)</td><td>ES2020, no transpiler</td><td>The 3D viewer. <span class="t">viewer/main.js</span> is 43,635 bytes of hand-written code with no framework, no build step and no bundler.</td></tr>
+<tr><td>HTML / CSS</td><td>&mdash;</td><td><span class="t">viewer/index.html</span>, 12,713 bytes. Hand-written, no CSS framework.</td></tr>
+<tr><td>Batch script</td><td>&mdash;</td><td><span class="t">run_viewer.bat</span> &mdash; starts a local HTTP server, because the module viewer cannot load from <span class="t">file://</span>.</td></tr>
+</table></div>
+
+<div class="warn">
+  <b>Python 3.10, not 3.11</b>
+  <p>An earlier version of the pitch deck said 3.11. The interpreter in
+  <span class="t">D:\sih2026\.venv</span> is <strong>3.10.7</strong>. This was corrected in the
+  deck on 6 Sep 2026.</p>
+</div>
+
+<h3>3.2 Machine learning stack</h3>
+<div class="tw"><table>
+<tr><th>Library</th><th>Declared version</th><th>What it does here</th></tr>
+<tr class="hi"><td><strong>PyTorch</strong></td><td class="n">declared &ge;2.4 for training, pinned ==2.11.0+cpu for serving.<br><strong>Installed locally: 2.11.0+cu128</strong></td><td>The whole training and inference stack. The serving pin matches the version that wrote the checkpoint. The CUDA build must match the driver: installed from the cu128 index for the local RTX 3060.</td></tr>
+<tr><td>torchvision</td><td class="n">&ge;0.19</td><td>Image transforms during training. Deliberately excluded from the serving requirements &mdash; nothing at inference time needs it.</td></tr>
+<tr class="hi"><td><strong>transformers</strong> (Hugging Face)</td><td class="n">declared &ge;4.44, &lt;5 in <span class="t">requirements-serve.txt</span>.<br><strong>Installed locally: 5.16.1</strong> &mdash; a real inconsistency: the serving pin would install a 4.x that differs from the version the checkpoint was developed against.</td><td><span class="t">AutoModelForDepthEstimation.from_pretrained</span> constructs the Depth Anything V2 backbone, neck and head. This is the single call that pulls in the pretrained weights.</td></tr>
+<tr><td>huggingface-hub</td><td class="n">&ge;0.24</td><td>Model download and local cache management. In the deployment the cache is <em>baked in</em> and <span class="t">HF_HUB_OFFLINE=1</span> is set, so a cache miss becomes a loud failure instead of a slow network call inside a request.</td></tr>
+<tr><td>timm</td><td class="n">&ge;1.0</td><td>Model-zoo utilities used during backbone probing. Not needed at serving time and excluded from the serving requirements.</td></tr>
+<tr class="hi"><td><strong>ONNX Runtime</strong></td><td>onnxruntime, CPU execution provider</td><td>Runs the exported model with no PyTorch installed. This is what makes the &ldquo;standalone deployable module&rdquo; claim true rather than aspirational.</td></tr>
+</table></div>
+
+<h3>3.3 Geospatial stack</h3>
+<div class="tw"><table>
+<tr><th>Library</th><th>Version</th><th>What it does here</th></tr>
+<tr class="hi"><td><strong>rasterio</strong></td><td class="n">&ge;1.3</td><td>All GeoTIFF reading and writing, CRS handling, affine transforms, windowed reads. The manylinux wheel bundles GDAL, which is why the deployment needs no separate GDAL install.</td></tr>
+<tr><td>GDAL</td><td>bundled inside the rasterio wheel</td><td>The underlying raster driver library. Used through rasterio, never directly.</td></tr>
+<tr><td>pyproj</td><td class="n">&ge;3.6</td><td>Coordinate reference system transforms &mdash; converting scene bounds to latitude/longitude to work out which Copernicus DEM tiles to fetch.</td></tr>
+<tr><td>/vsicurl/</td><td>GDAL virtual filesystem</td><td>Reads Cloud-Optimised GeoTIFFs directly over HTTPS without downloading the whole file. Used for Copernicus GLO-30 and Google Open Buildings.</td></tr>
+</table></div>
+
+<h3>3.4 Numerical and scientific stack</h3>
+<div class="tw"><table>
+<tr><th>Library</th><th>Version</th><th>What it does here</th></tr>
+<tr><td>NumPy</td><td class="n">&ge;1.24, pinned &lt;2 for serving</td><td>Every array operation outside the network itself. The <span class="t">&lt;2</span> pin on the server avoids the NumPy 2 ABI break against the pinned torch build.</td></tr>
+<tr><td>SciPy</td><td class="n">&ge;1.11</td><td>Specifically <span class="t">scipy.ndimage</span>: <span class="t">gaussian_filter</span> for the zoom-fusion Laplacian split, <span class="t">percentile_filter</span> for the bare-earth DEM approximation, and connected-component labelling for per-building statistics.</td></tr>
+<tr><td>Pillow</td><td class="n">&ge;10.0</td><td>Reading and writing PNG/JPG inputs and writing the texture JPEG for each scene bundle.</td></tr>
+<tr><td>pandas</td><td class="n">&ge;2.0</td><td>Analysis and ablation tables only. Not used at inference or serving time.</td></tr>
+<tr><td>matplotlib</td><td class="n">&ge;3.8</td><td>Every figure in the evidence pack, generated by <span class="t">tools/make_figures.py</span>. Not used at serving time.</td></tr>
+<tr><td>PyYAML, tqdm</td><td class="n">&ge;6.0, &ge;4.66</td><td>Configuration parsing and progress bars.</td></tr>
+<tr><td>PyMuPDF (fitz)</td><td>in the venv</td><td>Reading research paper PDFs during literature work, and post-processing generated PDFs.</td></tr>
+</table></div>
+
+<h3>3.5 Front-end and 3D stack</h3>
+<div class="tw"><table>
+<tr><th>Technology</th><th>Version</th><th>What it does here</th></tr>
+<tr class="hi"><td><strong>Three.js</strong></td><td class="n">r169, MIT licence</td><td>The WebGL renderer. Vendored locally at <span class="t">viewer/vendor/three.module.js</span> (687,458 bytes) so the viewer works offline. The problem statement names Three.js as an acceptable engine.</td></tr>
+<tr><td>WebGL</td><td>via Three.js</td><td>Hardware-accelerated rendering in the browser. Verified working under SwiftShader software rendering, so a machine with a real GPU is strictly more capable than what the test passed on.</td></tr>
+<tr><td>Float32Array / fetch</td><td>native browser APIs</td><td>Heights are transferred as raw float32 binaries and read with <span class="t">Float32Array</span>. No image codec touches the height data, so no quantisation occurs.</td></tr>
+<tr><td>No framework</td><td>&mdash;</td><td>There is no React, no Vue, no Svelte, no bundler and no npm dependency tree in this project. The viewer is plain ES modules.</td></tr>
+</table></div>
+
+<div class="warn">
+  <b>Two technologies that were listed in an early deck and are not used</b>
+  <p><strong>React</strong> appears nowhere in the application. It occurred only as the string
+  name of an icon inside the PowerPoint-generation scripts. <strong>OpenCV</strong> appears
+  nowhere in the codebase at all. Both were removed from the deck on 6 Sep 2026.</p>
+</div>
+
+<h3>3.6 Infrastructure and hosting</h3>
+<div class="tw"><table>
+<tr><th>Service</th><th>Detail</th><th>Role</th></tr>
+<tr class="hi"><td><strong>Azure App Service</strong></td><td>Linux, plan <span class="t">dwz-plan</span>, SKU <strong>B2</strong> (2 vCPU, 3.5 GB RAM), region Central India, resource group <span class="t">sih2026-depthwizard</span>, app <span class="t">depthwizard-sih2026</span></td><td>Hosts the entire public product. CPU only &mdash; there is no GPU anywhere in the deployment.</td></tr>
+<tr><td>Oryx</td><td>Azure's Python build system</td><td>Installs dependencies on the platform from <span class="t">requirements.txt</span>, so nothing local has to build or push a container image.</td></tr>
+<tr><td>Cloudflare DNS</td><td>zone <span class="t">zaidansari.tech</span></td><td>CNAME <span class="t">project5</span> &rarr; <span class="t">depthwizard-sih2026.azurewebsites.net</span>, plus a TXT record <span class="t">asuid.project5</span> holding the domain verification ID.</td></tr>
+<tr><td>Azure managed certificate</td><td>free tier, SNI binding</td><td>TLS for <span class="t">project5.zaidansari.tech</span>.</td></tr>
+<tr><td>Python <span class="t">http.server</span></td><td>standard library <span class="t">ThreadingHTTPServer</span></td><td>The web server itself. No Flask, no FastAPI, no Django, no gunicorn. 506 lines in <span class="t">tools/serve_app.py</span>.</td></tr>
+<tr><td>Docker</td><td>Dockerfile written and kept working, not used</td><td>The container path is correct and is the route back to Azure Container Apps on any subscription that permits it. It is unused here for two measured reasons given in Part 11.</td></tr>
+<tr><td>Kaggle</td><td>30 GPU-hours per week, 12-hour sessions</td><td>Parallel experiments. T4 and P100 GPUs, neither of which has native bf16 &mdash; the training code detects this and falls back to fp16.</td></tr>
+<tr><td>Git</td><td>local repository</td><td>Version control. Data, weights and the virtual environment live outside the repository.</td></tr>
+</table></div>
+
+<h3>3.7 File formats used</h3>
+<div class="dl">
+  <div class="di"><dt>GeoTIFF (.tif)</dt><dd>Input imagery and all raster outputs. Carries CRS and affine transform when present. Output height and sigma rasters are float32, single band, metres.</dd></div>
+  <div class="di"><dt>PNG / JPG</dt><dd>Accepted as input for the non-georeferenced path. JPEG is also the scene texture format in the browser bundle.</dd></div>
+  <div class="di"><dt>.npz</dt><dd>Compressed NumPy archives. One shard holds many 518&times;518 crops with their heights and semantic classes. 92 files: 61 train, 14 val, 14 test, plus three JSON metadata files.</dd></div>
+  <div class="di"><dt>.pt</dt><dd>PyTorch checkpoint. <span class="t">best.pt</span> is 297,134,061 bytes with optimiser, scheduler and RNG state; stripped to 99.2 MB for serving.</dd></div>
+  <div class="di"><dt>.onnx</dt><dd>Exported model. fp32 is 100,672,732 bytes; int8 is 36,814,825 bytes.</dd></div>
+  <div class="di"><dt>.bin</dt><dd>Raw little-endian float32 arrays for the browser: <span class="t">height.bin</span>, <span class="t">sigma.bin</span>, <span class="t">truth.bin</span>, <span class="t">terrain.bin</span>. A 1024&times;1024 scene layer is exactly 4,194,304 bytes.</dd></div>
+  <div class="di"><dt>.h5</dt><dd>HDF5. The GAMUS dataset stores its height labels as <span class="t">*_AGL.h5</span>.</dd></div>
+  <div class="di"><dt>.IMD</dt><dd>WorldView image metadata. 67 of them carry solar and viewing geometry for the DFC2019 scenes; parsed by <span class="t">tools/parse_imd.py</span>.</dd></div>
+  <div class="di"><dt>JSONL</dt><dd>Append-only training log, one JSON object per line, so a run that dies mid-epoch still plots.</dd></div>
+</div>
+
+<h3>3.8 Licensing &mdash; what can and cannot ship</h3>
+<div class="tw"><table>
+<tr><th>Component</th><th>Licence</th><th>Consequence</th></tr>
+<tr class="ok"><td>Depth Anything V2 <strong>Small</strong></td><td><strong>Apache-2.0</strong></td><td>Can be shipped in a deliverable. This is what we use.</td></tr>
+<tr class="bad"><td>Depth Anything V2 Base / Large / Giant</td><td>CC-BY-NC-4.0</td><td><strong>Cannot</strong> go into a deliverable. Non-commercial only.</td></tr>
+<tr class="ok"><td>Three.js</td><td>MIT</td><td>Vendored and shipped.</td></tr>
+<tr><td>DFC2019 (IEEE GRSS)</td><td>free account required, not redistributable</td><td>Not committed to the repository. Obtained from IEEE DataPort.</td></tr>
+<tr><td>GAMUS</td><td>CC-BY-4.0</td><td>Usable with attribution.</td></tr>
+<tr><td>Copernicus GLO-30</td><td>open, no account or key</td><td>Fetched at runtime from a public S3 bucket.</td></tr>
+<tr class="bad"><td>CartoDEM (ISRO)</td><td>free to Indian Government Entities only</td><td><strong>Not used.</strong> As students we do not qualify, so the honest choice is Copernicus.</td></tr>
+<tr class="bad"><td>FABDEM (true bare earth)</td><td>non-commercial</td><td>Not used. Its absence is why the bare-earth correction is an approximation and is labelled as one.</td></tr>
+<tr><td>Maxar Open Data</td><td>CC-BY-4.0</td><td>Source of the Indian imagery at 0.31 m.</td></tr>
+<tr><td>pubgeo/dfc2019 baselines</td><td>MIT</td><td>Reference metrics implementation.</td></tr>
+</table></div>
+</section>

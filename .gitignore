@@ -41,3 +41,25 @@ viewer/scenes/index.json
 # --- inference outputs & HF cache ---
 out/
 .hf/
+
+# --- deployment build artifacts (staged tree + zip; ~300 MB, regenerate with stage.py) ---
+deploy/_context/
+deploy/*.zip
+
+# --- vendor + build scratch (large, regenerable, never imported by the app) ---
+# _ortweb is 120 MB of onnxruntime-web files nothing references; ppt/ is 44 MB of
+# deck-build scratch. Both would dominate a repo a judge is meant to clone and read.
+tools/_ortweb/
+tools/ppt/
+
+# --- the single-file viewer build (15 MB, regenerates in one command) ---
+# Deliberately not tracked during development: tools/build_standalone.py rewrites it on
+# every viewer change, so tracking it would add 15 MB to history per edit. It IS a
+# deliverable -- attach it to the submission (or a GitHub release) as a one-off, and see
+# docs/viewer-design.md for why it exists at all.
+viewer_standalone.html
+
+# --- last year's problem statements and templates, kept locally for reference ---
+docs/SIH25039-*.pdf
+SIH2025-*.pptx
+docs/SIH2025-*.pptx

@@ -80,6 +80,8 @@ class DepthWizard(nn.Module):
         bin_min: float = -3.0,
         bin_max: float = 120.0,
         htc: bool = True,
+        init_mu: str = "pretrained",
+        init_mu_m: float = 0.0,
     ):
         super().__init__()
         from transformers import AutoModelForDepthEstimation
@@ -100,6 +102,27 @@ class DepthWizard(nn.Module):
         self.conv2 = base.head.conv2
         self.activation1 = base.head.activation1
         self.conv_mu = base.head.conv3                      # pretrained 32 -> 1
+
+        # The pretrained readout emits DISPARITY, and its output scale is a property of
+        # the checkpoint's feature magnitudes, not of our task. Measured on real crops
+        # with tools/preflight.py, median |truth - mu| at init is 16.5 m for DA-V2-Small
+        # but 666 m for DA-V1-Large: the two families' necks do not emit features of the
+        # same size, even though their conv3 weights are comparable (|w| 0.088 vs 0.100).
+        # A 666 m residual drives log_var into log_var_max on the first NLL step, and the
+        # clamp then zeroes its gradient while suppressing mu's by ~1100x
+        # (tools/nll_deadlock_probe.py). That is what killed run05.
+        #
+        # "pretrained" reproduces the historical behaviour exactly, so run01-run04 remain
+        # bit-comparable. "constant" applies to conv_mu the same argument the variance
+        # head below already makes for itself: begin as a uniform prediction and let the
+        # data add structure. It discards a 32->1 linear readout of disparity, which has
+        # to be relearned as height in any case; backbone, neck and conv1/conv2 are kept.
+        if init_mu == "constant":
+            nn.init.zeros_(self.conv_mu.weight)
+            nn.init.constant_(self.conv_mu.bias, float(init_mu_m) / self.height_scale)
+        elif init_mu != "pretrained":
+            raise ValueError(f"init_mu must be 'pretrained' or 'constant', got {init_mu!r}")
+        self.init_mu = init_mu
 
         if predict_uncertainty:
             hidden = self.conv_mu.in_channels
