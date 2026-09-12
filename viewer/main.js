@@ -596,7 +596,10 @@ function updateStats() {
     // Provenance, because the mountain is not ours and the viewer must not imply it is.
     $('s-terrnote').textContent =
       `The mountain shape comes from ${m.terrain_source || 'an external DEM'}. `
-      + `Everything standing on it — buildings, trees — is our model's.`;
+      + `Everything standing on it — buildings, trees — is our model's.`
+      // The imagery is CC-BY and the licence wants the credit visible wherever the image
+      // is, not only in a NOTICE file someone opening the standalone will never see.
+      + (m.imagery_source ? ` Imagery: ${m.imagery_source}.` : '');
   }
 
   // Against LiDAR, when there is LiDAR.
