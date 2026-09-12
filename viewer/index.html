@@ -77,6 +77,10 @@
   .foot {
     margin-top: auto; display: flex; flex-direction: column; gap: 10px;
     width: max-content; max-width: calc(100vw - 28px);
+    /* Each item keeps its own width. Stretching is the default and is wrong here: it made
+       the scale bar's box as wide as the key-hints line, leaving a 120px bar adrift in a
+       475px panel. The bar's length is the measurement, so the box has to hug it. */
+    align-items: flex-start;
   }
   #help { color: var(--dim); padding: 8px 12px; }
   /* Above the key hints, where a desktop GIS puts it. */
@@ -318,8 +322,11 @@
         <div id="sb-label">—</div>
         <div id="sb-bar"></div>
       </div>
+      <!-- The mouse line comes first because it is what an unfamiliar hand reaches
+           for. Fly mode is the specialist control and reads as one. -->
       <div id="help" class="panel">
-        <kbd>Click</kbd> look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
+        <kbd>Drag</kbd> turn · <kbd>Wheel</kbd> zoom · <kbd>Right-drag</kbd> pan<br>
+        <kbd>Click</kbd> fly · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
         <kbd>Q</kbd><kbd>E</kbd> down/up · <kbd>Shift</kbd> faster · <kbd>Esc</kbd> release
       </div>
     </div>

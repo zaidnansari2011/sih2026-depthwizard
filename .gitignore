@@ -73,3 +73,6 @@ docs/SIH2025-*.pptx
 
 # editor/tool backups
 *.bak
+
+# verify_controls.py --keep writes its frames here
+out_controls/
