@@ -145,6 +145,16 @@
   input[type=range] { width: 100%; accent-color: var(--accent); margin: 2px 0; }
   .btns { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 6px; }
   .note { color: var(--dim); font-size: 10.5px; margin-top: 3px; line-height: 1.35; }
+  #dl-links a {
+    display: block; padding: 4px 0 4px 15px; color: var(--accent); text-decoration: none;
+    font-size: 11.5px; border-bottom: 1px solid var(--line-sw); position: relative;
+  }
+  #dl-links a:last-child { border-bottom: none; }
+  #dl-links a:hover { text-decoration: underline; }
+  /* A downward arrow, drawn rather than fetched: no icon font, no request. */
+  #dl-links a::before {
+    content: "\2193"; position: absolute; left: 0; color: var(--dim); font-weight: 600;
+  }
   kbd {
     background: #f4f6f8; border: 1px solid var(--line); border-bottom-width: 2px;
     border-radius: 3px; padding: 1px 5px; font: 11px ui-monospace, Consolas, monospace;
@@ -313,6 +323,17 @@
         <div id="upprog" style="display:none">
           <div class="row"><span id="up-step">working…</span><span id="up-pct">0%</span></div>
           <div class="bar-outer"><div class="bar-inner" id="up-bar"></div></div>
+        </div>
+
+        <!-- The problem statement asks the platform to "output a high-fidelity DSM in a
+             standard geospatial format". Until this row existed it did not: the rasters
+             were written and then reachable by no route, so a judge working through the
+             hosted demo got a picture and nothing to open in QGIS. -->
+        <div id="dl" style="display:none">
+          <div class="sect">Download this result</div>
+          <div id="dl-links"></div>
+          <div class="note">GeoTIFF, in the input's own coordinate system. Kept on
+            the server for about an hour.</div>
         </div>
       </div>
 

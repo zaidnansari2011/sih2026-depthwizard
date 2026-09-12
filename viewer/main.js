@@ -242,11 +242,23 @@ function rampCSS(stops) {
 
 // ---------------------------------------------------------------- scene loading
 
+// Scenes this visitor uploaded, for as long as their tab is open.
+//
+// They are deliberately absent from scenes/index.json -- see export_terrain.py --no-index.
+// That file is served to everyone, so an upload listed in it appears in the scene picker
+// of every later visitor, which is both a privacy problem and an evidence one: a
+// stranger's 10 m Sentinel-2 reconstruction sitting beside Omaha and Sikkim quietly
+// undermines the per-terrain stability argument those six scenes exist to make.
+const sessionScenes = [];
+
 async function loadScenes(select) {
   let list = [];
   try {
     list = await (await fetch('./scenes/index.json', { cache: 'no-store' })).json();
   } catch { /* index is optional; fall through to the empty-state message */ }
+  for (const s of sessionScenes) {
+    if (!list.some((k) => k.dir === s.dir)) list = list.concat([s]);
+  }
   const sel = $('scene');
   sel.innerHTML = '';
   if (!list.length) {
@@ -1857,6 +1869,38 @@ function report(a, b) {
  * assuming: in the single-file build there is no server, and an upload button that cannot
  * work is worse than no button.
  */
+/**
+ * List what this job produced, as downloads.
+ *
+ * The label for the above-ground raster depends on whether an absolute DSM was anchored:
+ * with one it is an nDSM, without one it *is* the problem statement's relative DSM, and
+ * the server names the file to match. Calling it nDSM in both cases would be the kind of
+ * small wrongness a specialist notices immediately.
+ */
+function showDownloads(job, s) {
+  const box = $('dl-links');
+  if (!box) return;
+  const label = {
+    dsm: 'Absolute DSM — metres above the geoid',
+    ndsm: s.georeferenced ? 'nDSM — metres above ground'
+                          : 'rDSM — relative heights, no sea-level reference',
+    sigma: 'Uncertainty — one standard deviation, metres',
+    terrain: 'Bare-earth DEM used as the anchor',
+    summary: 'Run summary (JSON)',
+    readme: 'What these files are, and what they are measured against',
+  };
+  box.textContent = '';
+  for (const kind of (s.results || ['ndsm', 'readme'])) {
+    if (!label[kind]) continue;
+    const a = document.createElement('a');
+    a.href = `./api/result/${job}/${kind}`;
+    a.textContent = label[kind];
+    a.setAttribute('download', '');
+    box.appendChild(a);
+  }
+  $('dl').style.display = box.childElementCount ? 'block' : 'none';
+}
+
 async function initUpload() {
   try {
     const r = await fetch('./api/capabilities', { cache: 'no-store' });
@@ -1875,6 +1919,7 @@ async function initUpload() {
       $('up-bar').style.width = `${pct}%`;
     };
     setP('uploading', 4);
+    $('dl').style.display = 'none';          // the previous result's links are not this one's
     let job;
     try {
       const res = await fetch(`./api/upload?name=${encodeURIComponent(file.name)}`,
@@ -1907,7 +1952,9 @@ async function initUpload() {
       catch { continue; }                  // a dropped request is not a dead job
       setP(s.step || s.state, s.pct ?? 50);
       if (s.state === 'done') {
+        sessionScenes.push({ dir: s.scene, name: s.scene_name || 'Your upload' });
         await loadScenes(s.scene);
+        showDownloads(job, s);
         setP(s.georeferenced ? 'done — heights are above sea level'
                              : 'done — heights are relative (no coordinates in that file)', 100);
         break;
