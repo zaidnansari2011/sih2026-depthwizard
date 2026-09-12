@@ -251,8 +251,8 @@ def main():
     ap.add_argument("--gcp-scale", action="store_true",
                     help="fit scale AND offset from the control points, correcting the "
                          "measured height compression (ours = 0.483*truth + 2.49 m). Needs "
-                         "5+ points spanning 5+ m. A TRADE, measured: -21.3% RMSE on tall "
-                         "structures, +18% MAE on short ones. Off by default so the "
+                         "5+ points spanning 5+ m. A TRADE, measured: -21.3%% RMSE on tall "
+                         "structures, +18%% MAE on short ones. Off by default so the "
                          "shipped default stays the conservative one.")
     ap.add_argument("--auto-zoom", action="store_true",
                     help="read the ground sample distance from a georeferenced input and "
