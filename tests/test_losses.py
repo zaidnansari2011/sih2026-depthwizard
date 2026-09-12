@@ -17,6 +17,15 @@ import math
 
 import torch
 
+import sys
+from pathlib import Path
+
+# Same idiom as tools/evaluate.py and tools/gsd_probe.py: make the repo importable
+# when this file is run directly. Without it `python tests/test_losses.py` from a
+# fresh clone dies on ModuleNotFoundError before a single assertion runs, which is
+# the first thing someone checking out the source tries.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from depthwizard.losses import (
     GaussianNLLLoss,
     MaskedL1Loss,

@@ -36,12 +36,31 @@ or it needs a retake.
 
 ## Tier 1 — cheap, and a judge may hit it
 
-- [ ] **A4: publish the repo.** Over 40 commits unpushed to
-      `github.com/zaidnansari2011/sih2026-depthwizard`; no LICENSE / NOTICE; CC-BY imagery
-      unattributed. README's deadline is now correct.
-- [ ] **Track `tools/ppt/`.** It is gitignored, so the deck *outputs* are version-controlled
-      but the *generators* are not — every deck edit from 12 Sep exists only on this machine.
-      One disk failure loses the ability to rebuild the submission artefact.
+- [x] **A4: publish the repo.** **Done 12 Sep.** Repo is **public**, `master` is the default
+      branch and is current (fast-forwarded, no merge commit), everything pushed.
+      Apache-2.0 `LICENSE` — GitHub reports `licenseInfo.key = apache-2.0`, so it renders a
+      licence rather than "no license". `NOTICE.md` covers the model, three.js, GAMUS, Maxar,
+      Google Open Buildings, Copernicus and DFC2019, and says which we do *not* redistribute.
+      Maxar's CC-BY credit also travels **inside** the product as `imagery_source` and prints
+      in the viewer. README now opens with the live URL, the 3.464 m headline, the
+      tall-building failure, the error-map figure and links to all six docs.
+- [x] **Track `tools/ppt/`.** **Done 12 Sep.** Narrowed to `tools/ppt/*` with a
+      `!tools/ppt/*.py` negation, so the 14 generators (160 KB) are versioned and the 216 PNGs
+      and built decks (44 MB) stay out of a repo a judge clones.
+
+### Tier 1 verification, 12 Sep
+
+- Anonymous `git clone` of the public URL returns **136 files**, including `depthwizard/dem.py`
+  (Key Milestone 2, "Scale Calibration"), `tools/ppt/make_deck_c.py` and the evidence figures.
+- Full-history secret scan: no `kaggle.json`, `.pem`, `.env` or `access_token` ever committed;
+  no credential-shaped strings in any blob across all 135 files ever added. Auth modules read
+  from paths outside the repo.
+- Both test files **pass when run directly** (`python tests/test_losses.py`), which they did not
+  before — they died on `ModuleNotFoundError` from a fresh clone, the same papercut class as
+  the `--help` crash.
+- Imagery credit confirmed by rendering `hilly_sikkim_valley` headless and reading the string
+  back off the DOM, not by assuming the code path runs.
+- README has zero broken local links.
 
 ## Tier 2 — the viewer, which is 50% of the marks
 
@@ -106,6 +125,9 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
+- **12 Sep (later)** — **Tier 1 done.** Repo public with Apache-2.0 and NOTICE, master
+  current, deck generators tracked, tests fixed to run from a clean clone, Maxar credit
+  rendering inside the viewer. Verified by anonymous clone and a full-history secret scan.
 - **12 Sep** — run07 shipped and deployed; evidence pack, deck, six demo scenes and the
   standalone all moved to run07. Four published numbers found unreproducible and corrected
   (§6b bootstrap protocol, the error-map building, forested ground error, the Sikkim
