@@ -222,6 +222,13 @@ leaves alone the one file that is meant to differ (`scenes/index.json`, pruned b
   and the source, because a needle 180° out passes a rotation test.
 - Screenshots were read by eye at 1024×768 and 1366×768, on both a flat tile and the Sikkim
   mountainside, which is how the stretched scale bar and a badly wrapped CRS row were found.
+- **Touch is covered too.** Pointer lock does not exist on mobile, so before A1 a tablet
+  could not move the camera at all. One finger orbits through the same handlers as the
+  mouse; two fingers pinch. Adding those two cases to the check immediately found a real
+  fault: `setPointerCapture` throws when a pointer is no longer active, and that exception
+  escaped the handler into the global error reporter, painting "The viewer hit an error"
+  over a working scene on **every pinch** — the exact failure A2 removed, coming back
+  through a different door. Six gestures now covered.
 
 **One check reports SKIP rather than passing or failing.** The cursor-position readout is
 throttled to one raycast per animation frame, and headless Chrome renders about a dozen
