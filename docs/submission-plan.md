@@ -1,5 +1,57 @@
 # Submission plan — SIH26175 DepthWizard
 
+> ## Start here after a context reset
+>
+> **This file is the plan of record.** Read it before doing anything else.
+>
+> **Where things are.** The project is `D:/sih2026` — *not* `C:/Users/Zaid/Documents/sih2026`,
+> which holds only a stale `ps2026.html`. The git repo is `D:/sih2026/depthwizard`. Python is
+> `/d/sih2026/.venv/Scripts/python.exe`; there is no `pytest` installed, so run test files
+> directly. Checkpoints are `D:/sih2026/checkpoints/<run>/best.pt`; eval output and prediction
+> rasters are in `D:/sih2026/out/`.
+>
+> **The state, 12 September 2026.**
+> - Deadline **30 Sep** (not the 20th the team brief says). Target submit **28 Sep**. The
+>   portal shows **3/500** submissions, so there is no slot to race for.
+> - **Team is registered.** The only deliverable left is the **DevUp PPT**.
+> - **run07 ships**: per-building **3.464 m**, whole-tile 6.008 m, ECE 0.063. The
+>   pre-registered >20 m criterion **FAILED** at −15.6 m against a −13 m bar, and is reported
+>   as failed in the deck, the evidence pack and §6b. Do not let that be tidied into a pass.
+> - **GAMUS is fully consumed** — there is no more of it to add. 8,724 tiles ship but only
+>   6,557 carry RGB; all 2,167 NYC tiles are height-only and unusable for an image model.
+> - Live at <https://project5.zaidansari.tech> serving run07; all six demo scenes re-baked on
+>   run07; repo **public** at <https://github.com/zaidnansari2011/sih2026-depthwizard>.
+> - **Tier 1 is complete and verified. Tier 2 is next, starting with A2.**
+>
+> **Five things that cost real time — do not rediscover them.**
+> 1. **The viewer is served at the site ROOT.** `/viewer/main.js` is a **404**; the script is
+>    `/main.js`. Checking the wrong path looks exactly like a failed deploy.
+> 2. **`deploy/dwz-app.zip` is a Docker build context — never zip-deploy it** (doing so caused
+>    a two-day outage). Use `python deploy/make_appservice_zip.py`, which writes
+>    `dwz-appservice.zip` and checks the layout before writing.
+> 3. **`export_terrain.py` rewrites `manifest["files"]` from scratch**, silently dropping the
+>    inundation tool's `buildings` entry. `build_scenes.py` now re-bakes it automatically — do
+>    not bypass it, and check for the `flood` marker in its summary output.
+> 4. **`az webapp config appsettings list` is sandbox-blocked** as credential material.
+>    `--query "[].name" -o tsv` works, and is enough to confirm `DW_CKPT` and `HF_HOME` stay
+>    unset (they must: Oryx runs the app from /tmp, so absolute paths point at nothing).
+> 5. **Writing Python through a bash heredoc mangles backslash escapes.** An escape meant to
+>    land literally in the target file collapses on the way through. Build those strings with
+>    `chr(92)` and `chr(10)` instead, and prefer forward slashes in paths.
+>
+> **How to re-verify anything, rather than trusting a claim:**
+>
+>     python tools/analysis/paired_bootstrap.py ../out/eval_run02_ship ../out/eval_run07_ship
+>     python tools/verify_viewer.py          # headless render of the standalone
+>     node tools/test_flood.mjs              # inundation tool, 7 checks
+>     python tests/test_losses.py && python tests/test_gcp_affine.py
+>     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
+>
+> A deployed model is verified by **what it serves**, not by what the deploy reports. Upload a
+> tile and compare the returned scene's `height_max_m` and `sigma_mean_m` against a local
+> single-pass run of each candidate checkpoint. On `OMA_288_042` that separates them cleanly:
+> run07 gives 38.3 m and sigma 1.54, run02 gives 29.6 m and 0.87.
+
 **Deadline: 30 September 2026.** **Target submission: 28 September**, leaving 29–30 Sep as
 buffer. The deliverable is the DevUp PPT (`docs/SIH2026-DevUp-SIH26175-DepthWizard-C.pptx`,
 exported to PDF); everything else in this repo exists to be evidence behind it or to survive
