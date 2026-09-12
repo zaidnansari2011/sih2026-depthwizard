@@ -47,10 +47,17 @@ deploy/_context/
 deploy/*.zip
 
 # --- vendor + build scratch (large, regenerable, never imported by the app) ---
-# _ortweb is 120 MB of onnxruntime-web files nothing references; ppt/ is 44 MB of
-# deck-build scratch. Both would dominate a repo a judge is meant to clone and read.
+# _ortweb is 120 MB of onnxruntime-web files nothing references; ppt/ is 44 MB, and 216
+# PNGs plus the built decks are almost all of it. Both would dominate a repo a judge is
+# meant to clone and read.
 tools/_ortweb/
-tools/ppt/
+tools/ppt/*
+# ...but the deck GENERATORS inside it are 160 KB and are the only way to rebuild the
+# submission artefact. The built .pptx is tracked under docs/ while the code that produces
+# it was not, which is backwards: a lost machine would leave a deck nobody could edit.
+# Needs the /* form above -- git will not descend into a directory ignored with a trailing
+# slash, so a negation under `tools/ppt/` would never match.
+!tools/ppt/*.py
 
 # --- the single-file viewer build (15 MB, regenerates in one command) ---
 # Deliberately not tracked during development: tools/build_standalone.py rewrites it on
