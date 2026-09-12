@@ -1,7 +1,8 @@
 # GAMUS integration — plan and goal
 
 **Written 6 September 2026.** 24 days to the 30 September idea-submission deadline.
-Status: **not started.** Nothing below has been run.
+Status: **complete, 12 September 2026.** Every phase has been run, run07 ships, and the
+results and corrections are in §6b and Phase 5.
 
 This is a plan of record for one decision: bringing GAMUS in as a primary corpus. It
 follows the project convention — predictions and falsification conditions are written
@@ -460,11 +461,48 @@ the display driver and kills the CUDA context.
 Fill the §6 matrix. This is the headline deliverable of the whole exercise, and it should
 appear in the deck as a table, not a claim.
 
-### Phase 5 — Fold into the evidence pack and deck
-Update `evidence-pack.md`, the limitations list, and the DevUp deck. Specifically, if the
-primary criterion is met, limitation #1 changes from *"buildings above 20 m are under-called
-by ~17 m"* to a much narrower and more defensible *"buildings above ~50 m are under-called,
-and no open dataset at this resolution contains them."*
+### Phase 5 — Fold into the evidence pack and deck ✅ **done 12 Sep 2026**
+
+`evidence-pack.md` now reports run07 throughout: headline, per class, per height band, per
+terrain, calibration, the ablation, ONNX, and a new **"Another city, another sensor, another
+LiDAR vendor"** section carrying the §6 matrix. All five figures regenerated from
+`out/eval_run07_ship`. The deck reports 3.464 m with the failed criterion stated beside it.
+
+Limitation #1 was narrowed as planned, but on a different basis than §6 anticipated. The
+criterion was *not* met, so the narrowing does not rest on having passed anything — it rests
+on where the data stops: the under-call above 20 m is reported as 15.6 m and significantly
+improved, and the residual is attributed to no open dataset at this resolution holding
+buildings above ~50 m. A second limitation was added for the bias-for-variance trade
+(overall −0.24 → −0.47 m, 6–10 m band −0.78 → −0.97 m, both p < 0.0001).
+
+**Four things were corrected rather than copied, and each is worth knowing:**
+
+1. **The §6b bootstrap used the wrong protocol** — see the correction above. The tall-building
+   result is stronger than first written, and >30 m does reach significance.
+2. **The error map's "93.6 m building we call 31.5 m" was unreproducible.** Measured from the
+   raster and the scored array: truth median 72.8 m, ours 14.1 m. The old figure appears to
+   have been a tile-wide maximum. `make_figures.py` now takes `--pred` so the figure cannot
+   silently show a different checkpoint than `--metrics`.
+3. **"Forested ground error is 2.5 m" had no provenance in any metrics file** — `evaluate.py`
+   built the per-terrain block without passing `cls=`, so every `per_terrain.per_class` was
+   empty. Fixed; measured 2.47 m against sparse's 0.61 m.
+4. **The Sikkim co-registration is not real.** Its phase-correlation peak is 0.006 and the
+   shift it chooses moves from (−4,−4) to (−8,0) to (−26,−30) m depending only on which
+   raster it is given and how far it may search. The India table is now `--no-shift` for both
+   checkpoints on the same footprints, which is the first time those two columns have been
+   comparable. GAMUS did not move the Indian result (−6.41 → −6.28 m on confident
+   footprints), which is expected — GAMUS is dense US urban and adds nothing hilly.
+
+**Deployment.** `deploy/stage.py --ckpt checkpoints/run07/best.pt` and a restage of
+App Service. Note the App Service package is now `deploy/dwz-appservice.zip`, built by a
+separate script from `deploy/dwz-app.zip`, which is a Docker build context and must never be
+zip-deployed — doing so took the site down for two days on 8 Sep.
+
+**Still on run02, and knowingly:** the six baked viewer scenes. Each names its own model in
+the viewer ("run02 + TTA"), so nothing is misreported, but the demo surfaces are not the
+shipped model. `tools/build_scenes.py` hardcodes the checkpoint and the raster paths, so
+re-baking is an edit plus six inference runs, and it carries visual-regression risk this
+close to submission. Decide deliberately rather than by drift.
 
 ---
 

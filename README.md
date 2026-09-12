@@ -2,7 +2,9 @@
 
 **One optical satellite image in. A navigable, measurable 3D surface out.**
 
-Smart India Hackathon 2026, ISRO / Space Applications Centre. Idea submission closes **20 September 2026**.
+Smart India Hackathon 2026, ISRO / Space Applications Centre. Idea submission closes **30 September 2026**
+(the SIH portal prints 30 September in all 233 rows; the 20 September in the team brief is wrong — see
+`docs/problem-statement.md`).
 
 The plan of record — every design decision and why it was made — is [PLAN.md](PLAN.md).
 

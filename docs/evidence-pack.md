@@ -213,16 +213,32 @@ No airborne LiDAR reference exists for our Indian scenes, so this is a **cross-c
 against another model**, not an accuracy measurement. Google Open Buildings 2.5D Temporal
 is derived from Sentinel-2 at roughly 4 m effective resolution; we run at 0.31 m.
 
-| | Sikkim 2 km |
-|---|---|
-| All footprints (n=585) | bias −1.15 m, RMSE 3.34 m |
-| **Confident footprints only (presence > 0.85, n=168)** | **bias −6.94 m**, RMSE 7.04 m |
+| | run02 | **run07 (shipped)** |
+|---|---|---|
+| All footprints (n=589) | bias −1.30 m, RMSE 3.08 m, r +0.386 | bias **−0.25 m**, RMSE 3.31 m, r +0.258 |
+| **Confident only (presence > 0.85, n=168)** | bias −6.41 m, RMSE 7.44 m, r +0.504 | **bias −6.28 m**, RMSE **7.30 m**, r +0.461 |
 
-**−6.94 m is the honest headline, not −1.15 m.** Open Buildings' low-confidence outlines
+**−6.28 m is the honest headline, not −0.25 m.** Open Buildings' low-confidence outlines
 spill onto surrounding ground and canopy, which drags the disagreement toward zero. The
 larger, less flattering number comes from the footprints it is most sure about, and it is
 consistent with our known behaviour: we under-call tall buildings, and Sikkim's hill town
 is dense and vertical.
+
+**These are unshifted, and that is a correction.** Earlier versions of this table applied
+the script's phase-correlation co-registration. Re-running it exposed that the alignment is
+not real here: the correlation peak is **0.006**, and the shift it picks moves from
+(−4, −4) m to (−8, 0) m to (−26, −30) m depending only on which checkpoint's raster it is
+given and how far it is allowed to search. A co-registration that cannot find a peak should
+not be applied, so both columns above are measured with `--no-shift` on the *same* 589 and
+168 footprints. That makes the two runs comparable to each other, which the previously
+published figures — scored at different shifts, on 585 and 589 footprints — were not.
+
+**What changed and what did not.** On the confident footprints the two models are within
+0.15 m of each other: GAMUS did not move the Indian result, which is expected, because GAMUS
+is dense US urban and adds nothing hilly. The all-footprint bias improves five-fold
+(−1.30 → −0.25 m) while correlation falls (+0.386 → +0.258), so run07 is better centred and
+slightly noisier against a reference that is itself a 4 m-resolution model. Neither number
+is an accuracy measurement and neither is presented as one.
 
 Terrain leakage was tested and ruled out: on 31° median slopes, the correlation between
 predicted height and ground slope is **−0.044**.
