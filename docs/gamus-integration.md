@@ -251,6 +251,12 @@ not transfer, and the problem is not what probe 01 concluded."* That inference d
 survive the measurement. Paired bootstrap, 20,000 resamples, run07 vs run02 over the same
 buildings (no TTA, so the pilot's figures are directly comparable):
 
+> **Reproduce with** `python tools/analysis/paired_bootstrap.py out/eval_run02 out/eval_run07`
+> (add `--markdown`). Written 12 Sep 2026, because the intervals below were originally
+> produced by a scratch script and the evidence pack's standing rule is that every figure
+> regenerates. The committed tool returns these point estimates exactly; the CIs and p-values
+> differ in the third decimal, which is resampling noise and not a correction.
+
 | band | n | run02 bias | run07 bias | delta | 95 % CI | p |
 |---|---|---|---|---|---|---|
 | **>20 m** | 60 | −17.262 | −15.781 | **+1.481** | **[+0.202, +2.717]** | **0.025** |
@@ -267,9 +273,47 @@ For contrast, the same test on the 1,500-step pilot gave +0.450 m, CI [−0.517,
 p = 0.357 — indistinguishable from zero. The pilot could not resolve the effect; the full
 run can. That is the expected order of events, not a contradiction.
 
-The >30 m band moves +1.704 m but at n = 27 cannot reach significance. DFC2019 val holds
-only 60 buildings above 20 m and 27 above 30 m, so this is an **instrument limit**, not a
-model result, and no amount of training will change it.
+The >30 m band moves +1.704 m but at n = 27 cannot reach significance **on this pairing**.
+DFC2019 val holds only 60 buildings above 20 m and 27 above 30 m, so the sample is thin
+however it is scored.
+
+### Corrected 12 Sep 2026 — the bootstrap above used the wrong protocol
+
+The criteria table is scored on the shipping configuration, *"because that is the
+configuration §6 names"* — but the bootstrap above was run on the no-TTA pairing. Mixing the
+two understated the result. Re-run on the shipping protocol, over the same 3,090 buildings:
+
+| band | n | run02 bias | run07 bias | delta | 95 % CI | p |
+|---|---|---|---|---|---|---|
+| 0–3 m | 166 | +0.491 | +0.045 | −0.446 | [−0.557, −0.341] | <0.0001 |
+| 3–6 m | 2,305 | +0.294 | +0.010 | −0.284 | [−0.313, −0.255] | <0.0001 |
+| 6–10 m | 443 | −0.775 | −0.971 | −0.196 | [−0.275, −0.119] | <0.0001 |
+| 10–20 m | 116 | −1.029 | −1.098 | −0.070 | [−0.456, +0.345] | 0.72 |
+| **>20 m** | 60 | −17.157 | −15.642 | **+1.515** | **[+0.661, +2.424]** | **0.0002** |
+| **>30 m** | 27 | −28.122 | −26.227 | **+1.895** | **[+0.407, +3.489]** | **0.011** |
+| all | 3,090 | −0.237 | −0.474 | −0.237 | [−0.271, −0.202] | <0.0001 |
+
+Per-building RMSE: −0.202 m overall (p = 0.003), −1.595 m on >20 m (p = 0.0015), **−2.352 m
+on >30 m (p = 0.002)**.
+
+**So the >30 m band does resolve, and the sentence above was too pessimistic.** TTA and
+zoom-2 fusion reduce prediction variance on both sides of the pairing, which narrows the
+interval without touching the sample size — 27 buildings is thin, but it is not too thin once
+the measurement itself is less noisy. The honest statement is that the tall-building
+improvement is significant at every band above 20 m *on the configuration we deploy*, and
+that "no amount of training will change it" was a claim about the instrument that the
+instrument did not support.
+
+**Two regressions, both significant, both small.** Overall per-building bias moves away from
+zero (−0.237 → −0.474 m) and the 6–10 m band under-calls more (−0.775 → −0.971 m), each with
+RMSE flat or better. That is a bias-for-variance trade: run07 buys significantly less scatter
+at the cost of a slightly larger systematic under-call. It belongs in the limitations list,
+not in a footnote.
+
+**The 10–20 m band is the one that looked bad and is not.** Its RMSE rises +0.534 m, which
+would be the worst single number in the comparison if it were real — CI [−0.094, +1.235],
+p = 0.11. At n = 116 this split cannot resolve it. Reported here so that nobody later finds
+it in `metrics.json` and believes it was hidden.
 
 ### Secondary — the cross-domain matrix
 
@@ -295,13 +339,33 @@ out of domain (0.231 against 0.077 in domain); run07 is at 0.044. Our calibratio
 where the training distribution covers the test domain and degrades where it does not.
 That is worth reporting in both directions.
 
-### Ship decision — open
+### Ship decision — taken 12 Sep 2026: run07 ships
 
-Not taken. The literal §6 rule says do not ship; every measured quantity says run07 is
-strictly better than run02, at every protocol, several significantly. Rewriting a
-pre-registered bar after seeing the number is exactly what pre-registration prevents, so
-the threshold stands as failed and the decision belongs to Zaid. **Whichever way it goes,
-the deck reports −15.6 m against a −13 m target.**
+**run07 is the shipping checkpoint. The primary criterion stands as FAILED and is reported
+as failed.** Those two sentences are not in tension, and the distinction is the whole point:
+
+Pre-registration exists to stop a threshold being moved so a result can be claimed as a
+success. Nothing here is claimed. The bar stays at −13 m, the measurement stays at −15.6 m,
+and the deck and this document both report a miss. What pre-registration does **not** oblige
+is deploying the worse of two models out of literalism — §6's rule was written to protect the
+*claim*, and refusing to ship would instead protect the claim by degrading the product.
+
+The bar's own stated rationale is falsified. It was written to detect "36x the tall-building
+data did not transfer"; the data transferred at p = 0.0002 on >20 m and p = 0.011 on >30 m.
+The bar asked a yes/no question, got "yes, by less than hoped", and the rule attached to it
+was written for "no".
+
+Against that: run07 is better on per-building RMSE (p = 0.003), whole-tile RMSE, every band
+below 6 m, every band above 20 m, ECE, σ rank correlation, and calibration coverage at every
+k — and out of domain its ECE is 0.044 against run02's 0.231, which is our stated primary
+differentiator holding where run02's collapsed. The two regressions are sub-0.25 m bias
+shifts on bands whose RMSE did not worsen.
+
+**What this decision does not license.** The −13 m bar is not rewritten, the primary criterion
+is not reported as met, and limitation #1 is narrowed on the strength of *where the data runs
+out* (no open dataset at this resolution holds buildings above 50 m), not on the strength of
+having passed something. Anyone reading the deck should be able to find the failed criterion
+without looking for it.
 
 ### Provenance
 
