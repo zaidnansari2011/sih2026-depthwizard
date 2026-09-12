@@ -1,7 +1,9 @@
 # DepthWizard — Plan of Record
 
 **SIH26175** · ISRO / Space Applications Centre · Software
-**Idea submission closes 20 September 2026** · cap 500 submissions per problem statement
+**Idea submission closes 30 September 2026** · cap 500 submissions per problem statement
+(corrected 12 Sep from 20 September, which came from the team brief; the portal says 30th —
+`docs/problem-statement.md`. Dated entries below that say "20 Sep" are left as written.)
 Repo: `zaidnansari2011/sih2026-depthwizard` (private) · Workspace: `D:\sih2026`
 
 > This is the living reference. If a decision changes, change it *here* first.
@@ -1010,7 +1012,7 @@ Improve the model *behind a viewer that already works*.
 
 | Date | Deliverable |
 |---|---|
-| **20 Sep 2026** | **Idea submission** — a proposal judged on approach. Needs *evidence*: benchmark table, error maps, calibration curve, demo video. Not a finished product. |
+| **30 Sep 2026** | **Idea submission** — a proposal judged on approach. Needs *evidence*: benchmark table, error maps, calibration curve, demo video. Not a finished product. |
 | Grand finale (later, if shortlisted) | 36 hours of building. The real runway. |
 
 25 days from 26 Aug. Solo, that is enough for evidence and a demo. It is not enough for
