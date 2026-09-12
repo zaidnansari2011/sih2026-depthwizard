@@ -873,12 +873,16 @@ function grabMouse() {
 function lockRefused() {
   say('Mouse-look did not engage.',
       'Browsers block re-locking the mouse for about a second after Esc, and refuse it while '
-      + 'the window is not focused. Click the scene again. The keys work either way: W A S D '
-      + 'to move, Q and E for down and up.');
+      + 'the window is not focused. Nothing is lost: drag to turn the view, roll the wheel to '
+      + 'zoom, or click the scene again in a moment.');
 }
 document.addEventListener('pointerlockerror', lockRefused);
 
 renderer.domElement.addEventListener('click', (e) => {
+  // A drag that turned the camera is not a click, and must not capture the mouse or drop a
+  // measurement pin. Four pixels of travel is below what a hand does while pressing a
+  // button and well under a deliberate drag.
+  if (drag.moved > 4) return;
   if (state.measuring) return pick(e);
   if (state.comparing) return;            // dragging the divider must not grab the mouse
   grabMouse();
@@ -892,17 +896,152 @@ addEventListener('mousemove', (e) => {
   yaw -= e.movementX * 0.0022;
   pitch -= e.movementY * 0.0022;
   pitch = Math.max(-1.5, Math.min(1.5, pitch));
-  state.touring = false;
-  $('tour').classList.remove('on');
+  stopTour();
 });
 
-function resetView() {
+function stopTour() {
+  if (!state.touring) return;
+  state.touring = false;
+  $('tour').classList.remove('on');
+}
+
+// ---------------------------------------------------------------- orbit, pan, zoom
+//
+// Fly-through with a captured mouse is the right control for moving *through* a scene, and
+// the wrong one for the first thirty seconds with it. Someone handed an unfamiliar 3D view
+// drags to turn it round and rolls the wheel to get closer, because every map, every CAD
+// package and every three.js demo they have ever touched works that way. Before this the
+// wheel did nothing at all and a drag did nothing at all, so the honest reading of the
+// viewer was that it had no mouse controls.
+//
+// Fly mode is kept, on a tap: the two do not collide, because a drag that moved the pointer
+// is not a click. Everything below leaves `yaw` and `pitch` as the single source of truth
+// for where the camera looks, so switching between the two modes needs no handover.
+
+const orbit = { target: new THREE.Vector3(), touched: 0 };
+
+/**
+ * The point gestures pivot around: whatever the middle of the view is resting on.
+ *
+ * Derived fresh when a gesture begins rather than stored, because WASD moves the camera
+ * without touching it and a stored pivot would drift somewhere behind you. Held steady for
+ * half a second so one continuous gesture pivots about one point instead of chasing the
+ * surface as the view changes.
+ */
+function orbitTarget() {
+  const now = performance.now();
+  const stale = now - orbit.touched > 500;
+  orbit.touched = now;
+  if (!stale) return orbit.target;
+
+  const hit = terrainAtNdc(SCREEN_CENTRE);
+  if (hit) {
+    orbit.target.copy(hit.point);
+  } else {
+    // Looking at the sky: pivot about a point a sensible distance ahead, so the gesture
+    // still does something predictable instead of nothing.
+    orbit.target.copy(camera.position)
+      .addScaledVector(new THREE.Vector3(0, 0, -1).applyEuler(camera.rotation),
+                       sceneExtent() * 0.5);
+  }
+  return orbit.target;
+}
+
+/** Place the camera on the sphere about the pivot that yaw and pitch describe. */
+function placeOnOrbit(radius) {
+  const t = orbit.target;
+  const cp = Math.cos(pitch);
+  camera.position.set(t.x + radius * cp * Math.sin(yaw),
+                      t.y - radius * Math.sin(pitch),
+                      t.z + radius * cp * Math.cos(yaw));
+}
+
+const drag = { on: false, button: 0, x: 0, y: 0, moved: 0 };
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  // Orbiting while comparing is fine and intended -- the divider is screen-space and the
+  // clip planes are rebuilt from the camera every frame, so the split survives the turn.
+  // The grip is a separate element, so it keeps its own drag.
+  if (locked) return;
+  drag.on = true;
+  drag.button = e.button;
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  drag.moved = 0;
+  renderer.domElement.setPointerCapture(e.pointerId);
+});
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (!drag.on) return;
+  const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+  drag.x = e.clientX;
+  drag.y = e.clientY;
+  drag.moved += Math.abs(dx) + Math.abs(dy);
+  if (!drag.moved) return;
+  stopTour();
+
+  const t = orbitTarget();
+  const radius = camera.position.distanceTo(t);
+
+  if (drag.button === 0) {
+    yaw -= dx * 0.005;
+    // Stop just short of horizontal. Orbiting below the surface puts the camera inside the
+    // terrain looking at the underside of a heightfield, which reads as the viewer breaking.
+    pitch = Math.max(-1.5, Math.min(-0.03, pitch - dy * 0.005));
+    placeOnOrbit(radius);
+  } else {
+    // Pan. Scaled so the surface keeps pace with the pointer at the pivot's depth, which is
+    // what makes a pan feel like dragging the map rather than nudging a camera.
+    const perPx = (2 * radius * Math.tan((camera.fov * Math.PI / 180) / 2))
+      / (renderer.domElement.clientHeight || 1);
+    const shift = new THREE.Vector3()
+      .addScaledVector(new THREE.Vector3(1, 0, 0).applyEuler(camera.rotation), -dx * perPx)
+      .addScaledVector(new THREE.Vector3(0, 1, 0).applyEuler(camera.rotation), dy * perPx);
+    camera.position.add(shift);
+    t.add(shift);
+  }
+});
+
+const endDrag = (e) => {
+  if (!drag.on) return;
+  drag.on = false;
+  if (renderer.domElement.hasPointerCapture?.(e.pointerId)) {
+    renderer.domElement.releasePointerCapture(e.pointerId);
+  }
+};
+renderer.domElement.addEventListener('pointerup', endDrag);
+renderer.domElement.addEventListener('pointercancel', endDrag);
+
+// Right-drag pans, so the context menu has to stay out of the way.
+renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Bound to the canvas, never the window: #hud and #stats scroll their own overflow now, and
+// a wheel over a panel must scroll that panel rather than zoom the scene behind it.
+renderer.domElement.addEventListener('wheel', (e) => {
+  if (locked) return;                        // fly mode moves with the keys
+  e.preventDefault();
+  stopTour();
+  const t = orbitTarget();
+  const radius = camera.position.distanceTo(t);
+  const extent = sceneExtent();
+  // Exponential, so each notch is the same proportional change whether you are 20 m or
+  // 2 km out, and clamped so the scene can be neither entered nor lost.
+  const want = radius * Math.exp(e.deltaY * 0.0012);
+  placeOnOrbit(Math.max(extent * 0.01, Math.min(extent * 8, want)));
+}, { passive: false });
+
+/** The scene's widest side in metres -- the unit every camera distance is expressed in. */
+function sceneExtent() {
   const m = state.manifest;
-  const gsd = state.gsd || 1;
-  const extent = Math.max(m.width, m.height) * gsd;
+  return m ? Math.max(m.width, m.height) * (state.gsd || 1) : 1;
+}
+
+function resetView() {
+  const extent = sceneExtent();
   camera.position.set(0, extent * 0.45, extent * 0.75);
   yaw = 0;
   pitch = -0.42;
+  orbit.touched = 0;              // the pivot is stale now; let the next gesture re-derive it
   scene.fog.near = extent * 0.9;
   scene.fog.far = extent * 4;
   camera.far = extent * 12;
@@ -910,9 +1049,8 @@ function resetView() {
 }
 
 function updateCamera(dt) {
-  const m = state.manifest;
-  if (!m) return;
-  const extent = Math.max(m.width, m.height) * (state.gsd || 1);
+  if (!state.manifest) return;
+  const extent = sceneExtent();
 
   if (state.touring) {
     // A slow orbital pass with a gentle bob. This is the shot that goes in the
@@ -1469,7 +1607,7 @@ function updateScaleBar() {
 
 let hoverPending = 0;
 renderer.domElement.addEventListener('pointermove', (ev) => {
-  if (locked) { $('hover').style.display = 'none'; return; }
+  if (locked || drag.on) { $('hover').style.display = 'none'; return; }
   // One raycast per frame at most. A cast per pointermove event is wasted work against a
   // mesh this size and shows up as stutter while orbiting.
   if (hoverPending) return;

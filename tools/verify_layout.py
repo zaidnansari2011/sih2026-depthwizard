@@ -1,8 +1,15 @@
 """Does the viewer's chrome still fit on the screen it will be judged on?
 
     python tools/verify_layout.py                 # the built standalone, four screen sizes
-    python tools/verify_layout.py --url http://localhost:8080/
+    python tools/verify_layout.py --page viewer/index.html
     python tools/verify_layout.py --json          # machine-readable, for a diff
+
+It measures a LOCAL page only, and says so rather than guessing: the probe has to be
+appended to the page's own markup, and the deployed site sends no CORS headers, so a copy
+of it loaded from disk cannot fetch its own scene data. That costs nothing, because the
+geometry comes from the stylesheet both copies share -- and the one live-only difference,
+the upload card that appears when a server is behind the page, is force-shown by the probe
+anyway. Use verify_viewer.py --url to check that the deployment renders.
 
 Why this exists
 ---------------
@@ -221,8 +228,9 @@ def faults(snap: dict) -> list[str]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--url", default=None, help="page to load; default is the standalone")
-    ap.add_argument("--page", default=None, type=Path,
+    # Deliberately not type=Path: Path() mangles "https://host" into "https:\host", which
+    # would slip past the guard below and fail as a confusing missing-file error instead.
+    ap.add_argument("--page", default=None,
                     help="local html to instrument (default: viewer_standalone.html)")
     ap.add_argument("--budget-ms", type=int, default=14000)
     ap.add_argument("--timeout", type=int, default=300)
@@ -243,17 +251,23 @@ def main() -> int:
 
     tmp = Path(tempfile.mkdtemp(prefix="dwz-layout-"))
     try:
-        if args.url:
-            url, src = args.url, None
-        else:
-            src = args.page or (ROOT / "viewer_standalone.html")
-            if not src.exists():
-                raise SystemExit(f"{src} not found -- run tools/build_standalone.py first")
-            probed = tmp / src.name
-            instrument(src, probed)
-            url = probed.resolve().as_uri()
+        if args.page and args.page.lower().startswith(("http:", "https:")):
+            raise SystemExit(
+                "this tool measures a local page only. The probe has to be appended to the\n"
+                "page's own markup, and the deployed site sends no CORS headers, so a copy of\n"
+                "it loaded from disk cannot fetch its scene data. The geometry is identical\n"
+                "either way -- it comes from the stylesheet both copies share. Run it on\n"
+                "viewer_standalone.html or viewer/index.html, and use\n"
+                "  python tools/verify_viewer.py --url <site>\n"
+                "to check that the deployment renders.")
+        src = Path(args.page) if args.page else (ROOT / "viewer_standalone.html")
+        if not src.exists():
+            raise SystemExit(f"{src} not found -- run tools/build_standalone.py first")
+        probed = tmp / src.name
+        instrument(src, probed)
+        url = probed.resolve().as_uri()
 
-        print(f"\nlayout check  {src if src else url}")
+        print(f"\nlayout check  {src}")
         print(f"  probing {len(sizes)} screen size(s); each needs a real GPU and ~15s\n")
 
         bad = 0
