@@ -21,10 +21,11 @@
 >   6,557 carry RGB; all 2,167 NYC tiles are height-only and unusable for an image model.
 > - Live at <https://project5.zaidansari.tech> serving run07; all six demo scenes re-baked on
 >   run07; repo **public** at <https://github.com/zaidnansari2011/sih2026-depthwizard>.
-> - **Tier 1 and Tier 2 complete** — demo-hall survivability, mouse controls, and
->   the geospatial identity (CRS, datum, coordinates, north arrow). That is the 50%.
->   **Tier 3 is next**: A6 (hand back the DSM; the scene picker also exposes other
->   visitors' uploads) then A5 (the upload path a judge will actually use).
+> - **Tiers 1, 2 and 3 complete.** Demo-hall survivability, mouse controls, the
+>   geospatial identity, and the upload path: a georeferenced upload now returns an
+>   absolute DSM, an nDSM, uncertainty, the bare-earth anchor, a summary and a readme.
+>   **Tier 4 is next** (B: the GSD ladder; C: an ISRO scene, gated on B) — and it is
+>   the first thing to cut if time runs short. The demo video is not cuttable.
 >
 > **Six things that cost real time — do not rediscover them.**
 > 1. **The viewer is served at the site ROOT.** `/viewer/main.js` is a **404**; the script is
@@ -55,6 +56,8 @@
 >     python tools/verify_layout.py          # panels fit four screen sizes, worst case open
 >     python tools/verify_controls.py        # drag/wheel/pan move the camera, panels do not
 >     python tools/verify_geo.py             # coordinates checked against rasterio
+>     python tools/smoke_deliverable.py --ckpt ../checkpoints/run07/best.pt
+>     python tools/verify_upload.py --ckpt ../checkpoints/run07/best.pt
 >     node tools/test_flood.mjs              # inundation tool, 7 checks
 >     python tests/test_losses.py && python tests/test_gcp_affine.py
 >     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
@@ -255,11 +258,49 @@ file under a run07 product is the one option that is not available.
 
 ## Tier 3 — problem-statement compliance
 
-- [ ] **A6: hand back the DSM.** The PS names a geospatial output and ours is CLI-only; the
-      default is AGL with no rDSM/nDSM naming. Same item fixes the scene picker exposing other
-      visitors' uploads.
-- [ ] **A5: the upload path a judge will actually use.** A 512×512 crop crashes; tracebacks
-      leak to the client; the job poll never terminates on error. `--help` was fixed 12 Sep.
+- [x] **A5: the upload path a judge will actually use.** **Done 13 Sep.** Four defects, each
+      reproduced before it was fixed. A **512×512 crop crashed** — the commonest crop size in
+      remote sensing, and smaller than one 518 px window, so the backbone was handed a
+      non-multiple of the patch size. `infer_scene` reflect-pads to one window and crops
+      back; proven a **no-op** by running a 600×600 image through the old and new code and
+      getting bit-identical rasters, so no published number can move. **Tracebacks reached
+      the browser** — failures are now classified into sentences and the trace goes to the
+      log. **The poll loop never terminated** on a forgotten job, spinning forever with the
+      upload button disabled; `unknown` is now terminal.
+- [x] **A6: hand back the DSM.** **Done 13 Sep.** `GET /api/result/<job>/<kind>`, a download
+      row in the viewer, and a readme that travels with the rasters. Files carry the PS's own
+      names — absolute DSM, nDSM, and **rDSM where there is no CRS**, which is the PS's second
+      branch rather than a degraded first one. The absolute DSM is now the **default** for
+      georeferenced input (it was off unless someone passed `--dem`, so the deployed demo
+      produced the relative branch for everything), with a clean fallback and a summary that
+      distinguishes "no coordinates in your file" from "the anchor could not be reached".
+      Uploads no longer join the shared scene picker.
+
+### Tier 3 verification, 13 Sep
+
+Two new harnesses, and between them they found five things the code review had not.
+
+- `tools/smoke_deliverable.py` — twelve awkward inputs plus `--help` on all 40 entry points.
+  A readable file must produce a raster of exactly the input's size; an unreadable one must
+  produce **a sentence** with no traceback, no source location, no filesystem path and no
+  exception name. **53 checks.** It found `tools/preflight.py --help` dying on
+  `ModuleNotFoundError` — the same missing shim Tier 1 fixed in the tests — and, worse, that
+  **a truncated upload was being rendered rather than refused**: a PNG cut to a third of its
+  bytes opens fine through GDAL, which pads the missing **26% of rows with black**, and the
+  pipeline reported confident heights over invented pixels. Nothing downstream can tell
+  fabricated black from a dark field. The upload gate now forces a full decode through PIL,
+  which is strict exactly where GDAL is forgiving.
+- `tools/verify_upload.py` — starts a real server, posts a plain PNG and a GeoTIFF, polls the
+  jobs, follows every download link. **23 checks**, including that a path-traversal kind is
+  refused and that no upload reaches the shared index. It found `scrub_paths` testing for two
+  backslashes rather than one, so **Windows paths sailed into the summary a judge downloads**;
+  the readme joined with a literal `
+`, so it would have arrived as one unreadable line; and
+  its own leak pattern flagging `https://` as a drive letter.
+
+The measured pay-off worth repeating: a georeferenced upload now returns an **absolute DSM**,
+an nDSM, uncertainty, the bare-earth anchor, a summary and a readme — six files, none of which
+that path produced before.
 
 ## Tier 4 — evidence depth, first to be cut
 
@@ -300,6 +341,12 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
+- **13 Sep** — **Tier 3 complete: A5 and A6.** The upload path now survives the files a
+  judge will hand it, and returns the problem statement's named geospatial output. Two
+  new harnesses (`smoke_deliverable.py`, `verify_upload.py`) found five faults between
+  them, the worst being a truncated upload rendered as heights over 26% invented black
+  pixels, and Windows paths reaching the summary a judge downloads. The absolute DSM
+  is now produced by default for georeferenced input; it never was before.
 - **12 Sep (later still)** — **Tier 2 complete: A2, A1 and A3.** Viewer chrome rebuilt on two flex
   columns after measuring an 889 px HUD against a 673 px viewport; late failures no longer
   take the screen; WebGL is preflighted. New `tools/verify_layout.py`: 7 layout problems
