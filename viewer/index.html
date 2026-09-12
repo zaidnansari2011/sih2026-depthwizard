@@ -83,6 +83,8 @@
     align-items: flex-start;
   }
   #help { color: var(--dim); padding: 8px 12px; }
+  /* Sized to the dial, and shown only where north is a real direction. */
+  #compass { display: none; padding: 5px 5px 2px; line-height: 0; }
   /* Above the key hints, where a desktop GIS puts it. */
   #scalebar { padding: 6px 9px 7px; display: none; }
   #sb-label { font: 11px ui-monospace, Consolas, monospace; color: var(--text);
@@ -110,6 +112,14 @@
     font-size: 12px; font-variant-numeric: tabular-nums;
   }
   .row.sub span { color: var(--dim); font-size: 11px; font-family: inherit; }
+  /* A CRS name does not fit a two-column row: "EPSG:32645 · WGS 84 / UTM zone 45N" wrapped
+     against its own label and interleaved with it. Stack the label over the value. */
+  .stacked { padding: 3px 0; }
+  .stacked > span { display: block; color: var(--dim); }
+  .stacked > b {
+    display: block; font-weight: 500; color: var(--text); font-size: 12px;
+    font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
   .sect { color: var(--dim); font-size: 10px; text-transform: uppercase;
           letter-spacing: .06em; margin: 12px 0 5px; font-weight: 600; }
 
@@ -317,6 +327,28 @@
            scene rather than over it. See say() and trouble() in main.js. -->
       <div id="toast" role="status" aria-live="polite"></div>
 
+      <!-- North is a fixed direction in the scene, because the rasters are north-up: the
+           affine has no rotation and a negative north-step, so +Z is south. The needle
+           therefore only has to follow the camera's yaw. Hidden on any scene whose
+           transform is rotated, and on the unreferenced tiles, where there is no north to
+           point at and a decorative arrow would be a lie. -->
+      <div id="compass" class="panel" title="North">
+        <svg viewBox="-20 -20 40 40" width="36" height="36" role="img"
+             aria-label="North arrow">
+          <circle r="16.5" fill="none" stroke="var(--line)" stroke-width="1" />
+          <g id="needle">
+            <path d="M0,-12.5 L4.8,5 L0,1.5 Z" fill="var(--text)" />
+            <path d="M0,-12.5 L-4.8,5 L0,1.5 Z" fill="#fff" stroke="var(--text)"
+                  stroke-width="0.9" stroke-linejoin="round" />
+            <g id="needle-n" transform="translate(0,-16)">
+              <text y="3" text-anchor="middle" font-size="9"
+                    font-family="ui-sans-serif, system-ui, sans-serif"
+                    fill="var(--text)">N</text>
+            </g>
+          </g>
+        </svg>
+      </div>
+
       <!-- Calibrated where the centre of the view meets the surface; see updateScaleBar(). -->
       <div id="scalebar" class="panel">
         <div id="sb-label">—</div>
@@ -340,8 +372,24 @@
       <div class="row"><span>Grid size</span><span id="s-res">—</span></div>
       <div class="row"><span>Height range</span><span id="s-range">—</span></div>
       <div class="row"><span>Typical confidence</span><span id="s-sigma">—</span></div>
+      <!-- Differentiator 6.1 is that the model knows where it is unreliable. The ±
+           figure above is only worth reading if it is calibrated, and nothing on
+           screen said whether it was. Figures from evidence-pack.md. -->
+      <div class="row sub"><span id="s-calib"></span></div>
 
-      <div id="terrain-block" style="display:none">
+      <!-- ISRO is a geospatial agency: a 3D view that cannot name its coordinate system
+         reads as a toy regardless of what the numbers in it are worth. On a tile that
+         ships without georeferencing this says exactly that instead of inventing one. -->
+    <div id="geo-block">
+      <div class="sect">Where this is</div>
+      <div class="row"><span>Centre</span><span id="s-centre">—</span></div>
+      <div class="row"><span>Grid centre</span><span id="s-en">—</span></div>
+      <div class="stacked"><span>Coordinate system</span><b id="s-crs">—</b></div>
+      <div class="row"><span>Datum</span><span id="s-datum">—</span></div>
+      <div class="row sub"><span id="s-geonote"></span></div>
+    </div>
+
+    <div id="terrain-block" style="display:none">
         <div class="sect">The ground underneath</div>
         <div class="row"><span>Height above sea</span><span id="s-elev">—</span></div>
         <div class="row"><span>Rise across scene</span><span id="s-relief">—</span></div>
@@ -390,6 +438,10 @@
     <div class="row"><span>Height above ground</span><span id="h-height">—</span></div>
     <div class="row"><span>How sure we are</span><span id="h-sigma">—</span></div>
     <div class="row"><span>Slope</span><span id="h-slope">—</span></div>
+    <!-- Only on georeferenced scenes; see lonLatAt(). -->
+    <div class="row sub" id="h-pos-row" style="display:none">
+      <span id="h-pos"></span>
+    </div>
   </div>
 
 
