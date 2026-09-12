@@ -158,6 +158,9 @@ def main():
                     help="which model produced this height map, e.g. 'run02 + TTA'. Recorded "
                          "in the manifest and shown in the viewer. A scene that cannot say "
                          "where its heights came from is not evidence of anything.")
+    ap.add_argument("--no-index", action="store_true",
+                    help="do not list this scene in viewer/scenes/index.json. "
+                         "For uploads: that index is served to every visitor.")
     ap.add_argument("--default-scene", action="store_true",
                     help="open the viewer on this scene. The picker's ORDER still mirrors "
                          "the problem statement, but the landing scene should be a "
@@ -398,6 +401,12 @@ def main():
 
     # Keep an index of scenes so the viewer can offer a picker without a server API.
     scenes_root = out.parent
+    if getattr(args, "no_index", False):
+        # An uploaded scene must not join the shared picker: this directory is served
+        # to everyone, so one visitor's image would otherwise appear in the scene
+        # picker of every visitor after them. serve_app passes this for uploads and
+        # the viewer lists the scene client-side, for that session only.
+        return
     index = scenes_root / "index.json"
     known = []
     if index.exists():
