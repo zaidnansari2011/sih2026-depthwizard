@@ -21,9 +21,11 @@
 >   6,557 carry RGB; all 2,167 NYC tiles are height-only and unusable for an image model.
 > - Live at <https://project5.zaidansari.tech> serving run07; all six demo scenes re-baked on
 >   run07; repo **public** at <https://github.com/zaidnansari2011/sih2026-depthwizard>.
-> - **Tier 1 is complete and verified. Tier 2 is next, starting with A2.**
+> - **Tier 1 complete. Tier 2 A2 complete** (demo-hall survivability: projector layout,
+>   refused mouse-lock, WebGL preflight). **A1 is next** — orbit and wheel zoom;
+>   `grep -c wheel viewer/main.js` is still 0. Then A3.
 >
-> **Five things that cost real time — do not rediscover them.**
+> **Six things that cost real time — do not rediscover them.**
 > 1. **The viewer is served at the site ROOT.** `/viewer/main.js` is a **404**; the script is
 >    `/main.js`. Checking the wrong path looks exactly like a failed deploy.
 > 2. **`deploy/dwz-app.zip` is a Docker build context — never zip-deploy it** (doing so caused
@@ -38,11 +40,18 @@
 > 5. **Writing Python through a bash heredoc mangles backslash escapes.** An escape meant to
 >    land literally in the target file collapses on the way through. Build those strings with
 >    `chr(92)` and `chr(10)` instead, and prefer forward slashes in paths.
+> 6. **Headless Chrome under `--virtual-time-budget` renders about six animation frames for
+>    the whole session** (counted, 12 Sep). Anything gated on a frame counter therefore never
+>    runs there: the scale bar needs 10 frames and the FPS readout needs 30, so both look
+>    permanently broken in a DOM dump and are fine in a real browser. Do not "fix" either on
+>    headless evidence; force the element visible in the probe and measure its geometry, which
+>    is what `verify_layout.py` does.
 >
 > **How to re-verify anything, rather than trusting a claim:**
 >
 >     python tools/analysis/paired_bootstrap.py ../out/eval_run02_ship ../out/eval_run07_ship
 >     python tools/verify_viewer.py          # headless render of the standalone
+>     python tools/verify_layout.py          # panels fit four screen sizes, worst case open
 >     node tools/test_flood.mjs              # inundation tool, 7 checks
 >     python tests/test_losses.py && python tests/test_gcp_affine.py
 >     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
@@ -118,9 +127,24 @@ or it needs a retake.
 
 Do these in order. A2 first because it is the cheapest insurance on the biggest block.
 
-- [ ] **A2: survive a demo hall.** `.panel` has no overflow rule and no responsive rules, so
-      panels overflow off-screen at projector aspect ratios; a refused pointer-lock paints an
-      unrecoverable error over a working scene; no WebGL preflight.
+- [x] **A2: survive a demo hall.** **Done 12 Sep.** Three failure modes, each measured before
+      it was fixed and re-measured after.
+      - *Panels off the bottom of a projector.* With the flood controls, legend and upload
+        card open the HUD wants **889 px**; a browser on a 1366×768 hall laptop gives the page
+        **673**. `html, body` carry `overflow: hidden`, so the rest did not scroll, it ceased
+        to exist — and the HUD lay across the key hints. The hand-tuned absolute offsets are
+        gone; there are now two full-height flex columns, the HUD and stats scroll internally,
+        and the scale bar, key hints and readout are pinned to the foot of their column.
+        Overlap is now structurally impossible rather than merely unlikely.
+      - *A refused pointer lock painted an unrecoverable error over a working scene.* Chrome
+        rejects the lock for ~1 s after Esc and while the window is unfocused; that rejection
+        reached the global `unhandledrejection` handler, which showed the full-screen overlay
+        reading "failed to load a scene" over a scene that was on screen and fine. Failures
+        now route on whether anything is up yet: before the first scene, the overlay; after
+        it, a dismissible note beside the scene.
+      - *No GPU gave a minified three.js stack trace.* Preflighted, with an answer the person
+        at the machine can act on. A `webglcontextlost` handler covers the same ground — a
+        projector being plugged in used to freeze the image under a live frame counter.
 - [ ] **A1: orbit and wheel zoom.** `grep -c wheel viewer/main.js` = 0. Pointer-locked WASD is
       the only camera control, and a judge who picks up the mouse for thirty seconds is the
       scenario. (The 12 Sep grid-marching raycast made hover cheap enough that adding camera
@@ -129,6 +153,31 @@ Do these in order. A2 first because it is the cheapest insurance on the biggest 
       arrow, and none of the accuracy evidence is visible in the viewer. ISRO is a geospatial
       agency; a viewer with no CRS reads as a toy. Also surfaces our differentiator
       (calibrated uncertainty) where it is actually seen.
+
+### Tier 2 verification, A2, 12 Sep
+
+Each claim below was produced by a command, not by reading the diff.
+
+- `tools/verify_layout.py` — new. Instruments a **copy** of the built page with a probe that
+  reads `getBoundingClientRect()` and `scrollHeight` off every panel after the render loop has
+  run, at four screen sizes, in two states: as a judge finds it, and with every block the HUD
+  can reveal at once. **7 problems before the fix, 0 after.** The worst was the HUD 230–278 px
+  below the bottom edge with no scrollbar.
+- The corrected `verify_viewer.py` was itself checked against a page that really is broken —
+  Chrome run with `--disable-webgl` — which also proves the preflight: **zero `<canvas>`** and
+  the instruction on screen instead of a stack trace.
+- A real rejected promise fired at a live page: `#loading` **stays hidden**, canvas and stats
+  intact, reason in the corner. Same for a forced `WEBGL_lose_context`.
+- 1024×768 screenshot read back by eye — it is what caught the toast covering the key hints,
+  which the numeric check then adopted as a permanent pair.
+- Unchanged and still green: `verify_viewer` 8/8, `test_flood.mjs` 7/7, `test_losses` 19/19,
+  `test_gcp_affine` all pass.
+
+**Found while deploying, unrelated to A2 but worth the sentence:** the deploy staging tree had
+drifted from the repo, so the **Maxar CC-BY imagery credit was missing from the live site** in
+both `main.js` and the two Sikkim manifests — the repo had it and the deployment did not.
+`make_appservice_zip.py` now refreshes every mirrored file from the repo before packing, and
+leaves alone the one file that is meant to differ (`scenes/index.json`, pruned by `stage.py`).
 
 ## Tier 3 — problem-statement compliance
 
@@ -177,6 +226,13 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
+- **12 Sep (later still)** — **Tier 2 A2 done.** Viewer chrome rebuilt on two flex
+  columns after measuring an 889 px HUD against a 673 px viewport; late failures no longer
+  take the screen; WebGL is preflighted. New `tools/verify_layout.py`: 7 layout problems
+  before, 0 after, across four screen sizes. `verify_viewer.py`'s fatal-panel check was
+  found to be an unconditional pass and was fixed, then tested against a genuinely broken
+  page. Deploy staging had drifted: the live site was missing the Maxar CC-BY credit, and
+  the packager now refreshes from the repo.
 - **12 Sep (later)** — **Tier 1 done.** Repo public with Apache-2.0 and NOTICE, master
   current, deck generators tracked, tests fixed to run from a clean clone, Maxar credit
   rendering inside the viewer. Verified by anonymous clone and a full-history secret scan.

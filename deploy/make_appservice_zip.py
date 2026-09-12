@@ -24,14 +24,27 @@ INDEX = "--extra-index-url https://download.pytorch.org/whl/cpu\n"
 # So the repo is canonical and this refreshes from it, rather than trusting whoever last
 # remembered to copy. Files with no counterpart in the repo (the weights, the HF cache) are
 # staging-only by design and are left alone.
+#
+# One staged file is *meant* to differ: stage.py prunes viewer/scenes/index.json of the
+# upload_* scenes that exist only on the dev machine, and an entry pointing at a directory
+# that was not shipped makes the viewer fetch a missing manifest, which presents as the
+# whole scene picker being broken. Copying the repo's copy over it would reintroduce
+# exactly that. Report the difference instead of resolving it.
+KEEP_STAGED = {"viewer/scenes/index.json"}
+
 stale = []
 for f in sorted(APP.rglob("*")):
     if not f.is_file():
         continue
+    rel = f.relative_to(APP).as_posix()
     src = ROOT / f.relative_to(APP)
-    if src.is_file() and src.read_bytes() != f.read_bytes():
-        f.write_bytes(src.read_bytes())
-        stale.append(f.relative_to(APP).as_posix())
+    if not src.is_file() or src.read_bytes() == f.read_bytes():
+        continue
+    if rel in KEEP_STAGED:
+        print(f"  note: {rel} differs from the repo and was left alone (pruned by stage.py)")
+        continue
+    f.write_bytes(src.read_bytes())
+    stale.append(rel)
 if stale:
     print(f"  refreshed {len(stale)} stale file(s) from the repo:")
     for s in stale:
