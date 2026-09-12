@@ -30,13 +30,35 @@ Monocular height estimation is ill-posed — there is no unique 3D scene behind 
 
 ## Where it stands
 
+**Live, running, and public: <https://project5.zaidansari.tech>** — upload a GeoTIFF and get a
+navigable 3D surface back. It runs on an ordinary CPU web host, no GPU, about 60 s per tile.
+
 | | |
 |---|---|
-| **Zero-shot baseline to beat** | **4.68 m RMSE** over 80 held-out test tiles |
-| Oracle ceiling for a linear fix | 3.94 m — *not deployable; it needs the answer to compute the answer* |
-| Data | 2 783 tiles / 108 regions, split **by region** so no neighbourhood spans two splits |
-| Pipeline | end to end: image → heightmap → GeoTIFF → browser bundle → flythrough |
-| Tests | 19, including recovery of a known heteroscedastic σ (true 0.50 / 3.00 → 0.497 / 2.99) |
+| **Per-building RMSE** | **3.464 m** against airborne LiDAR, versus **5.9 m** published over Asia by GlobalBuildingAtlas (ESSD 2025) |
+| Whole-tile RMSE | 6.008 m, on 80 whole tiles from regions that appear in no training split |
+| Cross-domain | 1.788 m per building on a held-out Washington DC block — a second dataset, sensor and LiDAR vendor |
+| Calibration | ECE **0.063**, σ-vs-error rank correlation **+0.866**. Out of domain, 0.044 |
+| **Where it fails** | Buildings above 20 m are under-called by **15.6 m**. We pre-registered −13 m and missed it |
+| Data | DFC2019 Track 1 (Jacksonville, Omaha) + **GAMUS** (Washington DC, Philadelphia), split so no region or city block spans two splits |
+| Deployment | ONNX int8 **36.8 MB**, 536 ms per tile on CPU; the viewer is one 15 MB HTML file that opens from disk |
+
+![Imagery, LiDAR truth, our estimate, and the signed error](docs/figures/fig_error_map_OMA_288_042.png)
+
+*The median urban tile, chosen as the median rather than the best. The large blue block is a
+72.8 m building we call 14.1 m — the tall-building failure above, in one picture.*
+
+**Read the evidence, not the claim.** [docs/evidence-pack.md](docs/evidence-pack.md) is the
+full accuracy argument: how it was measured, where the error lives, per terrain, the
+calibration curve, what was ruled out, and the limitations stated plainly. Everything in it
+regenerates from a metrics file with `tools/make_figures.py`.
+
+- [docs/evidence-pack.md](docs/evidence-pack.md) — accuracy evidence and limitations
+- [docs/gamus-integration.md](docs/gamus-integration.md) — the second corpus, pre-registered criteria, and the result (including the one we missed)
+- [docs/deployment.md](docs/deployment.md) — how the public CPU deployment works
+- [docs/problem-statement.md](docs/problem-statement.md) — the verbatim problem statement
+- [docs/submission-plan.md](docs/submission-plan.md) — what is left, and when we submit
+- [PLAN.md](PLAN.md) — every design decision and why
 
 **Stage 01 is not zero-shot** — but the original claim that DA-V2 "correlates with rooftop albedo, not height" at nadir was **measured and found too harsh**. It correlates r ≈ 0.43 with true AGL. What is broken is *calibration*, not perception: ground biased **+2.53 m** and buildings **−3.30 m**, i.e. the model compresses dynamic range. That is exactly what fine-tuning on metric labels fixes. Full numbers in [PLAN.md §5](PLAN.md).
 
@@ -135,6 +157,11 @@ Repo is `D:\sih2026\depthwizard`. Data, weights and the venv live *outside* it.
 
 Throughput plateaus at **~25 crops/s** from batch 8, so 12 GB is not the binding constraint — **heat is**. Unregulated, the card hits 91 °C and self-throttles to 1492 MHz. `train.py` carries a software thermal governor because `nvidia-smi -pl` needs administrator rights. T4 and P100 have no bf16; training autodetects and falls back to fp16 + GradScaler.
 
-## Licence notes
+## Licence
+
+**Apache-2.0** — see [LICENSE](LICENSE). Third-party attributions, including the CC-BY-4.0
+imagery and datasets this work depends on, are in [NOTICE.md](NOTICE.md).
+
+### Notes
 
 DA-V2 **Small is Apache-2.0** and is what we ship. Base / Large / Giant are CC-BY-NC-4.0 and cannot go into a deliverable. Three.js is MIT, vendored under `viewer/vendor/`. DFC2019 data is **not** redistributed here — get it from [IEEE DataPort](https://ieee-dataport.org/open-access/data-fusion-contest-2019-dfc2019) (free account). Baselines and metrics: [pubgeo/dfc2019](https://github.com/pubgeo/dfc2019) (MIT).
