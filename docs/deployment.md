@@ -81,6 +81,17 @@ refuses to build a context with zero baked scenes rather than deploying an empty
     az webapp deploy -g sih2026-depthwizard -n depthwizard-sih2026 \
                      --src-path dwz-appservice.zip --type zip --async true
 
+`make_appservice_zip.py` **refreshes the staging tree from the repo** before it packs, and
+prints what it replaced. It does this because the staging copy is a copy and a copy goes
+stale silently: measured 12 Sep 2026, the deployed viewer had been missing the Maxar CC-BY
+imagery credit — in `main.js` and in both Sikkim manifests — because the last copy across was
+manual. The repo had it; the live site did not; nothing anywhere said so. A CC-BY credit that
+does not reach the deployment is a licence problem, not a cosmetic one.
+
+One staged file is *meant* to differ and is left alone: `viewer/scenes/index.json`, which
+`stage.py` prunes of the `upload_*` scenes that exist only on the dev machine. The script
+says so rather than resolving it.
+
 > **`deploy/dwz-app.zip` is a Docker build context and must never be zip-deployed.**
 > Its root is `Dockerfile` + `app/`, which is what the Dockerfile expects
 > (`COPY app/ /app/` strips the prefix) and what Oryx cannot use. Deploying it on
