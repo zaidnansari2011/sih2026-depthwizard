@@ -1082,7 +1082,14 @@ renderer.domElement.addEventListener('pointerdown', (e) => {
   drag.x = e.clientX;
   drag.y = e.clientY;
   drag.moved = 0;
-  renderer.domElement.setPointerCapture(e.pointerId);
+  // Capture keeps the moves coming if the pointer leaves the canvas mid-drag. It is an
+  // improvement, not a requirement, and it throws NotFoundError whenever the pointer is
+  // no longer active by the time we ask -- which a second finger can be. Letting that
+  // escape put "The viewer hit an error" over a working scene on every pinch, which is
+  // precisely what A2 set out to stop. Found by tools/verify_controls.py.
+  try {
+    renderer.domElement.setPointerCapture(e.pointerId);
+  } catch { /* drag still works; the canvas listeners see the moves either way */ }
 });
 
 renderer.domElement.addEventListener('pointermove', (e) => {
@@ -1120,9 +1127,11 @@ renderer.domElement.addEventListener('pointermove', (e) => {
 const endDrag = (e) => {
   if (!drag.on) return;
   drag.on = false;
-  if (renderer.domElement.hasPointerCapture?.(e.pointerId)) {
-    renderer.domElement.releasePointerCapture(e.pointerId);
-  }
+  try {
+    if (renderer.domElement.hasPointerCapture?.(e.pointerId)) {
+      renderer.domElement.releasePointerCapture(e.pointerId);
+    }
+  } catch { /* the pointer went away on its own; nothing to release */ }
 };
 renderer.domElement.addEventListener('pointerup', endDrag);
 renderer.domElement.addEventListener('pointercancel', endDrag);
@@ -1130,20 +1139,71 @@ renderer.domElement.addEventListener('pointercancel', endDrag);
 // Right-drag pans, so the context menu has to stay out of the way.
 renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
 
+/** Move the camera along its line of sight by a factor of its distance to the pivot. */
+function zoomBy(factor) {
+  stopTour();
+  const t = orbitTarget();
+  const radius = camera.position.distanceTo(t);
+  const extent = sceneExtent();
+  // Clamped so the scene can be neither entered nor lost.
+  placeOnOrbit(Math.max(extent * 0.01, Math.min(extent * 8, radius * factor)));
+}
+
 // Bound to the canvas, never the window: #hud and #stats scroll their own overflow now, and
 // a wheel over a panel must scroll that panel rather than zoom the scene behind it.
 renderer.domElement.addEventListener('wheel', (e) => {
   if (locked) return;                        // fly mode moves with the keys
   e.preventDefault();
-  stopTour();
-  const t = orbitTarget();
-  const radius = camera.position.distanceTo(t);
-  const extent = sceneExtent();
   // Exponential, so each notch is the same proportional change whether you are 20 m or
-  // 2 km out, and clamped so the scene can be neither entered nor lost.
-  const want = radius * Math.exp(e.deltaY * 0.0012);
-  placeOnOrbit(Math.max(extent * 0.01, Math.min(extent * 8, want)));
+  // 2 km out.
+  zoomBy(Math.exp(e.deltaY * 0.0012));
 }, { passive: false });
+
+// ---------------------------------------------------------------- touch
+//
+// One finger already orbits, because the handlers above listen for pointer events and a
+// touch is a pointer. Two fingers have to be handled on purpose, and they matter more here
+// than the gesture count suggests: pointer lock does not exist on mobile browsers at all,
+// so before the orbit work a tablet could not move the camera by any means, and without
+// this it still could not get closer to anything. A tablet is what a shared link gets
+// opened on.
+
+const touches = new Map();
+let pinchSpread = 0;
+
+function spread() {
+  const p = [...touches.values()];
+  return p.length < 2 ? 0 : Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+}
+
+renderer.domElement.addEventListener('pointerdown', (e) => {
+  if (e.pointerType !== 'touch') return;
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size === 2) {
+    drag.on = false;              // a two-finger gesture is not a one-finger drag
+    pinchSpread = spread();
+  }
+});
+
+renderer.domElement.addEventListener('pointermove', (e) => {
+  if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+  touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (touches.size !== 2) return;
+  const now = spread();
+  if (!pinchSpread || !now) { pinchSpread = now; return; }
+  // Fingers apart means the spread grows, which should bring the surface closer, so the
+  // radius scales by the inverse.
+  zoomBy(pinchSpread / now);
+  pinchSpread = now;
+});
+
+const dropTouch = (e) => {
+  if (e.pointerType !== 'touch') return;
+  touches.delete(e.pointerId);
+  pinchSpread = 0;
+};
+renderer.domElement.addEventListener('pointerup', dropTouch);
+renderer.domElement.addEventListener('pointercancel', dropTouch);
 
 /** The scene's widest side in metres -- the unit every camera distance is expressed in. */
 function sceneExtent() {

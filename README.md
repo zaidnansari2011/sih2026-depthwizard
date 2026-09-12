@@ -117,7 +117,7 @@ python tools/export_terrain.py --height out/scene.height.tif --sigma out/scene.s
 python -m http.server -d viewer 8080          # → http://localhost:8080
 ```
 
-**Viewer** — click to look, `WASD` to move, `Q`/`E` down/up, `Shift` to sprint, `Esc` to release. Surfaces: satellite drape, height ramp, uncertainty, slope. *Auto tour* flies a cinematic orbit; *Measure* takes two clicks.
+**Viewer** — drag to turn, wheel to zoom, right-drag to pan; click to enter fly mode, then `WASD` to move, `Q`/`E` down/up, `Shift` to sprint, `Esc` to release. Surfaces: satellite drape, height ramp, uncertainty, slope. *Auto tour* flies a cinematic orbit; *Measure* takes two clicks. Georeferenced scenes show their coordinate system, datum, position and north; the DFC2019 tiles say plainly that they carry none.
 
 ---
 

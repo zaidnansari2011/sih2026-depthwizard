@@ -86,6 +86,36 @@ GESTURES = {
   }""",
     "drag-orbit": drag(0, 1, 14, 0),
     "right-drag-pan": drag(2, 2, 10, 6),
+    # Touch, because pointer lock does not exist on mobile browsers: before the orbit work
+    # a tablet could not move the camera at all, and a shared link gets opened on tablets.
+    # One finger goes through the same pointer handlers as the mouse; two are handled apart.
+    "touch-one-finger-orbit": """
+  var r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  function te(t, id, px, py, b) {
+    c.dispatchEvent(new PointerEvent(t, {
+      clientX: px, clientY: py, button: b === 0 ? -1 : 0, buttons: b, bubbles: true,
+      cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: id === 1
+    }));
+  }
+  te('pointerdown', 1, x, y, 1);
+  for (var i = 1; i <= 10; i++) te('pointermove', 1, x + i * 14, y, 1);
+  te('pointerup', 1, x + 140, y, 0);""",
+    "touch-pinch-zoom": """
+  var r = c.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+  function te(t, id, px, py, b) {
+    c.dispatchEvent(new PointerEvent(t, {
+      clientX: px, clientY: py, button: b === 0 ? -1 : 0, buttons: b, bubbles: true,
+      cancelable: true, pointerId: id, pointerType: 'touch', isPrimary: id === 1
+    }));
+  }
+  te('pointerdown', 1, x - 40, y, 1);
+  te('pointerdown', 2, x + 40, y, 1);
+  for (var i = 1; i <= 10; i++) {          /* fingers apart: pull the surface closer */
+    te('pointermove', 1, x - 40 - i * 12, y, 1);
+    te('pointermove', 2, x + 40 + i * 12, y, 1);
+  }
+  te('pointerup', 1, x - 160, y, 0);
+  te('pointerup', 2, x + 160, y, 0);""",
 }
 
 # Two taps with the measure tool on. This exists because "a drag is not a click" is exactly
