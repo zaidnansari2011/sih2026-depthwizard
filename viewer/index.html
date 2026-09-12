@@ -30,7 +30,9 @@
     font: 13px/1.5 ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  canvas { display: block; }
+  /* Without this the browser claims touch gestures for panning and its own pinch-zoom
+     before they ever reach a pointer event, and the viewer sees nothing. */
+  canvas { display: block; touch-action: none; }
 
   .panel {
     /* In the flow of a column (see .col), not placed by hand. #hover overrides this back
