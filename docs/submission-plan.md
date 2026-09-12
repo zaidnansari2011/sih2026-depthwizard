@@ -21,9 +21,10 @@
 >   6,557 carry RGB; all 2,167 NYC tiles are height-only and unusable for an image model.
 > - Live at <https://project5.zaidansari.tech> serving run07; all six demo scenes re-baked on
 >   run07; repo **public** at <https://github.com/zaidnansari2011/sih2026-depthwizard>.
-> - **Tier 1 complete. Tier 2 A2 complete** (demo-hall survivability: projector layout,
->   refused mouse-lock, WebGL preflight). **A1 is next** — orbit and wheel zoom;
->   `grep -c wheel viewer/main.js` is still 0. Then A3.
+> - **Tier 1 complete. Tier 2 A2 and A1 complete** — demo-hall survivability
+>   (projector layout, refused mouse-lock, WebGL preflight) and mouse controls
+>   (drag-orbit, wheel zoom, right-drag pan, tap to fly). **A3 is next**: no
+>   coordinate readout, no EPSG, no datum, no north arrow.
 >
 > **Six things that cost real time — do not rediscover them.**
 > 1. **The viewer is served at the site ROOT.** `/viewer/main.js` is a **404**; the script is
@@ -52,6 +53,7 @@
 >     python tools/analysis/paired_bootstrap.py ../out/eval_run02_ship ../out/eval_run07_ship
 >     python tools/verify_viewer.py          # headless render of the standalone
 >     python tools/verify_layout.py          # panels fit four screen sizes, worst case open
+>     python tools/verify_controls.py        # drag/wheel/pan move the camera, panels do not
 >     node tools/test_flood.mjs              # inundation tool, 7 checks
 >     python tests/test_losses.py && python tests/test_gcp_affine.py
 >     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
@@ -145,10 +147,22 @@ Do these in order. A2 first because it is the cheapest insurance on the biggest 
       - *No GPU gave a minified three.js stack trace.* Preflighted, with an answer the person
         at the machine can act on. A `webglcontextlost` handler covers the same ground — a
         projector being plugged in used to freeze the image under a live frame counter.
-- [ ] **A1: orbit and wheel zoom.** `grep -c wheel viewer/main.js` = 0. Pointer-locked WASD is
-      the only camera control, and a judge who picks up the mouse for thirty seconds is the
-      scenario. (The 12 Sep grid-marching raycast made hover cheap enough that adding camera
-      controls will not cost frame rate.)
+- [x] **A1: orbit and wheel zoom.** **Done 12 Sep.** `grep -c wheel viewer/main.js` was 0:
+      the wheel did nothing, a drag did nothing, and pointer-locked WASD was the only way to
+      move — so the honest reading was that the viewer had no mouse controls. Drag orbits,
+      wheel zooms, right-drag pans; fly mode is kept, on a tap, with a four-pixel threshold so
+      an orbit neither captures the mouse nor drops a measurement pin. Both modes share `yaw`
+      and `pitch`, so switching needs no handover, and the pivot is derived fresh from what
+      the middle of the view rests on rather than stored — WASD moves the camera without
+      touching it. The wheel is bound to the canvas, never the window, because the HUD scrolls
+      its own overflow since A2.
+      Verified by `tools/verify_controls.py`, which works on pixels because nothing in the DOM
+      reflects the camera: each gesture is dispatched as a real event on the real canvas, the
+      surface must move and the panels must not. It found two things — the scale bar's box had
+      been stretching to the width of the key-hints line since A2 (now hugs its bar at a
+      measured 140 px), and measurement needed covering, since "a drag is not a click" is
+      exactly the rule that could break it. Two taps report 113.11 m, and that check was
+      confirmed to **fail** when the click threshold is deliberately broken.
 - [ ] **A3: say where on Earth this is.** No coordinate readout, no EPSG, no datum, no north
       arrow, and none of the accuracy evidence is visible in the viewer. ISRO is a geospatial
       agency; a viewer with no CRS reads as a toy. Also surfaces our differentiator
@@ -226,13 +240,15 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
-- **12 Sep (later still)** — **Tier 2 A2 done.** Viewer chrome rebuilt on two flex
+- **12 Sep (later still)** — **Tier 2 A2 and A1 done.** Viewer chrome rebuilt on two flex
   columns after measuring an 889 px HUD against a 673 px viewport; late failures no longer
   take the screen; WebGL is preflighted. New `tools/verify_layout.py`: 7 layout problems
   before, 0 after, across four screen sizes. `verify_viewer.py`'s fatal-panel check was
   found to be an unconditional pass and was fixed, then tested against a genuinely broken
   page. Deploy staging had drifted: the live site was missing the Maxar CC-BY credit, and
-  the packager now refreshes from the repo.
+  the packager now refreshes from the repo. Deployed and verified by what it serves.
+  Then A1: drag-orbit, wheel zoom, right-drag pan, tap to fly, checked in pixels by
+  the new `tools/verify_controls.py`.
 - **12 Sep (later)** — **Tier 1 done.** Repo public with Apache-2.0 and NOTICE, master
   current, deck generators tracked, tests fixed to run from a clean clone, Maxar credit
   rendering inside the viewer. Verified by anonymous clone and a full-history secret scan.
