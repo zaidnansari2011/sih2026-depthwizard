@@ -228,6 +228,24 @@ throttled to one raycast per animation frame, and headless Chrome renders about 
 frames for a whole session, so the sample sometimes lands before any frame runs. Calling
 that a pass would be a lie and calling it a failure would be a false alarm.
 
+### Open, found during Tier 2 — the viewer's pair calibration is still run02
+
+`viewer/calibration.json` opens with `"checkpoint": "D:/sih2026/checkpoints/run02/best.pt"`,
+and the repo is public, so a judge who opens it sees run02 while every other artefact says
+run07. The curve scales the measurement tool's error bar by separation (0.28× at short range
+rising to 1.39× at long), and that correction describes error *correlation structure*, which
+plausibly barely moves between two checkpoints of the same architecture — but plausibly is
+not measured, and measuring is the whole standard here.
+
+Nothing on screen states a checkpoint for it, so no displayed number is false. The fix is one
+GPU run, about half an hour, and it may well change nothing:
+
+    python tools/pair_calibration.py --ckpt ../checkpoints/run07/best.pt --tiles 20
+
+**Decide before the deck is final.** Either re-run it, or say in the pack that the pair
+calibration is carried over from run02 and why that is defensible. Silently shipping a run02
+file under a run07 product is the one option that is not available.
+
 ## Tier 3 — problem-statement compliance
 
 - [ ] **A6: hand back the DSM.** The PS names a geospatial output and ours is CLI-only; the
