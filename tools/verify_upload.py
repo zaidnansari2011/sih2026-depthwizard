@@ -135,6 +135,10 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ckpt", default=None)
+    ap.add_argument("--url", default=None,
+                    help="check a running server instead of starting one. Points the "
+                         "same fixtures at the deployment, which is the only way to "
+                         "answer whether its egress reaches the Copernicus tiles.")
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args()
 
@@ -144,6 +148,7 @@ def main() -> int:
         pass
 
     work = Path(tempfile.mkdtemp(prefix="dwz-upload-"))
+    remote = bool(args.url)
     port = free_port()
     env = dict(os.environ, DW_WORK=str(work / "server"))
     cmd = [sys.executable, "tools/serve_app.py", "--port", str(port), "--quality", "fast"]
@@ -153,15 +158,19 @@ def main() -> int:
     # The scene directory is shared with the checked-in demo scenes, so remember what is
     # in the index before any upload and put it back afterwards.
     index = ROOT / "viewer" / "scenes" / "index.json"
-    index_before = index.read_bytes() if index.exists() else None
+    # Only for a local run: a remote check touches nothing on this disk.
+    index_before = None if remote else (index.read_bytes() if index.exists() else None)
     made: list[Path] = []
 
-    print(f"\nupload check  http://127.0.0.1:{port}   (work dir {work})")
-    proc = subprocess.Popen(cmd, cwd=ROOT, env=env,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    target = args.url.rstrip("/") if remote else f"http://127.0.0.1:{port}"
+    print(f"\nupload check  {target}"
+          + ("" if remote else f"   (work dir {work})"))
+    proc = None if remote else subprocess.Popen(
+        cmd, cwd=ROOT, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        text=True)
     checks: list[tuple[bool, str]] = []
     try:
-        base = f"http://127.0.0.1:{port}"
+        base = target
         for _ in range(120):
             try:
                 if get_json(f"{base}/healthz").get("ok"):
@@ -180,6 +189,7 @@ def main() -> int:
                 continue
 
             state = {}
+            t0 = time.time()
             deadline = time.time() + args.timeout
             while time.time() < deadline:
                 state = get_json(f"{base}/api/job/{job}")
@@ -191,7 +201,8 @@ def main() -> int:
                                       f"{state.get('step')!r}"))
                 continue
             made.append(ROOT / "viewer" / "scenes" / state["scene"])
-            checks.append((True, f"{label}: job completed, scene {state['scene']!r}"))
+            checks.append((True, f"{label}: job completed in {time.time() - t0:.0f}s, "
+                                 f"scene {state['scene']!r}"))
 
             # 1. a georeferenced input should now come back with the problem
             # statement's absolute DSM, because infer.py anchors by default. "Should",
@@ -246,18 +257,23 @@ def main() -> int:
             checks.append((code in (400, 404), f"{label}: path traversal refused ({code})"))
 
         # 4. no upload may join the shared picker
-        after = json.loads(index.read_text(encoding="utf-8")) if index.exists() else []
+        if remote:
+            with urllib.request.urlopen(f"{base}/scenes/index.json", timeout=60) as r:
+                after = json.loads(r.read())
+        else:
+            after = json.loads(index.read_text(encoding="utf-8")) if index.exists() else []
         strays = [k.get("dir") for k in after if str(k.get("dir", "")).startswith("upload_")]
         checks.append((not strays,
                        "uploads stay out of viewer/scenes/index.json"
                        + ("" if not strays else f" -- but found {strays}")))
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        for d in made:
+        if proc is not None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=20)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+        for d in ([] if remote else made):
             shutil.rmtree(d, ignore_errors=True)
         if index_before is not None:
             index.write_bytes(index_before)
