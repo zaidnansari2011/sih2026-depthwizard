@@ -32,10 +32,17 @@ ROOT = REPO.parent                      # D:/sih2026 -- where out/ and data/ liv
 PY = sys.executable
 SCENES = REPO / "viewer" / "scenes"
 EXPORT = REPO / "tools" / "export_terrain.py"
+BAKE = REPO / "tools" / "bake_buildings.py"
 
-# The model behind every scene here. Change this in ONE place when the shipping model
+# The model behind every scene here. Change these in ONE place when the shipping model
 # changes, and re-run, or the viewer will confidently name the wrong checkpoint.
-MODEL = "run02 + TTA"
+#
+# RUN also selects the rasters, because the two must never disagree: the run02 scenes were
+# built from untagged `out/scene_<tile>.height.tif` paths, so pointing MODEL at a new
+# checkpoint without regenerating would have relabelled the old surfaces rather than
+# replaced them. Tagging the path makes that failure impossible instead of merely unlikely.
+RUN = "run07"
+MODEL = "run07 + TTA + zoom-2 fusion"
 
 DFC_GSD = "0.3"
 
@@ -62,30 +69,30 @@ OB = "Google Open Buildings 2.5D Temporal (2022)"
 SIKKIM = [
     {
         "dir": "hilly_sikkim_valley",
-        "height": "out/sikkim_2000m_run02.height.tif",
-        "sigma": "out/sikkim_2000m_run02.sigma.tif",
+        "height": f"out/sikkim_2000m_{RUN}.height.tif",
+        "sigma": f"out/sikkim_2000m_{RUN}.sigma.tif",
         "terrain_base": "out/sikkim_2000m_terrain.tif",
         "texture": "data/maxar/crops/sikkim_town_2000m.tif",
         "name": "Hilly \u2014 Sikkim, India",
         "terrain": "hilly",
         "reference_note": (
             "No laser survey here. Against Google Open Buildings \u2014 a satellite "
-            "estimate, not ground truth \u2014 we read 6.9 m lower on the 168 buildings "
+            "estimate, not ground truth \u2014 we read 6.3 m lower on the 168 buildings "
             "it is most confident about. We under-call tall buildings, and this is that "
             "same weakness showing up over India."
         ),
     },
     {
         "dir": "hilly_sikkim_town",
-        "height": "out/sikkim_town_run02.height.tif",
-        "sigma": "out/sikkim_town_run02.sigma.tif",
+        "height": f"out/sikkim_town_{RUN}.height.tif",
+        "sigma": f"out/sikkim_town_{RUN}.sigma.tif",
         "terrain_base": "out/sikkim_town_terrain.tif",
         "texture": "data/maxar/crops/sikkim_town_500m.tif",
         "name": "Detail \u2014 Sikkim town",
         "terrain": "detail",
         "reference_note": (
-            "No laser survey here. Across 89 buildings we read 1.9 m lower than Google "
-            "Open Buildings and agree within 3.3 m \u2014 but its outlines are coarse and "
+            "No laser survey here. Across 92 buildings we read 1.2 m lower than Google "
+            "Open Buildings and agree within 3.6 m \u2014 but its outlines are coarse and "
             "it is itself a satellite estimate, so this is agreement between two models, "
             "not accuracy."
         ),
@@ -131,8 +138,8 @@ def main() -> int:
             continue
         cmd = [
             PY, str(EXPORT),
-            "--height", str(ROOT / f"out/scene_{tile}.height.tif"),
-            "--sigma", str(ROOT / f"out/scene_{tile}.sigma.tif"),
+            "--height", str(ROOT / f"out/scene_{RUN}_{tile}.height.tif"),
+            "--sigma", str(ROOT / f"out/scene_{RUN}_{tile}.sigma.tif"),
             "--truth", str(ROOT / f"data/extracted/Track1-Truth/{tile}_AGL.tif"),
             "--cls", str(ROOT / f"data/extracted/Track1-Truth/{tile}_CLS.tif"),
             "--texture", str(ROOT / f"data/extracted/Track1-RGB/{tile}_RGB.tif"),
@@ -163,12 +170,22 @@ def main() -> int:
               {"reference_source": OB, "reference_note": s["reference_note"]})
         built.append(s["dir"])
 
+    # Re-bake the inundation tool's per-building elevations, always. export_terrain.py
+    # rewrites manifest["files"] from scratch, which DROPS the "buildings" entry and
+    # silently disables the tool -- and even where the entry survived, the elevations
+    # would be the previous checkpoint's. Found on the run07 re-bake, where
+    # buildings.json kept an 8 Sep timestamp underneath a 12 Sep surface.
+    if built:
+        print("\nbaking building elevations")
+        run([PY, str(BAKE)] + (["--scene", args.only] if args.only else []))
+
     for dirname in built:
         m = json.loads((SCENES / dirname / "manifest.json").read_text(encoding="utf-8"))
         bw = m.get("building_wise")
         score = (f"{bw['n_buildings']} buildings @ {bw['rmse']:.2f} m" if bw
                  else "no LiDAR, not scored")
-        print(f"  {dirname:24} {score:28} model={m.get('model')}")
+        flood = "flood" if "buildings" in (m.get("files") or {}) else "     "
+        print(f"  {dirname:24} {score:28} {flood}  model={m.get('model')}")
     print(f"\n{len(built)} scene(s) rebuilt into {SCENES}")
     print("Now: python tools/build_standalone.py && python tools/verify_viewer.py")
     return 0
