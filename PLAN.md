@@ -988,7 +988,7 @@ the jury probes hardest.*
 - [ ] Output format compliance pass (§7.3)
 - [ ] Technical report + benchmark write-up
 - [ ] Idea submission written **against the evaluation criteria, in their language**
-- [ ] Re-check live submission counts on the portal (§3)
+- [x] Re-check live submission counts on the portal (§3) — 3/500 on 12 Sep 2026
 
 ## 10. Execution — solo build
 
@@ -1040,10 +1040,12 @@ those are what a SAC jury probes hardest.
 - [x] Viewer framework → **Three.js** (26 Aug)
 - [x] Does DFC2019 ship solar metadata → **yes**, gate passed (26 Aug), see §6.2
 - [x] Differentiator scope → 6.1 / 6.3 / 6.4 committed, 6.2 to finale phase (26 Aug)
-- [ ] **Six names registered for SIH?** Rules require a six-member team from one institution,
-      normally including at least one female member. Carrying the build alone is fine and
-      common; having no registered team means nothing gets submitted. **Resolve in week 1.**
-- [ ] Commit to SIH26175 or hedge to SIH26143 — **decide by 10 Sep on live counts**
+- [x] **Six names registered for SIH** — **done, confirmed 12 Sep 2026.** The one blocker
+      that could not be fixed by working harder. The build stays solo; only the registration
+      needed six names.
+- [x] Commit to SIH26175 or hedge to SIH26143 — **resolved 12 Sep 2026: stay.** The portal
+      shows SIH26175 at **3/500** submissions against a 30-09-2026 deadline, so §3's crowding
+      worry does not materialise and there is no slot to race for.
 - [x] Bhoonidhi access tier — **resolved 27 Aug**: works with portal credentials, but
       the ceiling is 5.8 m LISS4 and a 30 m CartoDEM. Cannot referee buildings.
       Replaced by Maxar Open Data + Google Open Buildings 2.5D (§9).
