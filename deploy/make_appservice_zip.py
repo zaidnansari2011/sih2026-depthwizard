@@ -9,10 +9,35 @@ two can never be confused again. Oryx does none of what the Dockerfile does, so 
 import zipfile
 from pathlib import Path
 
-CTX = Path("D:/sih2026/depthwizard/deploy/_context")
+ROOT = Path("D:/sih2026/depthwizard")
+CTX = ROOT / "deploy/_context"
 APP = CTX / "app"
-OUT = Path("D:/sih2026/depthwizard/deploy/dwz-appservice.zip")
+OUT = ROOT / "deploy/dwz-appservice.zip"
 INDEX = "--extra-index-url https://download.pytorch.org/whl/cpu\n"
+
+# The staging tree is a copy of files that also live in the repo, and a copy goes stale in
+# silence. Measured 12 Sep 2026: the deployed viewer was missing the Maxar CC-BY imagery
+# credit for exactly this reason -- the repo had it, the live site did not, and nothing
+# anywhere would have said so. A CC-BY credit that does not reach the deployment is a
+# licence problem, not a cosmetic one.
+#
+# So the repo is canonical and this refreshes from it, rather than trusting whoever last
+# remembered to copy. Files with no counterpart in the repo (the weights, the HF cache) are
+# staging-only by design and are left alone.
+stale = []
+for f in sorted(APP.rglob("*")):
+    if not f.is_file():
+        continue
+    src = ROOT / f.relative_to(APP)
+    if src.is_file() and src.read_bytes() != f.read_bytes():
+        f.write_bytes(src.read_bytes())
+        stale.append(f.relative_to(APP).as_posix())
+if stale:
+    print(f"  refreshed {len(stale)} stale file(s) from the repo:")
+    for s in stale:
+        print(f"    {s}")
+else:
+    print("  staging tree already matches the repo")
 
 req = INDEX + (CTX / "requirements-serve.txt").read_text(encoding="utf-8")
 

@@ -51,6 +51,34 @@ def text_of(dom: str, element_id: str) -> str | None:
     return m.group(1).strip() if m else None
 
 
+def loading_overlay(dom: str) -> tuple[bool, str]:
+    """Is the #loading overlay on screen, and if so what does it say?
+
+    Scoped by counting div tags from the element, because in the standalone build the page
+    also *contains* main.js as text, and that text mentions the error markup.
+    """
+    i = dom.find('id="loading"')
+    if i < 0:
+        return False, ""
+    tag_end = dom.find(">", i)
+    hidden = re.search(r'style="[^"]*display:\s*none', dom[i:tag_end]) is not None
+    # Walk to the matching close so the inlined script below it is never read as content.
+    j, depth = tag_end, 0
+    while True:
+        nxt_open, nxt_close = dom.find("<div", j + 1), dom.find("</div>", j + 1)
+        if nxt_close < 0:
+            break
+        if 0 <= nxt_open < nxt_close:
+            depth, j = depth + 1, nxt_open
+        elif depth:
+            depth, j = depth - 1, nxt_close
+        else:
+            j = nxt_close
+            break
+    inner = re.sub(r"<[^>]+>", " ", dom[tag_end + 1:j])
+    return (not hidden), " ".join(inner.split())
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -115,8 +143,24 @@ def main() -> int:
     checks.append((opened not in ("?", "urban_oma_288_042"),
                    f"landing scene is not our worst case: opened on {opened!r}"))
 
-    fatal = "id=\"fatal\"" in dom or "Something went wrong" in dom
-    checks.append((not fatal, "no fatal error panel"))
+    # Every failure path -- fatal(), explainNoWebGL(), the no-scenes message -- works by
+    # showing #loading with an `.err` inside it, and loadScene() hides #loading on success.
+    # So "is #loading on screen" is the whole question.
+    #
+    # This check used to look for `id="fatal"` and "Something went wrong", neither of which
+    # the viewer has ever emitted, so it passed unconditionally -- including on a page showing
+    # nothing but an error. Found 12 Sep 2026. The replacement must also not be fooled by the
+    # standalone, which inlines main.js into the page: the *source* of fatal() contains the
+    # literal `<div class="err">`, so the search has to be scoped to the element itself.
+    shown, detail = loading_overlay(dom)
+    checks.append((not shown,
+                   "#loading is dismissed, so no error panel is on screen" if not shown
+                   else f"ERROR PANEL ON SCREEN: {detail[:110]!r}"))
+
+    # A visible toast means something failed after the scene came up (see trouble()). Not
+    # fatal to the demo by design, but it must never be the state a verification run passes.
+    toast = re.search(r'id="toast"[^>]*style="[^"]*display:\s*block', dom)
+    checks.append((toast is None, "no late-failure toast showing"))
 
     ok = True
     for passed, msg in checks:
