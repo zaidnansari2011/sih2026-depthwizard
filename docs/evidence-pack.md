@@ -261,6 +261,15 @@ the backbone always sees the scale it was trained at:
 
 At 0.6 m this recovers to within **3.6%** of never having lost the resolution.
 
+> **Provenance: this table is run02, not run07** — the only figures on this page that
+> are. It came from a manual `infer.py --zoom` sweep over three non-urban tiles rather
+> than from `gsd_probe.py`, which has no zoom flag, so refreshing it needs a script
+> written rather than a command re-run. The finding it supports is about the *scale
+> mismatch between input GSD and the backbone's trained scale*, which is a property of
+> the architecture and the 518-px window rather than of the weights, so it is expected
+> to carry over — but it has not been re-measured on the shipped checkpoint and should
+> not be quoted as though it has.
+
 ## What we ship, and what it costs
 
 The shipping path is TTA plus resolution fusion. Both are measured, on the same 80 tiles:
@@ -305,16 +314,28 @@ that is not there.
 win, and it is the kind of number a jury checks. It is also 5x better than run02's 0.161 m on
 the same check — not something we engineered, and reported because the number moved.
 
-**The single-file viewer was verified by loading it, not by inspecting it.** 28 Aug,
-headless Chrome against `file:///.../viewer_standalone.html` -- the path a judge takes when
-they unzip the submission and double-click:
+**The single-file viewer was verified by loading it, not by inspecting it.** Re-verified
+12 Sep after the rebuild, headless Chrome against `file:///.../viewer_standalone.html` --
+the path a judge takes when they unzip the submission and double-click
+(`tools/verify_viewer.py`):
 
 | check | result |
 |---|---|
 | External `src`/`href` references | **none** -- nothing to block under `file://` |
 | Leftover ES `import` statements | **0** -- the module rewrite holds |
-| Embedded model | `run02`, with **zero** mentions of `zeroshot` |
-| Renderer actually started | source has **0** `<canvas>` tags; the rendered DOM has **1**, `data-engine="three.js r169"` at 764x429 |
+| Renderer actually started | source ships **0** `<canvas>` tags; the rendered DOM has **1** |
+| Scene data actually loaded | area measured on screen as 307 x 307 m, heights -2.8 to 24.6 m |
+| Model provenance on screen | "Heights produced by run02 + TTA" |
+| Landing scene | `mixed_jax_020_020` -- not our worst case, and not our best |
+
+**The baked scenes are still run02, and the viewer says so on every one of them.** run07 is
+the shipping checkpoint for *inference* -- it is what the hosted site runs on an upload and
+what every number on this page is measured from -- but the six pre-baked demo scenes were
+generated with run02 + TTA and have not been re-baked. `tools/build_scenes.py` hardcodes the
+checkpoint and the raster paths, so re-baking is an edit plus six inference runs, and it
+carries visual-regression risk. Nothing is misreported either way, because each scene names
+its own model in the panel; but a judge comparing the deck's 3.464 m against a scene labelled
+"run02" is entitled to ask, and the answer is this paragraph.
 
 The canvas is the proof: it does not exist in the file and is created only if the inlined
 three.js executes and WebGL initialises. Verified with software rendering (SwiftShader), so
