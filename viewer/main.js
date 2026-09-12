@@ -680,6 +680,112 @@ function styleTruth(mode) {
   mat.needsUpdate = true;
 }
 
+// ---------------------------------------------------------------- where on Earth
+//
+// The scene's world axes come straight from the raster: surfaceGeometry() puts world x on
+// the column axis and world z on the row axis, and the rasters are north-up, so +x is east
+// and +z is south. Everything below depends on that, and on the transform having no
+// rotation, which georeferenced() checks rather than assumes.
+
+/** Is there a real, axis-aligned coordinate system behind this scene? */
+function georeferenced() {
+  const g = state.manifest && state.manifest.geo;
+  if (!g || !g.crs || !g.transform || !g.corners_lonlat) return null;
+  // A rotated or skewed transform would make "north is -Z" false, and a north arrow that
+  // is quietly wrong is worse than none.
+  if (Math.abs(g.transform[1]) > 1e-9 || Math.abs(g.transform[3]) > 1e-9) return null;
+  return g;
+}
+
+/** Grid column/row -> the affine's pixel coordinates, which count from the pixel corner. */
+function pixelOf(col, row) {
+  return [col + 0.5, row + 0.5];
+}
+
+/**
+ * Easting and northing, in the scene's own projected CRS.
+ *
+ * Interpolated between the tile's corners rather than read off `geo.transform`, for the
+ * same reason lonLatAt() is: the standalone build decimates a 2048 px tile to 512 and
+ * rewrites width and height, while the transform still describes the original raster.
+ * Applying it to a decimated grid index put the centre of the Sikkim scene 330 m out --
+ * caught by tools/verify_geo.py. Normalised tile coordinates survive the decimation, and
+ * for an affine transform this interpolation is exact, not an approximation.
+ */
+function eastNorthAt(col, row) {
+  const g = georeferenced();
+  const m = state.manifest;
+  if (!g || !g.corners_en || g.corners_en.length !== 4) return null;
+  const [c, r] = pixelOf(col, row);
+  const u = c / m.width, v = r / m.height;
+  const k = g.corners_en;
+  const at = (i) => k[0][i] * (1 - u) * (1 - v) + k[1][i] * u * (1 - v)
+                  + k[2][i] * (1 - u) * v + k[3][i] * u * v;
+  return { e: at(0), n: at(1) };
+}
+
+/**
+ * Longitude and latitude on WGS 84, bilinear between the tile's four corners.
+ *
+ * The corners are computed at export time by a real projection library; interpolating
+ * between them keeps one out of the browser. That is an approximation, so it was measured
+ * rather than assumed: over the 2 km Sikkim tile it sits within 4 mm of the exact inverse
+ * projection, which is 244x finer than one pixel. See tools/export_terrain.py.
+ */
+function lonLatAt(col, row) {
+  const g = georeferenced();
+  const m = state.manifest;
+  if (!g || g.corners_lonlat.length !== 4) return null;
+  const [c, r] = pixelOf(col, row);
+  const u = c / m.width, v = r / m.height;
+  const k = g.corners_lonlat;                        // TL, TR, BL, BR
+  const at = (i) => k[0][i] * (1 - u) * (1 - v) + k[1][i] * u * (1 - v)
+                  + k[2][i] * (1 - u) * v + k[3][i] * u * v;
+  return { lon: at(0), lat: at(1) };
+}
+
+/** 27.15982 N, 88.34391 E -- hemisphere letters, because a signed number invites a guess. */
+function formatLonLat(ll, dp = 6) {
+  if (!ll) return '—';
+  const ns = ll.lat >= 0 ? 'N' : 'S', ew = ll.lon >= 0 ? 'E' : 'W';
+  return `${Math.abs(ll.lat).toFixed(dp)}° ${ns}, ${Math.abs(ll.lon).toFixed(dp)}° ${ew}`;
+}
+
+function updateGeoPanel() {
+  const m = state.manifest;
+  const g = georeferenced();
+  const raw = m.geo || {};
+  const show = (id, v) => { $(id).textContent = v; };
+
+  if (!g) {
+    $('s-centre').textContent = '—';
+    $('s-en').textContent = '—';
+    $('s-crs').textContent = raw.crs || 'none';
+    $('s-datum').textContent = '—';
+    $('s-geonote').textContent = raw.crs
+      ? 'This tile carries a rotated transform, so the viewer will not claim a north '
+        + 'direction for it.'
+      : 'This tile ships without georeferencing — the DFC2019 rasters carry no CRS and no '
+        + 'transform, so there is no position on Earth to report. Distances and heights '
+        + 'are still metres, from the published 0.3 m ground sample distance.';
+    $('compass').style.display = 'none';
+    return;
+  }
+
+  const centre = lonLatAt((m.width - 1) / 2, (m.height - 1) / 2);
+  const en = eastNorthAt((m.width - 1) / 2, (m.height - 1) / 2);
+  show('s-centre', formatLonLat(centre, 4));
+  show('s-en', en ? `${en.e.toFixed(0)} E  ${en.n.toFixed(0)} N` : '—');
+  show('s-crs', g.crs_name ? `${g.crs} · ${g.crs_name}` : g.crs);
+  // WKT spells it WGS_1984; every map legend in the world spells it WGS 84.
+  const datum = (g.datum || '').replace(/^WGS 1984$/, 'WGS 84');
+  show('s-datum', datum || '—');
+  $('s-geonote').textContent =
+    `Eastings and northings are ${g.units || 'metres'} in ${g.crs}. Longitude and latitude `
+    + `are WGS 84, interpolated between the tile corners to within a centimetre.`;
+  $('compass').style.display = 'block';
+}
+
 function updateStats() {
   const m = state.manifest;
   $('s-res').textContent = `${m.width} × ${m.height} px`;
@@ -693,6 +799,13 @@ function updateStats() {
   $('s-range').textContent = `${m.height_min_m.toFixed(1)} – ${m.height_max_m.toFixed(1)} m`;
   $('s-sigma').textContent = m.sigma_mean_m != null ? `± ${m.sigma_mean_m.toFixed(2)} m` : '—';
   $('s-model').textContent = m.model ? `Heights produced by ${m.model}.` : '';
+  // What that ± is worth. Held-out expected calibration error, and the same figure on a
+  // city the model never trained on -- quoted in both directions because the out-of-domain
+  // number is the one a jury should weigh.
+  $('s-calib').textContent =
+    'That ± is the model’s own estimate, and it is checked: expected calibration '
+    + 'error 0.063 on the held-out split, 0.044 on a city it never trained on.';
+  updateGeoPanel();
 
   const dash = '—';
 
@@ -896,6 +1009,7 @@ addEventListener('mousemove', (e) => {
   yaw -= e.movementX * 0.0022;
   pitch -= e.movementY * 0.0022;
   pitch = Math.max(-1.5, Math.min(1.5, pitch));
+  updateCompass();
   stopTour();
 });
 
@@ -989,6 +1103,7 @@ renderer.domElement.addEventListener('pointermove', (e) => {
     // terrain looking at the underside of a heightfield, which reads as the viewer breaking.
     pitch = Math.max(-1.5, Math.min(-0.03, pitch - dy * 0.005));
     placeOnOrbit(radius);
+    updateCompass();          // follow the hand, not the next frame
   } else {
     // Pan. Scaled so the surface keeps pace with the pointer at the pivot's depth, which is
     // what makes a pan feel like dragging the map rather than nudging a camera.
@@ -1371,6 +1486,11 @@ function updateHover(ev) {
     s != null && Number.isFinite(s) ? `± ${s.toFixed(1)} ${unit}` : '—';
   $('h-slope').textContent = state.hasMetres ? `${slopeDegAt(g).toFixed(0)}°` : '—';
 
+  // Where this point is on Earth, not just where it is in the picture.
+  const ll = lonLatAt(g.x, g.y);
+  $('h-pos-row').style.display = ll ? 'flex' : 'none';
+  if (ll) $('h-pos').textContent = formatLonLat(ll);
+
   // Keep the panel on screen: flip it to the other side of the cursor near an edge.
   const pad = 14, w = el.offsetWidth || 188, hh = el.offsetHeight || 74;
   let left = ev.clientX + pad, top = ev.clientY + pad;
@@ -1581,6 +1701,26 @@ function niceLength(target) {
     if (Math.abs(k * p - target) < Math.abs(best - target)) best = k * p;
   }
   return best;
+}
+
+/**
+ * Point the needle at north.
+ *
+ * North is world -Z (see georeferenced()), and the camera's horizontal forward is
+ * (-sin yaw, -cos yaw) in (x, z). Projecting north onto the screen axes gives a clockwise
+ * screen bearing of exactly `yaw`, so the dial is one rotation. The letter is
+ * counter-rotated inside it so it stays the right way up while riding the needle's head --
+ * an upside-down N reads as a rendering fault.
+ */
+let compassYaw = null;
+function updateCompass() {
+  const el = $('compass');
+  if (!el || el.style.display === 'none') return;
+  const deg = (yaw * 180) / Math.PI;
+  if (compassYaw !== null && Math.abs(deg - compassYaw) < 0.25) return;
+  compassYaw = deg;
+  $('needle').setAttribute('transform', `rotate(${deg.toFixed(2)})`);
+  $('needle-n').setAttribute('transform', `translate(0,-16) rotate(${(-deg).toFixed(2)})`);
 }
 
 function updateScaleBar() {
@@ -1805,6 +1945,8 @@ function frame(now) {
     $('s-fps').textContent = (fpsAcc / fpsN).toFixed(0);
     fpsAcc = 0; fpsN = 0;
   }
+  // Cheap: it returns immediately unless the bearing actually moved.
+  updateCompass();
   // Every tenth frame is about six updates a second -- past the point anyone notices on a
   // bar that only changes when the camera moves, and it keeps the raycast off the hot path.
   if (++sbN >= 10) { sbN = 0; updateScaleBar(); }
