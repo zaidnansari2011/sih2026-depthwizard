@@ -130,7 +130,11 @@ def main():
           f"from {len(eval_regions)} region-disjoint {args.split} regions")
 
     P, T, S, C = [], [], [], []
-    per_terrain = defaultdict(lambda: {"p": [], "t": []})
+    # "c" carries the class raster per terrain category as well, so the per-terrain block can
+    # report where the error sits *within* a landscape. Without it, "forested ground error is
+    # 2.5 m and that is optics, not a model defect" -- the answer to ISRO's terrain-stability
+    # ask -- is a sentence with no number behind it in any metrics file.
+    per_terrain = defaultdict(lambda: {"p": [], "t": [], "c": []})
     per_tile = []
     # One height per building, accumulated at full resolution before subsampling --
     # connected components cannot be recovered from a thinned array.
@@ -172,6 +176,7 @@ def main():
             cat = terrain_category_with_relief(cls, truth)
             per_terrain[cat]["p"].append(pred[mask][::step])
             per_terrain[cat]["t"].append(truth[mask][::step])
+            per_terrain[cat]["c"].append(cls[mask][::step])
             bp, bt = building_instances(pred, truth, cls)
             if bp.size:
                 BP.append(bp)
@@ -202,7 +207,8 @@ def main():
 
     terrain = {}
     for cat, d in sorted(per_terrain.items()):
-        tm = height_metrics(np.concatenate(d["p"]), np.concatenate(d["t"]))
+        tm = height_metrics(np.concatenate(d["p"]), np.concatenate(d["t"]),
+                            cls=np.concatenate(d["c"]) if d["c"] else None)
         terrain[cat] = tm.to_dict()
     results["per_terrain"] = terrain
     results["per_tile"] = per_tile

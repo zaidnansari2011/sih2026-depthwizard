@@ -184,14 +184,19 @@ def _ramp(a, lo, hi, stops, gamma=1.0):
     return stops[i] * (1 - f) + stops[i + 1] * f
 
 
-def fig_error_map(tile: str, out: Path):
-    """Imagery, LiDAR, ours, and the signed difference. The figure a specialist reads first."""
+def fig_error_map(tile: str, out: Path, pred: Path | None = None):
+    """Imagery, LiDAR, ours, and the signed difference. The figure a specialist reads first.
+
+    `pred` is explicit because the default path carries no run tag: pointing --metrics at a
+    new run while this figure quietly kept reading the previous run's raster would put two
+    checkpoints in one evidence pack with nothing on the page to show it.
+    """
     import rasterio
     import warnings
     warnings.simplefilter("ignore")
     rgb_p = ROOT / "data/extracted/Track1-RGB" / f"{tile}_RGB.tif"
     agl_p = ROOT / "data/extracted/Track1-Truth" / f"{tile}_AGL.tif"
-    pred_p = ROOT / "out" / f"scene_{tile}.height.tif"
+    pred_p = Path(pred) if pred else ROOT / "out" / f"scene_{tile}.height.tif"
     if not (rgb_p.exists() and agl_p.exists() and pred_p.exists()):
         print(f"  (skipping error map: missing inputs for {tile})")
         return
@@ -231,6 +236,10 @@ def main():
     # the source tree is shipped on its own.
     ap.add_argument("--out", default=str(Path(__file__).resolve().parents[1] / "docs" / "figures"))
     ap.add_argument("--tile", default="OMA_288_042", help="tile for the error map")
+    ap.add_argument("--pred", default=None,
+                    help="height raster for the error map. Defaults to the untagged "
+                         "out/scene_<tile>.height.tif; pass the run-tagged raster so the "
+                         "figure cannot disagree with --metrics about which model made it")
     a = ap.parse_args()
 
     m = json.loads(Path(a.metrics).read_text(encoding="utf-8"))
@@ -240,7 +249,7 @@ def main():
     fig_calibration(m, out)
     fig_terrain(m, out)
     fig_scatter(Path(a.metrics).with_name("per_building.npz"), out)
-    fig_error_map(a.tile, out)
+    fig_error_map(a.tile, out, a.pred)
     print(f"\nwrote to {out}")
 
 
