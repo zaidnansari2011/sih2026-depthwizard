@@ -324,18 +324,26 @@ the path a judge takes when they unzip the submission and double-click
 | External `src`/`href` references | **none** -- nothing to block under `file://` |
 | Leftover ES `import` statements | **0** -- the module rewrite holds |
 | Renderer actually started | source ships **0** `<canvas>` tags; the rendered DOM has **1** |
-| Scene data actually loaded | area measured on screen as 307 x 307 m, heights -2.8 to 24.6 m |
-| Model provenance on screen | "Heights produced by run02 + TTA" |
+| Scene data actually loaded | area measured on screen as 307 x 307 m, heights -1.1 to 21.0 m |
+| Model provenance on screen | "Heights produced by run07 + TTA + zoom-2 fusion" |
 | Landing scene | `mixed_jax_020_020` -- not our worst case, and not our best |
 
-**The baked scenes are still run02, and the viewer says so on every one of them.** run07 is
-the shipping checkpoint for *inference* -- it is what the hosted site runs on an upload and
-what every number on this page is measured from -- but the six pre-baked demo scenes were
-generated with run02 + TTA and have not been re-baked. `tools/build_scenes.py` hardcodes the
-checkpoint and the raster paths, so re-baking is an edit plus six inference runs, and it
-carries visual-regression risk. Nothing is misreported either way, because each scene names
-its own model in the panel; but a judge comparing the deck's 3.464 m against a scene labelled
-"run02" is entitled to ask, and the answer is this paragraph.
+**All six demo scenes were re-baked on run07**, at the shipping configuration, so the
+surfaces a judge rotates are the model the deck quotes. Per-building error on the scenes that
+have LiDAR: sparse Omaha **0.78 m**, forested Jacksonville **1.37 m**, mixed Jacksonville
+**1.95 m** (the landing scene, improved from 2.16 m), urban Omaha **22.51 m** -- seven
+buildings, one of them 93 m, and it is deliberately in the picker.
+
+`tools/build_scenes.py` now derives the raster paths from the same `RUN` constant that sets
+the model label, because the two silently disagreeing is the exact failure the file exists to
+prevent: pointing the label at a new checkpoint without regenerating would have *relabelled*
+the old surfaces rather than replaced them.
+
+One regression the re-bake caused and the chain now prevents: `export_terrain.py` rewrites
+`manifest["files"]` from scratch, which dropped the `buildings` entry and silently disabled
+the inundation tool, leaving an 8 Sep `buildings.json` underneath a 12 Sep surface.
+`build_scenes.py` now re-bakes those elevations itself and prints which scenes carry the
+tool, and `tools/test_flood.mjs` passes 7/7 on the rebuilt set.
 
 The canvas is the proof: it does not exist in the file and is created only if the inlined
 three.js executes and WebGL initialises. Verified with software rendering (SwiftShader), so

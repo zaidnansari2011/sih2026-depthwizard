@@ -498,11 +498,11 @@ App Service. Note the App Service package is now `deploy/dwz-appservice.zip`, bu
 separate script from `deploy/dwz-app.zip`, which is a Docker build context and must never be
 zip-deployed — doing so took the site down for two days on 8 Sep.
 
-**Still on run02, and knowingly:** the six baked viewer scenes. Each names its own model in
-the viewer ("run02 + TTA"), so nothing is misreported, but the demo surfaces are not the
-shipped model. `tools/build_scenes.py` hardcodes the checkpoint and the raster paths, so
-re-baking is an edit plus six inference runs, and it carries visual-regression risk this
-close to submission. Decide deliberately rather than by drift.
+**The six baked viewer scenes were re-baked on run07** the same day, at the shipping
+configuration. `tools/build_scenes.py` now derives its raster paths from the same `RUN`
+constant that sets the model label, so the label and the surface cannot drift apart, and it
+chains `bake_buildings.py` itself — the re-bake exposed that `export_terrain.py` rewrites
+`manifest["files"]` from scratch and had silently dropped the inundation tool's data.
 
 ---
 
