@@ -24,6 +24,12 @@ import time
 import numpy as np
 import torch
 
+# Same shim as tools/evaluate.py: run from a clean clone this file is executed as a
+# script, so the repo root is not on the path and `import depthwizard` fails before
+# argparse ever gets a chance to print --help. Found by tools/smoke_deliverable.py.
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from depthwizard.dataset import Augment, ShardStream
 from depthwizard.losses import CompositeLoss
 from depthwizard.model import DEFAULT_MODEL, build
