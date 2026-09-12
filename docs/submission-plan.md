@@ -21,10 +21,10 @@
 >   6,557 carry RGB; all 2,167 NYC tiles are height-only and unusable for an image model.
 > - Live at <https://project5.zaidansari.tech> serving run07; all six demo scenes re-baked on
 >   run07; repo **public** at <https://github.com/zaidnansari2011/sih2026-depthwizard>.
-> - **Tier 1 complete. Tier 2 A2 and A1 complete** — demo-hall survivability
->   (projector layout, refused mouse-lock, WebGL preflight) and mouse controls
->   (drag-orbit, wheel zoom, right-drag pan, tap to fly). **A3 is next**: no
->   coordinate readout, no EPSG, no datum, no north arrow.
+> - **Tier 1 and Tier 2 complete** — demo-hall survivability, mouse controls, and
+>   the geospatial identity (CRS, datum, coordinates, north arrow). That is the 50%.
+>   **Tier 3 is next**: A6 (hand back the DSM; the scene picker also exposes other
+>   visitors' uploads) then A5 (the upload path a judge will actually use).
 >
 > **Six things that cost real time — do not rediscover them.**
 > 1. **The viewer is served at the site ROOT.** `/viewer/main.js` is a **404**; the script is
@@ -54,6 +54,7 @@
 >     python tools/verify_viewer.py          # headless render of the standalone
 >     python tools/verify_layout.py          # panels fit four screen sizes, worst case open
 >     python tools/verify_controls.py        # drag/wheel/pan move the camera, panels do not
+>     python tools/verify_geo.py             # coordinates checked against rasterio
 >     node tools/test_flood.mjs              # inundation tool, 7 checks
 >     python tests/test_losses.py && python tests/test_gcp_affine.py
 >     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
@@ -163,10 +164,19 @@ Do these in order. A2 first because it is the cheapest insurance on the biggest 
       measured 140 px), and measurement needed covering, since "a drag is not a click" is
       exactly the rule that could break it. Two taps report 113.11 m, and that check was
       confirmed to **fail** when the click threshold is deliberately broken.
-- [ ] **A3: say where on Earth this is.** No coordinate readout, no EPSG, no datum, no north
-      arrow, and none of the accuracy evidence is visible in the viewer. ISRO is a geospatial
-      agency; a viewer with no CRS reads as a toy. Also surfaces our differentiator
-      (calibrated uncertainty) where it is actually seen.
+- [x] **A3: say where on Earth this is.** **Done 12 Sep.** The stats panel now carries a
+      *Where this is* block — centre in longitude and latitude, grid centre in eastings and
+      northings, the coordinate system with its human name, the datum — plus a north arrow
+      that follows the camera and a position under the cursor in the hover readout. The
+      confidence figure now says what it is worth: ECE 0.063 held out, 0.044 on a city never
+      trained on.
+      The half worth defending is the other one: **four of the six demo scenes are DFC2019
+      tiles with no CRS at all**, and on those the viewer says exactly that, shows no
+      position and draws no arrow. A rotated transform is refused the same way, because a
+      compass that is quietly wrong is worse than none.
+      No projection library ships to the browser — `export_terrain.py` bakes each tile's
+      four corners in WGS 84 and in its own CRS and the viewer interpolates, which was
+      **measured** at within 4 mm over the 2 km Sikkim tile, 244× finer than one pixel.
 
 ### Tier 2 verification, A2, 12 Sep
 
@@ -192,6 +202,31 @@ drifted from the repo, so the **Maxar CC-BY imagery credit was missing from the 
 both `main.js` and the two Sikkim manifests — the repo had it and the deployment did not.
 `make_appservice_zip.py` now refreshes every mirrored file from the repo before packing, and
 leaves alone the one file that is meant to differ (`scenes/index.json`, pruned by `stage.py`).
+
+### Tier 2 verification, A1 and A3, 12 Sep
+
+- `tools/verify_controls.py` — new. Works on pixels, because nothing in the DOM reflects the
+  camera and a test hook has no business shipping in the product. Each gesture is a real
+  event on the real canvas; the surface must move and the panels must not. **It found two
+  things**: the scale bar's box had been stretching to the width of the key-hints line since
+  A2, and measurement needed covering because "a drag is not a click" is exactly the rule
+  that could break it. The measure check was then confirmed to **fail** against a copy with
+  the click threshold deliberately broken.
+- `tools/verify_geo.py` — new. Recomputes every claim from each scene's own transform through
+  rasterio and compares it with what the page renders: centre agrees to 4.2 m (the width of
+  4 decimal places), eastings and northings agree exactly. **It caught a real 330 m error**
+  on first run — position was being read from `geo.transform`, which the standalone's
+  decimation invalidates.
+- The needle is verified by turning the camera a known amount and reading the angle back:
+  −40.1° against a predicted −40.1°. Its *direction* is verified separately, from the data
+  and the source, because a needle 180° out passes a rotation test.
+- Screenshots were read by eye at 1024×768 and 1366×768, on both a flat tile and the Sikkim
+  mountainside, which is how the stretched scale bar and a badly wrapped CRS row were found.
+
+**One check reports SKIP rather than passing or failing.** The cursor-position readout is
+throttled to one raycast per animation frame, and headless Chrome renders about a dozen
+frames for a whole session, so the sample sometimes lands before any frame runs. Calling
+that a pass would be a lie and calling it a failure would be a false alarm.
 
 ## Tier 3 — problem-statement compliance
 
@@ -240,7 +275,7 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
-- **12 Sep (later still)** — **Tier 2 A2 and A1 done.** Viewer chrome rebuilt on two flex
+- **12 Sep (later still)** — **Tier 2 complete: A2, A1 and A3.** Viewer chrome rebuilt on two flex
   columns after measuring an 889 px HUD against a 673 px viewport; late failures no longer
   take the screen; WebGL is preflighted. New `tools/verify_layout.py`: 7 layout problems
   before, 0 after, across four screen sizes. `verify_viewer.py`'s fatal-panel check was
@@ -248,7 +283,11 @@ Append one line per working session. Keep it factual — what moved, what was me
   page. Deploy staging had drifted: the live site was missing the Maxar CC-BY credit, and
   the packager now refreshes from the repo. Deployed and verified by what it serves.
   Then A1: drag-orbit, wheel zoom, right-drag pan, tap to fly, checked in pixels by
-  the new `tools/verify_controls.py`.
+  the new `tools/verify_controls.py`. Then A3: coordinate system, datum, centre
+  position, cursor position and a north arrow, with the four unreferenced tiles saying
+  plainly that they have none. `tools/verify_geo.py` checks the numbers against
+  rasterio and caught a 330 m error from applying the source transform to the
+  standalone's decimated grid.
 - **12 Sep (later)** — **Tier 1 done.** Repo public with Apache-2.0 and NOTICE, master
   current, deck generators tracked, tests fixed to run from a clean clone, Maxar credit
   rendering inside the viewer. Verified by anonymous clone and a full-history secret scan.
