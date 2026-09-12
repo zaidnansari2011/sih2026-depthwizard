@@ -1889,11 +1889,22 @@ async function initUpload() {
     }
     // Poll rather than stream: a progress socket is more code and more to go wrong for
     // a job that takes tens of seconds.
+    //
+    // Every exit from this loop must re-enable the button, which is why there is a bound
+    // on it at all. It used to break only on `done` and `error`, and /api/job answers 404
+    // {"state":"unknown"} for any job the server has forgotten -- which happens on every
+    // container recycle. The loop then span at one request per 900 ms forever with the
+    // upload button stuck disabled, and nothing on screen said why.
+    const deadline = Date.now() + 20 * 60 * 1000;
     for (;;) {
       await new Promise((r2) => setTimeout(r2, 900));
+      if (Date.now() > deadline) {
+        setP('gave up waiting for the server. The job may still finish — reload to see.', 100);
+        break;
+      }
       let s;
       try { s = await (await fetch(`./api/job/${job}`, { cache: 'no-store' })).json(); }
-      catch { continue; }
+      catch { continue; }                  // a dropped request is not a dead job
       setP(s.step || s.state, s.pct ?? 50);
       if (s.state === 'done') {
         await loadScenes(s.scene);
@@ -1902,6 +1913,10 @@ async function initUpload() {
         break;
       }
       if (s.state === 'error') { setP(s.step, 100); break; }
+      if (s.state === 'unknown') {
+        setP('the server no longer has that job — it was probably restarted. Try again.', 100);
+        break;
+      }
     }
     $('pick').disabled = false;
   };

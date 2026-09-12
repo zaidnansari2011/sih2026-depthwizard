@@ -128,6 +128,37 @@ def image_shape(path: Path) -> tuple[int, int]:
         return im.width, im.height
 
 
+def verify_decodes(path: Path) -> None:
+    """Force a full decode, and raise ValueError if the pixels are not all there.
+
+    The header check above is not enough, and the comment that used to say it was is now
+    corrected. Measured 12 Sep 2026: a PNG truncated to a third of its bytes opens
+    perfectly through GDAL, which pads the missing **26% of rows with black** and emits
+    only a warning -- and the pipeline then produced a confident 512x512 height map over
+    invented pixels. Nothing downstream can tell fabricated black from a dark field, so a
+    judge whose download was cut off would get a plausible-looking result and no hint.
+
+    PIL is strict exactly where GDAL is forgiving, so the check is PIL's. Where PIL cannot
+    open the file at all -- BigTIFF, exotic compressions, the formats rasterio is here for
+    -- it stays silent rather than refusing on GDAL's behalf, because a false refusal of a
+    valid GeoTIFF would be the worse error.
+    """
+    from PIL import Image
+    try:
+        with Image.open(path) as im:
+            im.load()                          # decodes; Image.open alone only reads a header
+    except OSError as exc:
+        text = str(exc).lower()
+        if "truncated" in text or "broken" in text or "incomplete" in text:
+            raise ValueError(
+                "that file ends part-way through -- the download or upload did not "
+                "finish. About a quarter of an image can be missing and still open, so "
+                "send the whole file rather than trusting the preview.") from exc
+        # PIL simply does not read this format. Leave it to the GeoTIFF reader.
+    except Exception:
+        pass                                   # same reasoning: not PIL's to judge
+
+
 def estimate_seconds(mpx: float, quality: str) -> float:
     """Projected wall time for an upload of this size, from measured constants."""
     per_mpx = SEC_PER_MPX * (TTA_FACTOR if quality == "accurate" else 1.0)
@@ -203,6 +234,65 @@ def reap_jobs(now: float) -> None:
             f.unlink(missing_ok=True)
 
 
+class JobFailed(Exception):
+    """A failure we can describe in a sentence, carrying the raw text for the log."""
+
+    def __init__(self, message: str, raw: str = ""):
+        super().__init__(message)
+        self.message = message
+        self.raw = raw
+
+
+# Ordered, because the first match wins and the specific ones have to come before the
+# general. Each entry is (marker seen in the tool's output, what to tell the visitor).
+FAILURE_SIGNS: list[tuple[str, str]] = [
+    ("out of memory",
+     "the server ran out of memory on that image. Try a smaller one, or the fast setting."),
+    ("CUDA error",
+     "the graphics card reported an error part-way through. Try again in a moment."),
+    ("not a multiple of the patch size",
+     "that image is an awkward size for the model and it could not pad around it."),
+    ("cannot identify image file",
+     "that file could not be read as an image. It may be truncated, or not the format its "
+     "name claims."),
+    ("not recognized as a supported file format",
+     "that file could not be read as an image. It may be truncated, or not the format its "
+     "name claims."),
+    ("TIFFReadDirectory",
+     "that TIFF is damaged or incomplete -- its directory could not be read."),
+    ("TIFFReadEncodedTile",
+     "that TIFF is damaged or incomplete -- it ends part-way through the image data."),
+    ("truncated",
+     "that file ends part-way through. The upload may not have finished."),
+    ("RasterioIOError",
+     "that file could not be opened as a raster."),
+    ("No such file or directory",
+     "the uploaded file went missing before it could be processed. Try again."),
+    ("MemoryError",
+     "that image is too large to hold in memory. Try a smaller one."),
+]
+
+
+def plain_failure(raw: str) -> str:
+    """Turn a subprocess's dying words into a sentence a visitor can act on.
+
+    What used to happen: run_job raised RuntimeError with the last 1500 characters of
+    stderr, the handler stored str(exc)[:600] as the job's `step`, and the viewer wrote
+    `step` straight into the progress label. Production showed a judge
+    `recent call last):\\n  File "/tmp/8df0c0ea6632463/infer.py", line 548...` -- a
+    traceback starting mid-word, truncated before the actual error, carrying server paths.
+    A stability criterion can see nothing worse.
+
+    The trace is not discarded, it just goes where traces belong: the server log.
+    """
+    low = (raw or "").lower()
+    for marker, sentence in FAILURE_SIGNS:
+        if marker.lower() in low:
+            return sentence
+    return ("that image could not be processed. The details are in the server log; try "
+            "another file, or a smaller crop.")
+
+
 def active_jobs() -> int:
     return sum(1 for j in JOBS.values() if j.get("state") in ("queued", "running"))
 
@@ -237,7 +327,8 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             p = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True,
                                timeout=ARGS.timeout)
             if p.returncode != 0:
-                raise RuntimeError((p.stderr or p.stdout or "inference failed")[-1500:])
+                out = p.stderr or p.stdout or ""
+                raise JobFailed(plain_failure(out), out)
             georef = ".dsm.tif" in p.stdout or "auto-zoom: input is" in p.stdout
 
             j.update(step="building 3D scene", pct=70)
@@ -257,7 +348,8 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             e = subprocess.run(ex, cwd=ROOT, capture_output=True, text=True,
                                timeout=ARGS.timeout)
             if e.returncode != 0:
-                raise RuntimeError((e.stderr or e.stdout or "export failed")[-1500:])
+                out = e.stderr or e.stdout or ""
+                raise JobFailed(plain_failure(out), out)
 
             reap_scenes()
             j.update(state="done", step="ready", pct=100,
@@ -265,9 +357,17 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
     except subprocess.TimeoutExpired:
         JOBS[job_id].update(state="error", pct=100,
                             step=f"gave up after {ARGS.timeout:.0f}s. Try a smaller image.")
-    except Exception as exc:
-        JOBS[job_id].update(state="error", step=str(exc)[:600], pct=100)
+    except JobFailed as f:
+        # The sentence goes to the browser; the trace goes to the log, in full.
+        print(f"job {job_id} failed: {f.message}\n{f.raw}", file=sys.stderr, flush=True)
+        JOBS[job_id].update(state="error", step=f.message, pct=100)
+    except Exception:
+        # A bug in here, rather than in what it runs. Same rule: the visitor gets a
+        # sentence, the operator gets the trace.
         traceback.print_exc()
+        JOBS[job_id].update(state="error", pct=100,
+                            step="something went wrong on the server while handling that "
+                                 "image. It has been logged.")
     finally:
         shutil.rmtree(src.parent, ignore_errors=True)
 
@@ -414,10 +514,16 @@ class Handler(SimpleHTTPRequestHandler):
 
         try:
             iw, ih = image_shape(dest)
-        except Exception as exc:
-            return reject(400, f"That file could not be read as an image "
-                               f"({type(exc).__name__}). If it is a GeoTIFF, it may be "
-                               f"truncated or still downloading.")
+        except Exception:
+            # The exception class name used to be shown. It told the visitor nothing and
+            # named an internal, which is the same leak class as a traceback.
+            return reject(400, "That file could not be read as an image. If it is a "
+                               "GeoTIFF it may be damaged, or still downloading.")
+
+        try:
+            verify_decodes(dest)
+        except ValueError as exc:
+            return reject(400, str(exc))
 
         mpx = (iw * ih) / 1e6
         est = estimate_seconds(mpx, quality)

@@ -150,6 +150,29 @@ def infer_scene(model, rgb: np.ndarray, tile: int, overlap: int, device: str,
     src = tile // zoom                 # ground pixels per window
     src_overlap = overlap // zoom
     stride = src - src_overlap
+
+    # An image smaller than one window used to die here. `ys` collapses to [0], and
+    # rgb[0:518] on a 512-row array quietly returns 512 rows -- so the backbone is handed a
+    # 512x512 tensor, rejects it for not being a multiple of the patch size 14, and the
+    # upload path shows a judge a raw traceback. 512x512 is the single most common crop
+    # size in remote sensing, so it is the likeliest thing anyone hands this.
+    #
+    # Reflect-pad up to one window, run the loop untouched, and crop back on the way out.
+    # Reflect rather than zeros or edge: a black margin invents a cliff at the border and
+    # the model would dutifully report its height. Strictly gated on being undersized, so
+    # every scene that already worked takes the identical path and no published number can
+    # move.
+    pad_y = max(0, src - H)
+    pad_x = max(0, src - W)
+    if pad_y or pad_x:
+        if verbose:
+            print(f"  input is {W}x{H}, smaller than one {src}px window -- reflect-padding "
+                  f"to {max(W, src)}x{max(H, src)} and cropping back afterwards")
+        # np.pad's reflect mode cannot mirror further than the axis length, so an extreme
+        # sliver (a 20x4000 strip) gets tiled by wrapping instead of failing outright.
+        mode = "reflect" if (pad_y < H and pad_x < W) else "wrap"
+        rgb = np.pad(rgb, ((0, pad_y), (0, pad_x), (0, 0)), mode=mode)
+        H, W = rgb.shape[:2]
     ys = list(range(0, max(1, H - src + 1), stride))
     xs = list(range(0, max(1, W - src + 1), stride))
     if ys[-1] + src < H:
@@ -199,6 +222,12 @@ def infer_scene(model, rgb: np.ndarray, tile: int, overlap: int, device: str,
     w = np.maximum(acc_w, 1e-8)
     height = acc_mu / w
     sigma = np.sqrt(acc_var / (w ** 2)) if acc_var.any() else None
+    if pad_y or pad_x:
+        # Back to what the caller handed us. Everything downstream -- the GeoTIFF write,
+        # the transform, the scene export -- assumes the array still matches the input.
+        height = height[:H - pad_y, :W - pad_x]
+        if sigma is not None:
+            sigma = sigma[:H - pad_y, :W - pad_x]
     return height.astype(np.float32), (sigma.astype(np.float32) if sigma is not None else None)
 
 
