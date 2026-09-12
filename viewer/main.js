@@ -30,17 +30,72 @@ const $ = (id) => document.getElementById(id);
  * error is sitting in a console nobody opened. Anything that escapes to the top level
  * lands here, in the overlay, with the message and the line.
  */
+// Whether there is a scene on screen worth protecting, and whether a specific diagnosis
+// has already replaced the generic one. Declared above fatal() because the global error
+// handlers below can fire during this module's own evaluation.
+let live = false, explained = false;
+
 function fatal(what, err) {
   const box = document.getElementById('loading');
-  if (!box) return;
+  // A specific explanation already on screen beats a stack trace written over the top of it.
+  if (!box || explained) return;
   box.style.display = 'grid';
   const msg = (err && (err.stack || err.message)) || String(err);
   box.innerHTML = `<div class="err"><b>${what}</b><br><br>` +
     `<code>${String(msg).replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</code>` +
     `<br><br>Press F12 for the full trace.</div>`;
 }
-addEventListener('error', (e) => fatal('The viewer hit an error while starting.', e.error || e.message));
-addEventListener('unhandledrejection', (e) => fatal('The viewer failed to load a scene.', e.reason));
+/**
+ * Say something in the corner without touching the scene.
+ *
+ * Text goes in through textContent rather than innerHTML. Most of what arrives here is a
+ * browser-authored error string, and one containing a '<' should not be able to rewrite the
+ * panel it is reported in.
+ */
+let toastTimer = 0;
+function say(what, detail, kind) {
+  const el = document.getElementById('toast');
+  if (!el) return;
+  el.className = kind === 'warn' ? 'warn' : '';
+  el.textContent = '';
+  const x = document.createElement('button');
+  x.className = 'x';
+  x.title = 'Dismiss';
+  x.setAttribute('aria-label', 'Dismiss');
+  x.textContent = '\u00d7';
+  x.onclick = () => { el.style.display = 'none'; };
+  const head = document.createElement('b');
+  head.textContent = what;
+  el.append(x, head);
+  if (detail) {
+    const d = document.createElement('div');
+    d.className = 'note';
+    d.textContent = detail;
+    el.appendChild(d);
+  }
+  el.style.display = 'block';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.style.display = 'none'; }, kind === 'warn' ? 14000 : 8000);
+}
+
+/**
+ * Route a failure by whether there is anything on screen worth keeping.
+ *
+ * Before the first scene is up, the full-screen overlay is the only useful place for an
+ * error. After it, that same overlay is actively harmful: a refused pointer lock or one
+ * dropped fetch used to paint an unrecoverable "failed to load a scene" across a demo that
+ * was working, leaving the presenter to reload the page in front of the jury. Nothing that
+ * happens after the scene renders is worth the scene.
+ */
+function trouble(what, err) {
+  if (!live) return fatal(what, err);
+  const msg = (err && (err.message || err.stack)) || String(err === undefined ? '' : err);
+  console.error(what, err);
+  say(what, String(msg).split('\n')[0].slice(0, 200), 'warn');
+}
+addEventListener('error', (e) => trouble('The viewer hit an error.', e.error || e.message));
+addEventListener('unhandledrejection', (e) =>
+  trouble('Something the viewer was loading failed.', e.reason));
 // A 1024x1024 tile is 1,048,576 points. A budget of exactly 1M put every DFC2019 tile
 // 4.8% over it, so the mesh was decimated 1:2 and rendered at 512 -- rounding off the very
 // rooftops the model is judged on, to save 48k vertices. Sized to let a full tile through
@@ -62,16 +117,71 @@ const state = {
   touring: false,
   tourT: 0,
   comparing: false,
+  glLost: false,     // set by the webglcontextlost handler; the render loop stands down
   split: 0.5,        // screen fraction: left of this is ours, right is LiDAR
 };
 
 // ---------------------------------------------------------------- renderer & scene
 
-const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+/**
+ * Ask for a 3D context before three.js does, so a machine that cannot give one gets an
+ * instruction instead of a stack trace out of a minified library.
+ *
+ * Not a theoretical case. Hall and lab machines run with graphics acceleration switched off,
+ * remote-desktop sessions have no GPU to hand out, and a locked-down browser profile can
+ * disable WebGL outright. All three produce the same blank page, and the error they raise
+ * names a three.js internal rather than the thing the person in front of it can fix.
+ */
+function explainNoWebGL() {
+  explained = true;
+  const box = document.getElementById('loading');
+  if (!box) return;
+  box.style.display = 'grid';
+  box.innerHTML = '<div class="err"><b>This browser cannot open a 3D context.</b><br><br>'
+    + 'The viewer needs WebGL, which is far more often switched off than missing:<br><br>'
+    + '\u2022 In Chrome or Edge, enable <code>Use graphics acceleration when available</code> '
+    + 'under Settings \u2192 System, then restart the browser.<br>'
+    + '\u2022 Remote-desktop and virtual-machine sessions usually have no GPU to offer. Run '
+    + 'it on the machine itself.<br>'
+    + '\u2022 <code>chrome://gpu</code> should list WebGL as hardware accelerated.<br><br>'
+    + 'None of the evidence behind this demo needs a GPU \u2014 the benchmark tables, error '
+    + 'maps and calibration curves in the submission were all produced on the command line.'
+    + '</div>';
+}
+
+let renderer;
+try {
+  // A context from a throwaway canvas answers the question without three.js in the way.
+  // Release it immediately: browsers cap the number of live contexts per page.
+  const probe = document.createElement('canvas');
+  const gl = probe.getContext('webgl2') || probe.getContext('webgl');
+  if (!gl) throw new Error('no WebGL context available');
+  gl.getExtension('WEBGL_lose_context')?.loseContext();
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+} catch (err) {
+  explainNoWebGL();
+  throw err;        // stops this module; fatal() stands down while `explained` is set
+}
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.localClippingEnabled = true;      // required for the drag-to-compare divider
 document.body.appendChild(renderer.domElement);
+
+// A projector being plugged in, a driver reset, or a long demo on a hot laptop can take the
+// GL context away. Without preventDefault the browser will never offer it back, and three.js
+// goes on rendering into nothing: a frozen image under a live frame counter, which reads as a
+// crash that nobody present can explain.
+renderer.domElement.addEventListener('webglcontextlost', (e) => {
+  e.preventDefault();
+  state.glLost = true;
+  say('The graphics context was lost.',
+      'Usually a display being switched or a graphics driver resetting. Reload the page to '
+      + 'carry on \u2014 nothing is stored in the browser, so nothing is lost.', 'warn');
+});
+renderer.domElement.addEventListener('webglcontextrestored', () => {
+  state.glLost = false;
+  say('Graphics context restored.');
+});
 
 // Light ground, matching the CSS --bg. Deliberately not pure white: against #fff the
 // surface silhouette disappears and every edge glares.
@@ -232,6 +342,8 @@ async function loadScene(dir) {
   initFlood();
   resetView();
   $('loading').style.display = 'none';
+  // From here on a failure must not be allowed to take the screen; see trouble().
+  live = true;
 }
 
 // ---------------------------------------------------------------- mesh
@@ -739,10 +851,37 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 
+/**
+ * Take the mouse for look-around, and survive being told no.
+ *
+ * Chrome refuses a lock for roughly a second after Esc released the previous one, and
+ * refuses it outright while the document is not the focused one -- both of which happen
+ * constantly when someone is presenting and clicking between windows. It reports the refusal
+ * two ways: a rejected promise on current builds, a `pointerlockerror` event on older ones.
+ * The rejection reached the global handler, which painted a full-screen "failed to load a
+ * scene" over a scene that was on screen and working. This is a hint, not a failure.
+ */
+function grabMouse() {
+  try {
+    const p = renderer.domElement.requestPointerLock();
+    if (p && typeof p.catch === 'function') p.catch(lockRefused);
+  } catch (e) {
+    lockRefused();
+  }
+}
+
+function lockRefused() {
+  say('Mouse-look did not engage.',
+      'Browsers block re-locking the mouse for about a second after Esc, and refuse it while '
+      + 'the window is not focused. Click the scene again. The keys work either way: W A S D '
+      + 'to move, Q and E for down and up.');
+}
+document.addEventListener('pointerlockerror', lockRefused);
+
 renderer.domElement.addEventListener('click', (e) => {
   if (state.measuring) return pick(e);
   if (state.comparing) return;            // dragging the divider must not grab the mouse
-  renderer.domElement.requestPointerLock();
+  grabMouse();
 });
 document.addEventListener('pointerlockchange', () => {
   locked = document.pointerLockElement === renderer.domElement;
@@ -1518,6 +1657,9 @@ function frame(now) {
 
   updateCamera(dt);
   updateClipPlanes();
+  // Rendering into a lost context floods the console and cannot draw anything; keep the
+  // loop alive so a restored context picks straight back up.
+  if (state.glLost) { requestAnimationFrame(frame); return; }
   renderer.render(scene, camera);
 
   fpsAcc += 1 / Math.max(dt, 1e-4);

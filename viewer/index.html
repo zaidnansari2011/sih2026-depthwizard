@@ -33,23 +33,59 @@
   canvas { display: block; }
 
   .panel {
-    position: absolute;
+    /* In the flow of a column (see .col), not placed by hand. #hover overrides this back
+       to fixed, because that one follows the cursor. */
+    position: relative;
     background: var(--panel);
     border: 1px solid var(--line);
     border-radius: 6px;
     box-shadow: var(--shadow);
     padding: 12px 14px;
   }
-  #hud { top: 14px; left: 14px; width: 274px; }
-  #stats { top: 14px; right: 14px; width: 246px; }
-  #help { bottom: 14px; left: 14px; color: var(--dim); padding: 8px 12px; }
-  /* Bottom left, above the key hints, where a desktop GIS puts it. */
-  #scalebar { left: 14px; bottom: 58px; padding: 6px 9px 7px; display: none; }
+  /* Two full-height columns, so the panels are laid out against each other instead of
+     against hand-tuned pixel offsets. The measured reason, from tools/verify_layout.py:
+     with the flood controls, the legend and the upload card open the HUD wants 889 px, and
+     a browser on a 1366x768 hall laptop gives the page 673. The old absolute offsets put
+     the remainder off the bottom of a document carrying overflow:hidden -- so no scrollbar
+     appeared, nothing hinted that anything was missing, and the controls below the fold
+     simply did not exist for the person at the keyboard. It also laid the HUD over the key
+     hints. A projector is the normal case, not the edge case. */
+  .col {
+    position: absolute; top: 14px; bottom: 14px; z-index: 4;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 10px;
+    /* The column spans the window's height. If it accepted pointer events, the empty space
+       beside a short panel would swallow the click that enters look-around mode. */
+    pointer-events: none;
+  }
+  .col > *, .foot > * { pointer-events: auto; }
+  .col.left  { left: 14px; }
+  .col.right { right: 14px; align-items: flex-end; }
+  /* The scrolling member of each column: it takes whatever the fixed panels leave it, and
+     min-height:0 is what lets a flex item shrink below its own content instead of pushing
+     the column past the bottom of the window. */
+  #hud, #stats { overflow-y: auto; min-height: 0; scrollbar-width: thin; }
+  #hud::-webkit-scrollbar, #stats::-webkit-scrollbar { width: 9px; }
+  #hud::-webkit-scrollbar-thumb, #stats::-webkit-scrollbar-thumb {
+    background: #cbd3db; border-radius: 5px; border: 2px solid var(--panel);
+  }
+  #hud { width: 274px; }
+  #stats { width: 246px; }
+  /* Bottom-anchored furniture. The auto margin absorbs the free space above it, so these
+     sit at the foot of the column whatever height the panel above settles at. Natural
+     width, because the scale bar's own bar length *is* the measurement and the key hints
+     are one long line -- neither should be stretched to the column. */
+  .foot {
+    margin-top: auto; display: flex; flex-direction: column; gap: 10px;
+    width: max-content; max-width: calc(100vw - 28px);
+  }
+  #help { color: var(--dim); padding: 8px 12px; }
+  /* Above the key hints, where a desktop GIS puts it. */
+  #scalebar { padding: 6px 9px 7px; display: none; }
   #sb-label { font: 11px ui-monospace, Consolas, monospace; color: var(--text);
               font-variant-numeric: tabular-nums; text-align: center; }
   /* Open-topped box: the classic bar with a tick down at each end. */
   #sb-bar { height: 6px; margin-top: 3px; border: 1px solid var(--text); border-top: none; }
-  #readout { bottom: 14px; right: 14px; width: 246px; display: none; }
+  #readout { width: 246px; display: none; margin-top: auto; }
   /* Follows the cursor, so it is fixed rather than absolute, and must never swallow the
      pointer events the mesh needs to receive. */
   #hover {
@@ -147,6 +183,31 @@
   .err code { background: #fff; border: 1px solid var(--line); border-radius: 3px;
               padding: 1px 5px; font-size: 11.5px; color: var(--text); }
 
+  /* Trouble that arrives *after* the scene is up belongs here, not over the scene. The
+     global error handler used to route every late failure -- a refused pointer lock, a
+     dropped fetch -- into the full-screen loading overlay, which painted an unrecoverable
+     error on top of a demo that was working perfectly. */
+  /* It lives in the left column's foot, above the scale bar and the key hints, rather than
+     floating over the window. Two earlier placements were measured and rejected: centred on
+     the window it lay across the key hints and the measurement readout, and centred in the
+     channel between the columns it still cut into the key hints, which are a 488px-wide
+     single line. As a flex item it cannot overlap anything at any window size, which is the
+     only property that actually matters for something that appears unannounced. */
+  #toast {
+    display: none; max-width: 560px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent); border-radius: 6px; box-shadow: var(--shadow);
+    padding: 9px 12px 10px;
+  }
+  #toast.warn { border-left-color: var(--warn); }
+  #toast b { display: block; margin-right: 18px; }
+  /* Overrides the full-width button rule above; this one is a 14px glyph. */
+  #toast .x {
+    float: right; width: auto; padding: 0 3px; margin: -3px -5px 0 0; border: none;
+    background: none; color: var(--dim); font-size: 15px; line-height: 1;
+  }
+  #toast .x:hover { background: none; color: var(--text); }
+
   /* Dark crosshair, because the surface underneath is light. */
   #crosshair {
     position: absolute; left: 50%; top: 50%; width: 14px; height: 14px;
@@ -170,132 +231,150 @@
     <div class="grip">◀▶</div>
   </div>
 
-  <div id="hud" class="panel">
-    <h1>DepthWizard</h1>
-    <div class="sub">Height from a single satellite image</div>
+  <div class="col left">
+    <div id="hud" class="panel">
+      <h1>DepthWizard</h1>
+      <div class="sub">Height from a single satellite image</div>
 
-    <label for="scene">Scene</label>
-    <select id="scene"></select>
-    <!-- Which model produced these heights. A demo that cannot name its own model is
-         not evidence, and the answer must be visible without asking. -->
-    <div class="note" id="s-model"></div>
+      <label for="scene">Scene</label>
+      <select id="scene"></select>
+      <!-- Which model produced these heights. A demo that cannot name its own model is
+           not evidence, and the answer must be visible without asking. -->
+      <div class="note" id="s-model"></div>
 
-    <label for="mode">Show</label>
-    <select id="mode">
-      <option value="texture">Satellite image</option>
-      <option value="height">Height above ground</option>
-      <option value="sigma">How sure we are</option>
-      <option value="error">Where we're wrong</option>
-      <option value="slope">Steepness</option>
-    </select>
+      <label for="mode">Show</label>
+      <select id="mode">
+        <option value="texture">Satellite image</option>
+        <option value="height">Height above ground</option>
+        <option value="sigma">How sure we are</option>
+        <option value="error">Where we're wrong</option>
+        <option value="slope">Steepness</option>
+      </select>
 
-    <label for="vex">Height boost · <b id="vexv">1.5×</b></label>
-    <input id="vex" type="range" min="0.5" max="6" step="0.1" value="1.5" />
-    <div class="note">Heights are stretched to make the shape readable. The numbers
-      stay true.</div>
+      <label for="vex">Height boost · <b id="vexv">1.5×</b></label>
+      <input id="vex" type="range" min="0.5" max="6" step="0.1" value="1.5" />
+      <div class="note">Heights are stretched to make the shape readable. The numbers
+        stay true.</div>
 
-    <label for="sun">Sun direction · <b id="sunv">315°</b></label>
-    <input id="sun" type="range" min="0" max="360" step="5" value="315" />
+      <label for="sun">Sun direction · <b id="sunv">315°</b></label>
+      <input id="sun" type="range" min="0" max="360" step="5" value="315" />
 
-    <div class="sect">Tools</div>
-    <!-- Only appears where absolute elevation exists, i.e. a scene with a CRS and a
-         terrain band. On the DFC2019 scenes the tool is absent and #flood-why says so,
-         the same way the compare tool disables itself on Sikkim. -->
-    <button id="flood">Flood the valley</button>
-    <div id="flood-why" class="note" style="display:none"></div>
-    <div id="flood-ctl" style="display:none">
-      <label for="water">Water level · <b id="waterv">—</b></label>
-      <input id="water" type="range" min="0" max="1" step="1" value="0" />
-      <div class="row"><span>Ground under water</span><span id="f-area">—</span></div>
-      <div class="row"><span>Buildings flooded</span><span id="f-in">—</span></div>
-      <div class="row"><span>Too close to call</span><span id="f-unc">—</span></div>
-      <div class="note">Water fills only what connects to the edge of the scene, so
-        enclosed hollows stay dry. A flat water surface — no flow, no time.
-        <span id="f-src"></span></div>
-    </div>
+      <div class="sect">Tools</div>
+      <!-- Only appears where absolute elevation exists, i.e. a scene with a CRS and a
+           terrain band. On the DFC2019 scenes the tool is absent and #flood-why says so,
+           the same way the compare tool disables itself on Sikkim. -->
+      <button id="flood">Flood the valley</button>
+      <div id="flood-why" class="note" style="display:none"></div>
+      <div id="flood-ctl" style="display:none">
+        <label for="water">Water level · <b id="waterv">—</b></label>
+        <input id="water" type="range" min="0" max="1" step="1" value="0" />
+        <div class="row"><span>Ground under water</span><span id="f-area">—</span></div>
+        <div class="row"><span>Buildings flooded</span><span id="f-in">—</span></div>
+        <div class="row"><span>Too close to call</span><span id="f-unc">—</span></div>
+        <div class="note">Water fills only what connects to the edge of the scene, so
+          enclosed hollows stay dry. A flat water surface — no flow, no time.
+          <span id="f-src"></span></div>
+      </div>
 
-    <button id="compare">Compare with real LiDAR</button>
-    <div class="btns">
-      <button id="tour">Fly-through</button>
-      <button id="measure">Measure</button>
-    </div>
-    <div class="btns">
-      <button id="wire">Mesh lines</button>
-      <button id="reset">Reset view</button>
-    </div>
+      <button id="compare">Compare with real LiDAR</button>
+      <div class="btns">
+        <button id="tour">Fly-through</button>
+        <button id="measure">Measure</button>
+      </div>
+      <div class="btns">
+        <button id="wire">Mesh lines</button>
+        <button id="reset">Reset view</button>
+      </div>
 
-    <!-- Hidden unless a server is behind the page. The single-file build has no process
-         to run the model, so offering an upload there would be a button that lies. -->
-    <div id="upload-block" style="display:none">
-      <div class="sect">Your own image</div>
-      <button id="pick">Upload a satellite image</button>
-      <input id="file" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" hidden />
-      <div class="note">Drop a file anywhere on the page. A GeoTIFF gives real heights
-        above sea level; a PNG or JPG gives relative heights only.</div>
-      <div id="upprog" style="display:none">
-        <div class="row"><span id="up-step">working…</span><span id="up-pct">0%</span></div>
-        <div class="bar-outer"><div class="bar-inner" id="up-bar"></div></div>
+      <!-- Hidden unless a server is behind the page. The single-file build has no process
+           to run the model, so offering an upload there would be a button that lies. -->
+      <div id="upload-block" style="display:none">
+        <div class="sect">Your own image</div>
+        <button id="pick">Upload a satellite image</button>
+        <input id="file" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" hidden />
+        <div class="note">Drop a file anywhere on the page. A GeoTIFF gives real heights
+          above sea level; a PNG or JPG gives relative heights only.</div>
+        <div id="upprog" style="display:none">
+          <div class="row"><span id="up-step">working…</span><span id="up-pct">0%</span></div>
+          <div class="bar-outer"><div class="bar-inner" id="up-bar"></div></div>
+        </div>
+      </div>
+
+      <div id="legend">
+        <div class="bar"></div>
+        <div class="ends"><span id="legmin"></span><span id="legmax"></span></div>
+        <div class="cap" id="legcap"></div>
       </div>
     </div>
 
-    <div id="legend">
-      <div class="bar"></div>
-      <div class="ends"><span id="legmin"></span><span id="legmax"></span></div>
-      <div class="cap" id="legcap"></div>
+    <!-- Pinned to the foot of the column, so the HUD above can grow, scroll and shrink without ever covering them. -->
+    <div class="foot">
+      <!-- Late trouble reports here: after the scene is up, an error belongs beside the
+           scene rather than over it. See say() and trouble() in main.js. -->
+      <div id="toast" role="status" aria-live="polite"></div>
+
+      <!-- Calibrated where the centre of the view meets the surface; see updateScaleBar(). -->
+      <div id="scalebar" class="panel">
+        <div id="sb-label">—</div>
+        <div id="sb-bar"></div>
+      </div>
+      <div id="help" class="panel">
+        <kbd>Click</kbd> look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
+        <kbd>Q</kbd><kbd>E</kbd> down/up · <kbd>Shift</kbd> faster · <kbd>Esc</kbd> release
+      </div>
     </div>
   </div>
 
-  <div id="stats" class="panel">
-    <div class="sect" style="margin-top:0">This scene</div>
-    <div class="row"><span>Area covered</span><span id="s-extent">—</span></div>
-    <div class="row"><span>Each pixel</span><span id="s-gsd">—</span></div>
-    <div class="row"><span>Grid size</span><span id="s-res">—</span></div>
-    <div class="row"><span>Height range</span><span id="s-range">—</span></div>
-    <div class="row"><span>Typical confidence</span><span id="s-sigma">—</span></div>
+  <div class="col right">
+    <div id="stats" class="panel">
+      <div class="sect" style="margin-top:0">This scene</div>
+      <div class="row"><span>Area covered</span><span id="s-extent">—</span></div>
+      <div class="row"><span>Each pixel</span><span id="s-gsd">—</span></div>
+      <div class="row"><span>Grid size</span><span id="s-res">—</span></div>
+      <div class="row"><span>Height range</span><span id="s-range">—</span></div>
+      <div class="row"><span>Typical confidence</span><span id="s-sigma">—</span></div>
 
-    <div id="terrain-block" style="display:none">
-      <div class="sect">The ground underneath</div>
-      <div class="row"><span>Height above sea</span><span id="s-elev">—</span></div>
-      <div class="row"><span>Rise across scene</span><span id="s-relief">—</span></div>
-      <div class="row"><span>Steepness</span><span id="s-slope">—</span></div>
-      <div class="row sub"><span id="s-terrnote"></span></div>
+      <div id="terrain-block" style="display:none">
+        <div class="sect">The ground underneath</div>
+        <div class="row"><span>Height above sea</span><span id="s-elev">—</span></div>
+        <div class="row"><span>Rise across scene</span><span id="s-relief">—</span></div>
+        <div class="row"><span>Steepness</span><span id="s-slope">—</span></div>
+        <div class="row sub"><span id="s-terrnote"></span></div>
+      </div>
+
+      <div id="lidar-block">
+        <div class="sect">Checked against LiDAR</div>
+        <div class="row"><span>Tallest we found</span><span id="s-ourmax">—</span></div>
+        <div class="row"><span>Tallest really there</span><span id="s-trumax">—</span></div>
+        <div class="row"><span>Error per building</span><span id="s-errb">—</span></div>
+        <div class="row sub"><span id="s-errbnote"></span></div>
+        <div class="row"><span>Error per pixel</span><span id="s-err">—</span></div>
+        <div class="row"><span>On the ground</span><span id="s-errg">—</span></div>
+        <div class="row sub"><span id="s-errnote"></span></div>
+      </div>
+
+      <div id="notruth-block" style="display:none">
+        <div class="sect">No LiDAR here</div>
+        <div class="row sub"><span id="s-notruth"></span></div>
+      </div>
+
+      <div class="sect">Display</div>
+      <div class="row"><span>Detail</span><span id="s-mesh">—</span></div>
+      <div class="row"><span>Frames per second</span><span id="s-fps">—</span></div>
     </div>
 
-    <div id="lidar-block">
-      <div class="sect">Checked against LiDAR</div>
-      <div class="row"><span>Tallest we found</span><span id="s-ourmax">—</span></div>
-      <div class="row"><span>Tallest really there</span><span id="s-trumax">—</span></div>
-      <div class="row"><span>Error per building</span><span id="s-errb">—</span></div>
-      <div class="row sub"><span id="s-errbnote"></span></div>
-      <div class="row"><span>Error per pixel</span><span id="s-err">—</span></div>
-      <div class="row"><span>On the ground</span><span id="s-errg">—</span></div>
-      <div class="row sub"><span id="s-errnote"></span></div>
+    <div id="readout" class="panel">
+      <div class="sect" style="margin-top:0">Measurement</div>
+      <div class="row"><span>Distance on ground</span><span id="m-ground">—</span></div>
+      <div class="row"><span>Height difference</span><span id="m-dh">—</span></div>
+      <div class="row"><span>Straight-line distance</span><span id="m-slope">—</span></div>
+      <div class="row"><span>How sure we are</span><span id="m-unc">—</span></div>
+      <div class="row sub"><span id="m-note"></span></div>
     </div>
-
-    <div id="notruth-block" style="display:none">
-      <div class="sect">No LiDAR here</div>
-      <div class="row sub"><span id="s-notruth"></span></div>
-    </div>
-
-    <div class="sect">Display</div>
-    <div class="row"><span>Detail</span><span id="s-mesh">—</span></div>
-    <div class="row"><span>Frames per second</span><span id="s-fps">—</span></div>
   </div>
 
-  <div id="readout" class="panel">
-    <div class="sect" style="margin-top:0">Measurement</div>
-    <div class="row"><span>Distance on ground</span><span id="m-ground">—</span></div>
-    <div class="row"><span>Height difference</span><span id="m-dh">—</span></div>
-    <div class="row"><span>Straight-line distance</span><span id="m-slope">—</span></div>
-    <div class="row"><span>How sure we are</span><span id="m-unc">—</span></div>
-    <div class="row sub"><span id="m-note"></span></div>
-  </div>
 
-  <!-- Calibrated where the centre of the view meets the surface; see updateScaleBar(). -->
-  <div id="scalebar" class="panel">
-    <div id="sb-label">—</div>
-    <div id="sb-bar"></div>
-  </div>
+
 
   <!-- Follows the cursor. The brief asks for analysis of structural heights and slopes
        "from arbitrary aerial perspectives"; the two-click tool answers that only once a
@@ -306,10 +385,6 @@
     <div class="row"><span>Slope</span><span id="h-slope">—</span></div>
   </div>
 
-  <div id="help" class="panel">
-    <kbd>Click</kbd> look · <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move ·
-    <kbd>Q</kbd><kbd>E</kbd> down/up · <kbd>Shift</kbd> faster · <kbd>Esc</kbd> release
-  </div>
 
   <div id="loading"><div>Loading…</div></div>
 
