@@ -808,6 +808,134 @@ function updateCamera(dt) {
 
 const raycaster = new THREE.Raycaster();
 
+// ---------------------------------------------------------------- ray vs heightfield
+//
+// The surface is a regular grid, so a general triangle raycast is the wrong instrument.
+// three.js ships no BVH: intersectObject() tests every triangle, and at MAX_VERTS that is
+// ~2.1M of them. Hover ran one of those casts per frame and the scale bar another every
+// tenth frame, so moving the pointer cost more than drawing the scene did.
+//
+// Marching the grid is O(cells crossed) -- a few hundred -- and returns the same answer,
+// because it tests the same two triangles per cell that surfaceGeometry() builds. Cell
+// traversal is Amanatides & Woo, "A Fast Voxel Traversal Algorithm for Ray Tracing", 1987.
+//
+// Everything below works in grid units and TRUE metres. Dividing the ray's y by the
+// vertical exaggeration scales origin and direction together, which leaves the ray
+// parameter t untouched -- so the point and distance handed back are still measured along
+// the original ray, exactly as intersectObject() reported them.
+
+// Surface height at a grid vertex, in true metres. Mirrors surfaceGeometry(): above-ground
+// height stacked on bare earth when the scene carries it, so the mesh is a true DSM.
+function gridVertexHeight(i, j) {
+  const W = state.manifest.width;
+  const k = (j * state.grid.stepY) * W + i * state.grid.stepX;
+  const h = state.height[k];
+  return state.terrain ? h + state.terrain[k] : h;
+}
+
+/**
+ * Intersect a world-space ray with the rendered surface.
+ *
+ * Returns { point, distance } in the same scaled world space intersectObject() used, or
+ * null on a miss. `point` is rebuilt from the original origin and direction rather than
+ * from grid coordinates, so it carries no round-trip error.
+ */
+function terrainRay(origin, dir) {
+  if (!mesh || !state.height) return null;
+
+  const m = state.manifest;
+  const W = m.width, H = m.height;
+  const { w: gw, h: gh, stepX: step } = state.grid;
+  const gsd = state.gsd, vex = state.vex || 1;
+  const cell = step * gsd;                       // world metres per grid cell
+  const cx = ((W - 1) * gsd) / 2, cz = ((H - 1) * gsd) / 2;
+
+  const ox = (origin.x + cx) / cell, oz = (origin.z + cz) / cell, oy = origin.y / vex;
+  const dx = dir.x / cell, dz = dir.z / cell, dy = dir.y / vex;
+
+  // Clip to the grid's footprint first: a ray aimed at the sky should cost two divides,
+  // not a walk to the horizon.
+  const EPS = 1e-12;
+  let t0 = 0, t1 = Infinity;
+  const slab = (o, d, hi) => {
+    if (Math.abs(d) < EPS) return o >= 0 && o <= hi;
+    let ta = (0 - o) / d, tb = (hi - o) / d;
+    if (ta > tb) { const s = ta; ta = tb; tb = s; }
+    if (ta > t0) t0 = ta;
+    if (tb < t1) t1 = tb;
+    return t0 <= t1;
+  };
+  if (!slab(ox, dx, gw - 1) || !slab(oz, dz, gh - 1)) return null;
+
+  // Nudge inside the entry face so the starting cell is never the one behind us.
+  const tStart = t0 + 1e-6;
+  let i = Math.floor(ox + dx * tStart);
+  let j = Math.floor(oz + dz * tStart);
+  i = Math.min(gw - 2, Math.max(0, i));
+  j = Math.min(gh - 2, Math.max(0, j));
+
+  const si = dx >= 0 ? 1 : -1, sj = dz >= 0 ? 1 : -1;
+  const tDeltaX = Math.abs(dx) > EPS ? Math.abs(1 / dx) : Infinity;
+  const tDeltaZ = Math.abs(dz) > EPS ? Math.abs(1 / dz) : Infinity;
+  let tMaxX = Math.abs(dx) > EPS ? ((dx > 0 ? i + 1 : i) - ox) / dx : Infinity;
+  let tMaxZ = Math.abs(dz) > EPS ? ((dz > 0 ? j + 1 : j) - oz) / dz : Infinity;
+
+  // The two triangles of a cell, as the affine height plane h = A + B*u + C*v over the
+  // cell's local (u, v). Split and winding match surfaceGeometry()'s (a, c, b), (b, c, d):
+  // the first covers u + v <= 1, the second the other half.
+  const INSET = 1e-6;
+  const hitCell = () => {
+    const h00 = gridVertexHeight(i, j), h10 = gridVertexHeight(i + 1, j);
+    const h01 = gridVertexHeight(i, j + 1), h11 = gridVertexHeight(i + 1, j + 1);
+    const U0 = ox - i, V0 = oz - j;
+    let best = null;
+
+    for (let tri = 0; tri < 2; tri++) {
+      const A = tri === 0 ? h00 : h01 + h10 - h11;
+      const B = tri === 0 ? h10 - h00 : h11 - h01;
+      const C = tri === 0 ? h01 - h00 : h11 - h10;
+      if (!Number.isFinite(A) || !Number.isFinite(B) || !Number.isFinite(C)) continue;
+
+      const den = dy - B * dx - C * dz;
+      if (Math.abs(den) < EPS) continue;               // ray runs parallel to the facet
+      const t = (A + B * U0 + C * V0 - oy) / den;
+      if (!(t >= t0 - INSET) || t > t1 + INSET) continue;
+      if (best !== null && t >= best) continue;
+
+      const u = U0 + dx * t, v = V0 + dz * t;
+      if (u < -INSET || u > 1 + INSET || v < -INSET || v > 1 + INSET) continue;
+      if (tri === 0 ? u + v > 1 + INSET : u + v < 1 - INSET) continue;
+      best = t;
+    }
+    return best;
+  };
+
+  // Bounded by the grid diagonal: a ray cannot cross more cells than that and still be
+  // inside. The guard is belt-and-braces against a degenerate direction.
+  const maxSteps = gw + gh + 4;
+  for (let n = 0; n < maxSteps; n++) {
+    const t = hitCell();
+    if (t !== null) {
+      return {
+        point: origin.clone().addScaledVector(dir, t),
+        distance: t * dir.length(),
+      };
+    }
+    if (tMaxX < tMaxZ) { i += si; tMaxX += tDeltaX; } else { j += sj; tMaxZ += tDeltaZ; }
+    // Stepping out of the grid is the only exit. Bailing early on t1 instead would drop
+    // the boundary cell the ray is still inside when it leaves the footprint, which is
+    // exactly where a grazing look at the horizon finds its hit.
+    if (i < 0 || i > gw - 2 || j < 0 || j > gh - 2) return null;
+  }
+  return null;
+}
+
+// Build the camera ray with three.js so the unprojection stays its business, then march.
+function terrainAtNdc(ndc) {
+  raycaster.setFromCamera(ndc, camera);
+  return terrainRay(raycaster.ray.origin, raycaster.ray.direction);
+}
+
 function pick(ev) {
   if (!mesh) return;
   const r = renderer.domElement.getBoundingClientRect();
@@ -815,8 +943,7 @@ function pick(ev) {
     ((ev.clientX - r.left) / r.width) * 2 - 1,
     -((ev.clientY - r.top) / r.height) * 2 + 1,
   );
-  raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObject(mesh, false)[0];
+  const hit = terrainAtNdc(ndc);
   if (!hit) return;
 
   // The mesh is scaled vertically for legibility; undo that so the recorded point is
@@ -946,8 +1073,7 @@ function updateHover(ev) {
     ((ev.clientX - r.left) / r.width) * 2 - 1,
     -((ev.clientY - r.top) / r.height) * 2 + 1,
   );
-  raycaster.setFromCamera(ndc, camera);
-  const hit = raycaster.intersectObject(mesh, false)[0];
+  const hit = terrainAtNdc(ndc);
   if (!hit) { el.style.display = 'none'; return; }
 
   // Undo the vertical exaggeration before reading anything metric -- the same trap
@@ -1165,7 +1291,7 @@ $('water').addEventListener('input', (e) => {
 // It is an orientation aid, not a measurement. The two-click tool is the measurement, and
 // it carries a calibrated error bar; this carries none and must never look like it does.
 
-const sbRay = new THREE.Raycaster();
+const SCREEN_CENTRE = new THREE.Vector2(0, 0);
 
 /** Round to the nearest 1, 2 or 5 times a power of ten -- standard scale-bar steps. */
 function niceLength(target) {
@@ -1183,8 +1309,7 @@ function updateScaleBar() {
   // a fabrication. Say nothing rather than something untrue.
   if (!mesh || !state.hasMetres) { el.style.display = 'none'; return; }
 
-  sbRay.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const hit = sbRay.intersectObject(mesh, false)[0];
+  const hit = terrainAtNdc(SCREEN_CENTRE);
   if (!hit) { el.style.display = 'none'; return; }
 
   const vh = renderer.domElement.clientHeight || 1;
