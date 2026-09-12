@@ -41,6 +41,7 @@ Apps on any subscription that permits ACR Tasks.
 ## Layout
 
     deploy/stage.py              assembles the deployable tree
+    deploy/make_appservice_zip.py  packages _context/app for App Service
     deploy/Dockerfile            container path (unused on Students, kept working)
     deploy/requirements-serve.txt
     tools/serve_app.py           the public server
@@ -75,10 +76,35 @@ refuses to build a context with zero baked scenes rather than deploying an empty
 
 ## Deploying
 
-    python deploy/stage.py
-    cd deploy && python -c "import zipfile,pathlib; ..."     # see below
+    python deploy/stage.py --ckpt ../checkpoints/run07/best.pt
+    python deploy/make_appservice_zip.py
     az webapp deploy -g sih2026-depthwizard -n depthwizard-sih2026 \
-                     --src-path dwz-app.zip --type zip --async true
+                     --src-path dwz-appservice.zip --type zip --async true
+
+> **`deploy/dwz-app.zip` is a Docker build context and must never be zip-deployed.**
+> Its root is `Dockerfile` + `app/`, which is what the Dockerfile expects
+> (`COPY app/ /app/` strips the prefix) and what Oryx cannot use. Deploying it on
+> 8 Sep 2026 took the site down for two days. `make_appservice_zip.py` writes a
+> **differently named** file, `dwz-appservice.zip`, whose root is the *contents* of
+> `_context/app/` — so `tools/` sits at the root, matching the
+> `python tools/serve_app.py` startup command — plus a `requirements.txt` that is
+> `requirements-serve.txt` with one line prepended:
+> `--extra-index-url https://download.pytorch.org/whl/cpu`. Nothing else: adding
+> `--only-binary=:all:` (a Dockerfile flag) preceded a build that died inside
+> `uv pip install`. The script checks the layout before writing, so a wrong-shaped
+> zip fails here rather than on the platform.
+
+**Measured 12 Sep 2026**, restaging to run07: 336 MB, `--async true`, **815 s** end
+to end, reporting `status: RuntimeSuccessful` and `numberOfInstancesSuccessful: 1`.
+The old container keeps serving throughout the upload, so the site does not go dark.
+
+**Verify a restage by what it serves, not by what the deploy says.** An upload returns
+a scene whose `manifest.json` carries no model name, so compare its `height_max_m` and
+`sigma_mean_m` against a local single-pass run of each candidate checkpoint. On
+`OMA_288_042` that separates them cleanly: run07 gives 38.3 m / σ 1.54, run02 gives
+29.6 m / σ 0.87. Note also that the viewer is served at the site **root** —
+`/viewer/main.js` is a 404 and the script is `/main.js`, which reads exactly like a
+failed deploy if you check the wrong path.
 
 The zip is built at compression level 1 on purpose: the bulk is `.pt`, `.safetensors`,
 `.bin` and `.jpg`, none of which compress, so level 9 buys a percent or two for several
