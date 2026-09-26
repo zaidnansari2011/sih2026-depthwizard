@@ -255,6 +255,18 @@ def disk_free() -> int | None:
         return None
 
 
+def disk_floor() -> int:
+    """DISK_FLOOR, or a tenth of the disk if that is smaller.
+
+    The instance's disk size cannot be measured from outside it. On a small one a fixed
+    1 GB floor could sit permanently above the free space, and every upload would then
+    reap every older one -- the dead-links problem this reaper exists to prevent."""
+    try:
+        return min(DISK_FLOOR, shutil.disk_usage(SCENES).total // 10)
+    except OSError:
+        return DISK_FLOOR
+
+
 def reap_scenes() -> None:
     """Keep the newest uploaded scenes within SCENE_BUDGET, SCENE_BYTES and DISK_FLOOR.
 
@@ -281,9 +293,10 @@ def reap_scenes() -> None:
         shutil.rmtree(d, ignore_errors=True)
     # Then the floor, oldest first, whatever the budgets said.
     survivors = [d for d in uploaded if d not in doomed]
+    floor = disk_floor()
     while len(survivors) > 1:
         free = disk_free()              # None = unmeasurable; 0 = full, and must reap
-        if free is None or free >= DISK_FLOOR:
+        if free is None or free >= floor:
             break
         shutil.rmtree(survivors.pop(), ignore_errors=True)
     prune_index(SCENES)
@@ -707,7 +720,8 @@ class Handler(SimpleHTTPRequestHandler):
         if u.path == "/healthz":
             free = disk_free()
             return self._json(200, {"ok": True, "jobs": active_jobs(),
-                                    "disk_free_mb": None if free is None else free // 2**20})
+                                    "disk_free_mb": None if free is None else free // 2**20,
+                                    "disk_floor_mb": disk_floor() // 2**20})
         if u.path.startswith("/api/job/"):
             job = JOBS.get(u.path.rsplit("/", 1)[-1])
             return self._json(200 if job else 404, job or {"state": "unknown"})

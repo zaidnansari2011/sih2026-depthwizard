@@ -1564,7 +1564,14 @@ function terrainRay(origin, dir) {
   // cell's local (u, v). Split and winding match surfaceGeometry()'s (a, c, b), (b, c, d):
   // the first covers u + v <= 1, the second the other half.
   const INSET = 1e-6;
+  // The cells surfaceGeometry() did not draw (a nodata corner) are not there to hit: a ray
+  // passes through them, so nothing is measured, hovered or scaled where no image was.
+  const vok = mesh.geometry.userData.vok;
   const hitCell = () => {
+    if (vok) {
+      const a = j * gw + i;
+      if (!(vok[a] && vok[a + 1] && vok[a + gw] && vok[a + gw + 1])) return null;
+    }
     const h00 = gridVertexHeight(i, j), h10 = gridVertexHeight(i + 1, j);
     const h01 = gridVertexHeight(i, j + 1), h11 = gridVertexHeight(i + 1, j + 1);
     const U0 = ox - i, V0 = oz - j;

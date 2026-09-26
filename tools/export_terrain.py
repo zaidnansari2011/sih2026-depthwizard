@@ -238,9 +238,11 @@ def main():
         "name": args.name or hpath.stem,
         "width": W,
         "height": H,
-        # Over valid pixels only: the fill value is not a height anyone measured.
-        "height_min_m": float(height[valid].min()),
-        "height_max_m": float(height[valid].max()),
+        # Over valid pixels only: the fill value is not a height anyone measured. Taken at
+        # full resolution, which cannot be empty (all-invalid was refused above); the
+        # decimated grid can miss a small valid region entirely.
+        "height_min_m": float(height_full[~bad].min()),
+        "height_max_m": float(height_full[~bad].max()),
         "void_pixels_filled": n_bad,
         "downsampled_by": round(1.0 / scale, 3) if scale != 1.0 else 1.0,
         "vertical_exaggeration": args.vertical_exaggeration,

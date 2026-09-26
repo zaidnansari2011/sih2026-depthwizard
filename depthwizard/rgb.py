@@ -163,11 +163,15 @@ def read_rgb_valid(path, band_order: str = "auto") -> tuple[np.ndarray, np.ndarr
                 nodata = src.nodata
                 # Declared nodata, alpha bands and internal masks, as GDAL resolves them.
                 valid = src.dataset_mask() > 0
-                if (src.count == 4 and src.dtypes[0] == "uint8" and idx == [0, 1, 2]
+                if (src.count == 4 and src.dtypes[0] == "uint8"
                         and not any(c.name == "alpha" for c in src.colorinterp)):
-                    # Untagged 8-bit 4-band is read as RGBA (see _rgb_band_indices), so
-                    # its fourth band is the alpha GDAL did not know to apply.
-                    valid &= src.read(4) > 0
+                    # An untagged 8-bit fourth band MAY be the alpha GDAL did not know to
+                    # apply -- or near-infrared, which reads ~0 over water. Only a band
+                    # holding nothing but 0 and 255 (and some 255) is treated as alpha;
+                    # anything continuous is left alone, as the reader always did.
+                    b4 = src.read(4)
+                    if (b4 == 255).any() and ((b4 == 0) | (b4 == 255)).all():
+                        valid &= b4 > 0
         a = np.transpose(a, (1, 2, 0))
         if a.dtype.kind == "f":
             valid &= np.isfinite(a).all(-1)
