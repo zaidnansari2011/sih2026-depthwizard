@@ -152,7 +152,9 @@ site down by being mildly popular.
 | **image area** | **~13.8 Mpx (≈3713²) in fast mode** | derived — see below |
 | jobs in flight | 3, then 429 | `DW_MAX_QUEUE` |
 | per-IP spacing | 20 s | `DW_IP_SPACING` |
-| uploaded scenes kept | 12, newest first | `DW_SCENE_BUDGET` |
+| uploaded scenes kept | newest first, up to 60 | `DW_SCENE_BUDGET` |
+| ... and up to this many MB | 2048 | `DW_SCENE_MB` |
+| ... while at least this much disk stays free | 1024 MB | `DW_DISK_FLOOR_MB` |
 | job abandoned after | 600 s | `DW_TIMEOUT` |
 
 ### Why an area cap, when there is already a byte cap
@@ -214,8 +216,10 @@ that check. Once issued, the proxy can be turned on with SSL mode **Full (strict
   container — an SSL bind or a redeploy — because the platform extracts a fresh tree and
   `stage.py` excludes `upload_*`.
 
-  So `DW_SCENE_BUDGET` is the only routine bound on disk growth, and a visitor's upload
-  stays publicly listed until twelve more push it out. There is no delete endpoint; if a
-  specific scene must go before then, redeploy.
+  So the reaper is the only routine bound on disk growth: newest first, within
+  `DW_SCENE_BUDGET` scenes and `DW_SCENE_MB`, and oldest-first below `DW_DISK_FLOOR_MB`
+  free (the newest upload is never reaped). Until 26 Sep it was twelve scenes by count,
+  so a judge's thirteenth upload evicted their first. `/healthz` reports `disk_free_mb`.
+  There is no delete endpoint; if a specific scene must go before then, redeploy.
 - **`infer.py --help` crashes** — a `%` in one help string breaks argparse's formatting.
   Cosmetic, but it means `--help` is not a way to discover the flags.

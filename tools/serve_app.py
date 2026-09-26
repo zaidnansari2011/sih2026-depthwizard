@@ -21,9 +21,10 @@ What actually differs, and why each one matters once anyone can reach it:
     the reason, not a job that will never run.
   * **Per-IP spacing**, so one client cannot hold the whole queue.
   * **50 MB uploads**, not 400. A 0.3 m GeoTIFF gets large, but not on a free tier.
-  * **Scene reaping.** Every upload writes a scene of 13-50 MB into an ephemeral
+  * **Scene reaping.** Every upload writes a scene of 8-55 MB into an ephemeral
     container filesystem. Without a cap that fills the disk and the process dies of
-    something unrelated hours later; SCENE_BUDGET keeps the newest and deletes the rest.
+    something unrelated hours later; the newest are kept within a count, a byte budget
+    and a free-space floor, and the rest deleted.
   * **DEM anchoring off by default.** `--dem auto` reaches Copernicus at request time.
     That is a network dependency inside a request that already takes a minute, so it is
     opt-in per deployment rather than a surprise timeout.
@@ -64,7 +65,15 @@ OUT = WORK / "out"
 MAX_BYTES = int(os.environ.get("DW_MAX_UPLOAD_MB", "50")) * 1024 * 1024
 MAX_QUEUE = int(os.environ.get("DW_MAX_QUEUE", "3"))       # incl. the one running
 IP_SPACING = float(os.environ.get("DW_IP_SPACING", "20"))  # seconds between one IP's jobs
-SCENE_BUDGET = int(os.environ.get("DW_SCENE_BUDGET", "12"))
+# Uploaded scenes are kept newest first until any of three limits bites. Twelve by count
+# used to be the only one, so a judge uploading a thirteenth file evicted their first
+# and its link died. A 1024 px upload is 8-14 MB and the largest accepted (resampled to
+# 2048 px) about 55 MB, measured 26 Sep, so 2 GB holds ~150 typical scenes or 36 of the
+# largest. The free-space floor is the real guard: the instance's disk size is not
+# something this code gets to assume, so it measures it.
+SCENE_BUDGET = int(os.environ.get("DW_SCENE_BUDGET", "60"))
+SCENE_BYTES = int(os.environ.get("DW_SCENE_MB", "2048")) * 1024 * 1024
+DISK_FLOOR = int(os.environ.get("DW_DISK_FLOOR_MB", "1024")) * 1024 * 1024
 JOB_TTL = float(os.environ.get("DW_JOB_TTL", "3600"))
 ALLOWED = {".tif", ".tiff", ".png", ".jpg", ".jpeg"}
 
@@ -232,20 +241,51 @@ def prune_index(scenes_root: Path) -> None:
         index.write_text(json.dumps(live, indent=2), encoding="utf-8")
 
 
-def reap_scenes() -> None:
-    """Keep the newest SCENE_BUDGET uploaded scenes; delete the rest.
+def _dir_bytes(d: Path) -> int:
+    try:
+        return sum(f.stat().st_size for f in d.iterdir() if f.is_file())
+    except OSError:
+        return 0
 
-    Ephemeral container storage is small and each scene is 13-50 MB, so this is the
+
+def disk_free() -> int | None:
+    try:
+        return shutil.disk_usage(SCENES).free
+    except OSError:
+        return None
+
+
+def reap_scenes() -> None:
+    """Keep the newest uploaded scenes within SCENE_BUDGET, SCENE_BYTES and DISK_FLOOR.
+
+    Ephemeral container storage is small and each scene is 8-55 MB, so this is the
     difference between a site that stays up and one that dies of a full disk during the
-    demo. Baked scenes are exempt.
+    demo. Baked scenes are exempt, and so is the newest upload: it has just been handed
+    to a visitor, and deleting it to make room would break the result it belongs to.
     """
     try:
         uploaded = [d for d in SCENES.iterdir() if d.is_dir() and d.name not in BAKED]
+        uploaded.sort(key=lambda d: d.stat().st_mtime, reverse=True)
     except OSError:
         return
-    uploaded.sort(key=lambda d: d.stat().st_mtime, reverse=True)
-    for d in uploaded[SCENE_BUDGET:]:
+    kept, total = 0, 0
+    doomed = []
+    for d in uploaded:
+        size = _dir_bytes(d)
+        if kept and (kept >= SCENE_BUDGET or total + size > SCENE_BYTES):
+            doomed.append(d)
+            continue
+        kept += 1
+        total += size
+    for d in doomed:
         shutil.rmtree(d, ignore_errors=True)
+    # Then the floor, oldest first, whatever the budgets said.
+    survivors = [d for d in uploaded if d not in doomed]
+    while len(survivors) > 1:
+        free = disk_free()              # None = unmeasurable; 0 = full, and must reap
+        if free is None or free >= DISK_FLOOR:
+            break
+        shutil.rmtree(survivors.pop(), ignore_errors=True)
     prune_index(SCENES)
 
 
@@ -665,7 +705,9 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         if u.path == "/healthz":
-            return self._json(200, {"ok": True, "jobs": active_jobs()})
+            free = disk_free()
+            return self._json(200, {"ok": True, "jobs": active_jobs(),
+                                    "disk_free_mb": None if free is None else free // 2**20})
         if u.path.startswith("/api/job/"):
             job = JOBS.get(u.path.rsplit("/", 1)[-1])
             return self._json(200 if job else 404, job or {"state": "unknown"})
@@ -893,7 +935,12 @@ def main():
         os.environ.setdefault("HF_HUB_OFFLINE", "1")   # the cache is complete or we want to know
 
     if SCENES.is_dir():
-        BAKED.update(d.name for d in SCENES.iterdir() if d.is_dir())
+        # By name, not by "whatever exists at startup". Uploaded scenes survive a restart
+        # (the platform reuses the extracted tree), and counting them as baked made every
+        # upload before a restart permanent: exempt from every reaping limit, so the disk
+        # could only fill. run_job names uploads upload_*, as stage.py already relies on.
+        BAKED.update(d.name for d in SCENES.iterdir()
+                     if d.is_dir() and not d.name.startswith("upload_"))
     UPLOADS.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
 
@@ -911,7 +958,11 @@ def main():
     print(f"  checkpoint : {ARGS.ckpt}{'' if have_ckpt else '   (MISSING)'}")
     print(f"  quality    : {ARGS.quality}   dem: {'on' if ARGS.dem else 'off'}")
     print(f"  limits     : {MAX_BYTES//1024//1024} MB upload, {MAX_QUEUE} in flight, "
-          f"{SCENE_BUDGET} scenes kept")
+          f"scenes kept: {SCENE_BUDGET} / {SCENE_BYTES // 2**20} MB / "
+          f"{DISK_FLOOR // 2**20} MB free floor")
+    free = disk_free()
+    if free is not None:
+        print(f"  disk free  : {free // 2**20:,} MB where scenes are written")
     print(f"  baked      : {len(BAKED)} scenes\n", flush=True)
     try:
         srv.serve_forever()
