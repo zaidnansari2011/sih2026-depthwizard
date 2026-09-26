@@ -312,7 +312,7 @@ def slide_problem_solution(s) -> None:
     tg = tag(s, RX + 0.18, 4.24, 1.40, 0.24, "The gap we close", fill=EMBER, size=8.2)
     tg.text_frame.margin_left = tg.text_frame.margin_right = 0
     para(s, RX + 1.68, 4.19, RW - 1.86, 0.34,
-         [("Published single-view work stops at weights and a score. ",
+         [("The single-view papers we build on stop at weights and a score. ",
            {"colour": BODY}),
           ("We ship metric height, calibrated confidence and a no-GPU 3D viewer",
            {"colour": INK, "font": SANS_B}),
@@ -346,8 +346,8 @@ def slide_problem_solution(s) -> None:
     img(s, "sikkim_hilly_d.png", sx, IY, AW_, IH)
     label(s, sx, IY, "Sikkim, India · hilly", fill=DEEP)
     para(s, sx, 6.88, AW_, 0.20,
-         [("967 m of relief across 2 km, draped.", {"colour": SLATE}),
-          ("  Imagery © Maxar, CC-BY-4.0", {"colour": SLATE, "size": 7.0})],
+         [("967 m of relief across 2 km.", {"colour": SLATE}),
+          ("  Imagery © Maxar, CC BY-NC 4.0", {"colour": SLATE, "size": 7.0})],
          size=T_MICRO, line=0.98)
 
 
@@ -445,7 +445,7 @@ def slide_technical(s) -> None:
         ("Split", "region-disjoint, not random — adjacent tiles share buildings."),
         ("Scored on", "whole held-out tiles against airborne LiDAR, never on crops."),
         ("Reported per", "urban / sparse / forested / mixed, and per height band."),
-        ("Held back", "the test split is untouched until the very end."),
+        ("Held back", "no trained model is scored on the test split until the end."),
     ]):
         w_(tf, [(f"{k}  ", {"colour": INK, "bold": True, "font": SANS_B}),
                 (v, {"colour": BODY})], size=T_BODY - 0.3, first=(i == 0),
@@ -528,11 +528,11 @@ def slide_feasibility(s) -> None:
           ("Answered by ", {"colour": INK, "font": SANS_B}),
           ("SAC stereo or DGPS control points in the pilot (below).", {"colour": BODY})]),
         ("Tall buildings compress toward the mean",
-         [("Open training data stops near 83 m, so towers are under-called. ",
+         [("Open training data holds few towers (tallest 83 m), so they are under-called. ",
            {"colour": BODY}),
-          ("Answered by ", {"colour": INK, "font": SANS_B}),
-          ("ISRO's GAMUS (it moved the gap significantly), a control-point power-law "
-           "fit, and tall-building LiDAR.", {"colour": BODY})]),
+          ("Partly answered by ", {"colour": INK, "font": SANS_B}),
+          ("ISRO's GAMUS (it moved the gap significantly) and a control-point fit; "
+           "fully, only by tall-building LiDAR.", {"colour": BODY})]),
     ]
     y = 2.36
     for t, b in risks:
@@ -585,7 +585,7 @@ def slide_feasibility(s) -> None:
     keyed(RX + HW + 0.12, "Testing plan", NAVY, [
         ("Done", "region-disjoint LiDAR validation", GREEN),
         ("Done", "second city, with a 338 m buffer", GREEN),
-        ("Done", "ISRO's 0.6 m, on the shipped model", GREEN),
+        ("Done", "ISRO's 0.6 m, simulated, on the shipped model", GREEN),
         ("Next", "held-out test split, scored once", STEEL),
         ("Next", "Indian truth: SAC stereo or DGPS", STEEL),
     ])
@@ -620,7 +620,7 @@ def slide_impact(s) -> None:
            "flooded", {"colour": INK, "font": SANS_B}),
           (", and flags the ones too close to call from its own sigma. Ground from "
            "Copernicus GLO-30; a flat-water model, labelled as one. Imagery © Maxar, "
-           "CC-BY-4.0.", {"colour": SLATE})], size=T_MICRO, line=1.0)
+           "CC BY-NC 4.0.", {"colour": SLATE})], size=T_MICRO, line=1.0)
 
     GY = 4.42
     pill(s, X0, GY, LW, "Who it serves", h=0.30)
@@ -662,7 +662,7 @@ def slide_impact(s) -> None:
          "A surface from one post-event image — about a minute per tile on a CPU web "
          "host."),
         ("Social", "Trust in the number", "One height, no error bar.",
-         "Height plus a per-pixel sigma: where it says unsure, it is wrong."),
+         "Height plus a per-pixel sigma that ranks where it is likely wrong."),
         ("Economic", "The archive", "Decades of single-view Cartosat with no height.",
          "Every archived scene can gain a height layer, with no new tasking."),
         ("Economic", "Municipal bodies", "Building heights need a survey budget.",
@@ -726,9 +726,9 @@ def slide_references(s) -> None:
     y = stack_col(X0, AW, BODY_TOP, "Research that changed what we built", [
         ("Depth Anything V2", "Yang et al., NeurIPS 2024. The backbone we fine-tune."),
         ("HTC-DC Net", "Chen et al., TGRS 2023. Head-tail cut, distribution constraints."),
-        ("Depth Any Canopy", "Ouaknine et al., 2024. The recipe for aerial height."),
+        ("Depth Any Canopy", "Rege Cambrin et al., ECCV-W 2024. The recipe for aerial height."),
         ("Beta-NLL", "Seitzer et al., ICLR 2022. Keeps the mean head learning."),
-        ("IM2HEIGHT, TSE-Net", "Prior single-view height — our baseline for the field."),
+        ("IM2HEIGHT, TSE-Net", "Mou & Zhu 2018; Chen & Zhu 2025, both arXiv. Prior single-view height."),
     ])
     stack_col(X0, AW, y + 0.12, "Data and reference surfaces", [
         ("DFC2019 Track 1", "US3D at 0.3 m GSD with airborne LiDAR truth."),
@@ -736,12 +736,12 @@ def slide_references(s) -> None:
         ("Copernicus GLO-30", "Free 30 m global DEM; the absolute metric anchor."),
         ("GlobalBuildingAtlas", "Published 5.9 m RMSE over Asia — the external bar."),
         ("Google Open Buildings", "A cross-check over India, never used as truth."),
-        ("Maxar Open Data", "Sikkim imagery, CC-BY-4.0, © Maxar Technologies."),
+        ("Maxar Open Data", "Sikkim imagery, CC BY-NC 4.0, © Maxar Technologies."),
     ])
 
     y = stack_col(BX, BW, BODY_TOP, "Tried, measured, rejected", [
         ("Ordinal / binned head", "All heads land at a 0.43–0.49 slope. No gain."),
-        ("Shadow photogrammetry", "Oracle shadows reach r 0.503; the net reaches 0.787."),
+        ("Shadow photogrammetry", "Oracle shadows reach r 0.503; our earlier net, 0.787."),
         ("LDS tail reweighting", "Pixels above 20 m are 7.5% but carry 78.8% of error."),
         ("Two-model ensemble", "Error correlation 0.925 — averaging buys nothing."),
         ("Global de-compression", "A rescale moves error, it does not remove it."),
@@ -915,8 +915,9 @@ def slide_preliminary(s) -> None:
     # ------------------------------------------------------------ method and links
     pill(s, RX, 5.92, RW, "How these were measured", h=0.30, fill=STEEL, size=T_PILL_S)
     tf = para(s, RX, 6.28, RW - 1.06, 0.60,
-              [("80 whole held-out tiles, 3,090 buildings, region-disjoint from training, "
-                "against airborne LiDAR; the test split is still unscored. Full method: ",
+              [("80 whole held-out US tiles, 3,090 buildings, region-disjoint from training, "
+                "against airborne LiDAR; no trained model has seen the test split. Full "
+                "method: ",
                 {"colour": BODY}),
                ("project5.zaidansari.tech/documentation", {"colour": STEEL,
                                                            "font": SANS_B})],

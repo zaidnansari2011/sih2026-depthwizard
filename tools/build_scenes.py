@@ -65,11 +65,11 @@ DFC = [
 # Sikkim: real Indian terrain, no LiDAR anywhere near it. Nothing is scored; the manifest
 # note says so in as many words.
 GLO30 = "Copernicus GLO-30, 30 m posts, cubic-resampled"
-# The Sikkim imagery is Maxar Open Data under CC-BY-4.0, which requires attribution.
+# The Sikkim imagery is Maxar Open Data under CC BY-NC 4.0: attribution, non-commercial.
 # It is carried in the manifest rather than only in NOTICE.md so the credit survives
 # someone opening viewer_standalone.html on its own, with no repo and no README --
 # which is exactly how the submission is meant to be opened.
-MAXAR = "Maxar Open Data Program (CC-BY-4.0), © Maxar Technologies"
+MAXAR = "Maxar Open Data Program (CC BY-NC 4.0), © Maxar Technologies"
 OB = "Google Open Buildings 2.5D Temporal (2022)"
 SIKKIM = [
     {

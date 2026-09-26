@@ -160,7 +160,8 @@ Throughput plateaus at **~25 crops/s** from batch 8, so 12 GB is not the binding
 ## Licence
 
 **Apache-2.0** — see [LICENSE](LICENSE). Third-party attributions, including the CC-BY-4.0
-imagery and datasets this work depends on, are in [NOTICE.md](NOTICE.md).
+datasets and the non-commercial (CC BY-NC 4.0) Maxar imagery this work depends on, are in
+[NOTICE.md](NOTICE.md). That imagery is not covered by Apache-2.0.
 
 ### Notes
 

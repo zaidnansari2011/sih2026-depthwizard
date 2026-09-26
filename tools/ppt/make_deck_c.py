@@ -268,7 +268,7 @@ def slide_references(s) -> None:
     y = stack_col(X0, AW, BODY_TOP, "Research that changed what we built", [
         ("Depth Anything V2", "Yang et al., NeurIPS 2024. The backbone we fine-tune."),
         ("HTC-DC Net", "Chen et al., TGRS 2023. Head-tail cut, distribution constraints."),
-        ("Depth Any Canopy", "Ouaknine et al., 2024. The recipe for aerial height."),
+        ("Depth Any Canopy", "Rege Cambrin et al., ECCV-W 2024. The recipe for aerial height."),
         ("Beta-NLL", "Seitzer et al., ICLR 2022. Keeps the mean head learning."),
         ("IM2HEIGHT, TSE-Net", "Prior single-view height — our baseline for the field."),
     ])

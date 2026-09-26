@@ -1,6 +1,7 @@
 # DepthWizard — accuracy evidence
 
-Everything here is measured on the **shipping configuration**, not a favourable variant.
+Every headline and results number here is measured on the **shipping configuration**, not a
+favourable variant. Older runs and probes appear only where labelled (run02, single-pass, probe).
 Figures regenerate from the same metrics file with `tools/make_figures.py`.
 
     python tools/evaluate.py --ckpt checkpoints/run07/best.pt --tta \
@@ -15,7 +16,7 @@ Figures regenerate from the same metrics file with `tools/make_figures.py`.
 | Reference | Airborne LiDAR, the same source the field benchmarks against |
 | Split | **Region-disjoint**, seed 1337. Whole regions go to one split; no tile from a training region appears in validation |
 | Validation | 80 whole tiles, 11,983,760 valid pixels, 3,090 buildings |
-| Test | Held out and **never scored**. Standing rule 5 — it is not on the training machine at all |
+| Test | Held out: **no trained model has been scored on it**. Standing rule 5 — never tune against it. Only the untrained zero-shot baseline was measured there (4.68 m) |
 | Scoring | Whole tiles, not crops. Crop-wise scoring flatters by removing tile-edge context |
 
 Two decisions worth defending, because they make our numbers look *worse* and comparable:
@@ -80,8 +81,9 @@ the stock — we are at 1.4 m. Above 20 m we collapse.
 **The tail is a data problem, and we proved it rather than assuming it**
 (`probe-01-tall-buildings.md`). DFC2019 training data holds 166 buildings above 30 m and tops
 out at **82.8 m**, while validation reaches **155.3 m**. Fine-tuning hard on the tall
-buildings we do have moved transfer bias the *wrong way*, −18.22 → −19.10 m, while fit
-improved: textbook overfitting of a tiny sample. More training would not fix this. More tall
+buildings we do have (400 steps) improved fit, 10.22 → 7.63 m, while transfer bias barely
+moved, −18.22 → −18.04 m (`out/probe_tall_400.json`): the model learns the few towers it sees
+and does not generalise from them. More training would not fix this. More tall
 buildings would.
 
 **Then we went and got more tall buildings, and the prediction held.** Adding GAMUS — ISRO's
@@ -102,7 +104,7 @@ data and sustained.
 
 **It is also a fraction of what we asked for, and we said so in advance.** The
 pre-registered target was to beat −13 m (`gamus-integration.md` §6). We reached −15.6 m. **That
-criterion is failed and is reported as failed** — 36x the data bought 1.5 m, not the 4.3 m the
+criterion is failed and is reported as failed** — 36x the data bought 1.5 m, not the 4.2 m the
 threshold demanded. What it bought instead is a much more precise statement of where the
 limit actually is, below.
 
@@ -267,7 +269,8 @@ the backbone always sees the scale it was trained at:
 | 0.6 m | 2.260 m | **1.399 m** |
 | 1.0 m | 3.138 m | **1.657 m** |
 
-At 0.6 m this recovers to within **3.6%** of never having lost the resolution.
+~~At 0.6 m this recovers to within 3.6% of never having lost the resolution.~~ **Withdrawn:**
+on the shipped model and 80 tiles the 0.6 m cost after auto-zoom is **+15.4 %** (probe 05b).
 
 > **Provenance: this table is run02, not run07** — the only figures on this page that
 > are. It came from a manual `infer.py --zoom` sweep over three non-urban tiles rather
@@ -291,7 +294,7 @@ The shipping path is TTA plus resolution fusion. Both are measured, on the same 
 Fusion costs **+0.052 m of per-building RMSE (1.5%)** against TTA alone, and buys **+28%
 edge definition** — buildings that read as flat-topped blocks rather than rounded mounds
 (`probe-04-resolution.md`). It also buys the calibration: ECE **0.073 → 0.063**, the best of
-the three configurations, while bias moves by 0.01 m. Half the marks are visualization, so we
+the three configurations, while bias moves by 0.02 m. Half the marks are visualization, so we
 took that trade deliberately, and we report the fused numbers because **whatever is shipped
 must be what is scored**.
 
@@ -304,7 +307,7 @@ with agreement against PyTorch checked rather than assumed:
 | | ONNX fp32 | ONNX int8 |
 |---|---|---|
 | Size | 100.7 MB, self-contained | **36.8 MB (63% smaller)** |
-| Max divergence vs PyTorch | **0.0007 cm** height, 0.0002 cm sigma, over 804,972 inputs | **0.030 m** height |
+| Max divergence vs PyTorch | **0.0007 cm** height, 0.0002 cm sigma, on one random 518×518 input (804,972 values) | **0.030 m** height |
 | Verdict | PASS at a 5 cm tolerance | lossy by construction |
 
 **CPU inference is 536 ms per 518x518 tile** (0.50 Mpx/s, single ONNX Runtime session), so
@@ -365,8 +368,8 @@ human looking at it, and it is the one deployment check still owed.
 1. **Tall buildings are still under-called, and the limit is now dataset availability rather
    than anything in the model.** Above 20 m the under-call is **15.6 m**, improved
    significantly from 17.2 m by adding GAMUS but **short of the −13 m we pre-registered**.
-   The residual sits where the data stops: **no open dataset at this resolution contains
-   buildings above ~50 m.** GAMUS has none; DFC2019's training split tops out at 82.8 m with
+   The residual sits where the data stops: **open 0.3 m data holds very few tall buildings.**
+   GAMUS has none above 50 m; DFC2019's training split tops out at 82.8 m with only
    166 buildings above 30 m; our validation reaches 155.3 m. Every lever internal to the model
    has been measured and spent (below), and the one external lever — more tall buildings —
    worked exactly as far as the available data allowed.
@@ -395,7 +398,7 @@ human looking at it, and it is the one deployment check still owed.
 | Coarse-GSD loss is irrecoverable | **Partly.** At 0.6 m auto-zoom recovers the loss from +20.8 % to +15.4 % on run07, and none of it on buildings ≤ 20 m (probe 05b). The earlier "3.6 % remains" was run02 on three tiles |
 
 Each was predicted in writing with a falsification condition before the run, then measured.
-Two of the five falsified something we believed.
+Three of the five falsified something we believed.
 
 ### The tall-building tail, exhaustively
 
@@ -405,26 +408,27 @@ model is measured and spent, and the only one that moved the number was external
 
 | lever | result |
 |---|---|
-| Larger backbone (V1-Large, 335 M) | **No information.** The run diverged to NaN at epoch 6 from a variance head railed at its clamp; 9 GPU-hours, void |
+| Larger backbone (V1-Large, 335 M) | **No information.** The run diverged to NaN at epoch 6; the cause was later traced to an initialisation bug (a 666 m starting error). The fixed re-run (run06) did not complete; void |
 | Ordinal / binned head | **No effect.** Regression 0.471, bins 0.429, bins+HTC 0.491 — every head compresses by about half |
 | Head-tail cut (HTC-DC Net, TGRS 2023) | **Works, and is not the bottleneck.** 91% of predicted mass sits above 20 m on tall pixels; roof-vs-ground separation was never the failure |
 | Decoding by argmax instead of expectation | **No tall mode to recover.** argmax sits +1.86 m from the expectation; on 40 m+ buildings the single most likely bin is 26.4 m against 75.6 m of truth |
 | Ensembling two runs with different profiles | **Nothing to average.** `corr(err_run02, err_run04) = 0.925`; no weighting beats the single model |
 | LDS reweighting (Yang et al., ICML 2021) | **Premise does not hold.** Pixels above 20 m are 7.47% of building pixels and already carry **78.78%** of the squared error — the loss is not ignoring them |
-| Per-scene GCP calibration | **A trade, not a fix.** 5 control points give −21.3% RMSE on tall tiles but +18% MAE, and degrade 7 of 13 tiles |
+| Per-scene GCP calibration | **A trade, not a fix.** The shipped power-law fit with 8 control points gives −24.9% RMSE over 10 tall-building tiles, but 5 of the 10 get worse |
 | **More tall buildings (GAMUS, +6,204 tiles, ~36x the >20 m supply)** | **The only lever that worked.** >20 m bias −17.16 → −15.64 m, p = 0.0002; >30 m −28.12 → −26.23 m, p = 0.011. Short of the −13 m pre-registered target |
 
 Read together these say something specific and defensible. Seven of the eight levers are
-internal to the model, and all seven failed: it is not under-parameterised, not mis-decoded,
-not under-incentivised, and not held back by its head. It assigns 91% of its probability mass
+internal to the model, and none of them moved the tail: it is not mis-decoded, not
+under-incentivised, and not held back by its head. Whether a larger backbone would help is
+untested, because that run was void. It assigns 91% of its probability mass
 above 20 m on a tall building and still cannot separate 26 m from 76 m from a nadir view of the
 rooftop alone.
 
 The eighth lever is the only one that is not about the model at all, and it is the only one
 that moved. That is a coherent result rather than a lucky one: if the tail were an
 architectural or objective failure, more examples of it would not have helped. They did, by a
-measured and significant amount, and then ran out — because the open data ends around 50 m
-while real cities do not. **The honest reading is that the information is partly in the image
+measured and significant amount, and then ran out — because open 0.3 m data holds only a
+handful of towers (GAMUS none above 50 m, DFC2019 a tallest of 82.8 m) while real cities do not. **The honest reading is that the information is partly in the image
 and we are now limited by how few tall buildings the world has published at 0.3 m, not by the
 model's capacity to learn them.**
 
@@ -444,7 +448,7 @@ It still does not rescue us, and we measured why rather than guessing:
 
 | question | measurement |
 |---|---|
-| Would *perfect* shadow segmentation be enough? | **No.** Oracle shadows ray-cast from the truth DSM give r **0.503**, slope 0.583, RMSE 2.61 m over 675 buildings. Our network already achieves r **0.787** per building |
+| Would *perfect* shadow segmentation be enough? | **No.** Oracle shadows ray-cast from the truth DSM give r **0.503**, slope 0.583, RMSE 2.61 m over 675 buildings. Our earlier run02 network already achieves r **0.787** per building over all 3,090 (the shipped model, 0.809) |
 | How close is real detection to that oracle? | **Not close.** Luminance+Otsu scores **IoU 0.187** (precision 0.204, recall 0.689) |
 | Is occlusion the limiter on tall buildings? | **No.** Across the ten tiles richest in tall stock, the 10 components above 20 m had *unobstructed* shadow paths (0%) |
 | Then what is? | **Population.** Those ten tiles hold **10 buildings above 20 m out of 766**; the whole validation set holds ~60 |

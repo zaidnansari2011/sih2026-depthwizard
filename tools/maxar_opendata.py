@@ -1,4 +1,4 @@
-"""Maxar Open Data: free 0.3-0.6 m imagery, including India, under CC-BY-4.0.
+"""Maxar Open Data: free 0.3-0.6 m imagery, including India, under CC BY-NC 4.0.
 
 Why this matters to us. Bhoonidhi's best optical is 5.8 m against our 0.3 m training data,
 a 19x gap that makes it a different problem rather than a transfer test. Maxar release

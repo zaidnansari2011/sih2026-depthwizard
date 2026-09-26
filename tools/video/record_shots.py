@@ -245,7 +245,7 @@ def title_card():
                                 ("CODE", "github.com/zaidnansari2011/sih2026-depthwizard")]):
         d.text((164, 690 + i * 52), k, font=font(30, True), fill=(217, 160, 60))
         d.text((290, 690 + i * 52), v, font=font(30), fill=(207, 224, 238))
-    d.text((164, 980), "Sikkim imagery © Maxar Technologies, Maxar Open Data, CC-BY-4.0.",
+    d.text((164, 980), "Sikkim imagery © Maxar Technologies, Maxar Open Data, CC BY-NC 4.0.",
            font=font(24), fill=(140, 160, 178))
     png = OUT / "c8_end_card.png"
     im.save(png)
