@@ -77,6 +77,7 @@ LINKS = {"project5.zaidansari.tech": LIVE_URL,
 PITCH_VIDEO_URL = "https://youtu.be/4NpR74MS5oE"
 
 TINT = RGBColor(0xE7, 0xEF, 0xF4)          # our column in every comparison
+VALUE_NAVY = RGBColor(0x2B, 0x4A, 0x74)    # slide 1 field values, from the guide's reference
 
 # Read off the sikkim_flood capture's HUD (tools/ppt/shots/sikkim_flood.png). If that
 # capture is retaken these must be re-read from it: they describe that one frame.
@@ -166,31 +167,40 @@ def slide_title(s) -> None:
     subtitle, artwork and field list are kept exactly. The only writing is each field's
     value, appended to the run that holds its label so it inherits the template's font,
     plus the two links at the foot."""
-    values = {"Problem Statement ID": f" {PS_ID}",
-              "Problem Statement Title": f" {PS_TITLE}",
-              "Theme": f" {PS_THEME}",
-              "Team ID": f" {TEAM_ID}",
-              "Team Name (Registered on portal)": f" – {TEAM}"}
+    # Template label prefix -> (label as shown, value). The layout follows the guide's
+    # reference: underlined black label ending " :", then the value in navy.
+    fields = {"Problem Statement ID": ("Problem Statement ID :", PS_ID),
+              "Problem Statement Title": ("Problem Statement Title :", PS_TITLE),
+              "Theme": ("Theme :", PS_THEME),
+              "PS Category": ("PS Category :", "Software"),
+              "Team ID": ("Team ID :", TEAM_ID),
+              "Team Name": ("Team Name :", TEAM)}
     (box,) = by_name(s, "TextBox 9")
     filled = set()
     for p in box.text_frame.paragraphs:
         text = "".join(r.text for r in p.runs)
-        if text.startswith("PS Category"):
-            # The form offers "Software/Hardware"; filling it in means naming ours.
-            p.runs[-1].text = p.runs[-1].text.replace("Software/Hardware", "Software")
-            filled.add("PS Category")
+        key = next((k for k in fields if text.startswith(k)), None)
+        if key is None:
             continue
-        for label, v in values.items():
-            if text.startswith(label):
-                p.runs[-1].text = p.runs[-1].text + v
-                filled.add(label)
-    assert filled == set(values) | {"PS Category"}, f"template fields changed: {filled}"
-    # Blank, the form fits at 24 pt and double spacing; filled, the title alone wraps to
-    # three lines and pushes Team ID and Team Name off the slide. So exactly two numbers
-    # change -- size and line spacing. Font, bold, bullets, justification, labels and the
-    # box's position are the template's own.
+        label, value = fields[key]
+        first = p.runs[0]
+        for r in p.runs[1:]:
+            r._r.getparent().remove(r._r)
+        first.text = label
+        first.font.underline = True
+        first.font.color.rgb = RGBColor(0, 0, 0)
+        v = p.add_run()
+        v.text = f" {value}"
+        v.font.name, v.font.bold, v.font.underline = "Arial", True, False
+        v.font.color.rgb = VALUE_NAVY
+        filled.add(key)
+    assert filled == set(fields), f"template fields changed: {filled}"
+    # Blank, the form fits at 24 pt and double spacing; filled, the title wraps and pushes
+    # the last fields off the slide, so size and spacing come down to fit. Left-aligned as
+    # in the reference: justified, the wrapped title line opens wide gaps.
     for p in box.text_frame.paragraphs:
-        p.line_spacing = 1.4
+        p.alignment = PP_ALIGN.LEFT
+        p.line_spacing = 1.5
         for r in p.runs:
             r.font.size = Pt(20)
 
