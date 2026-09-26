@@ -30,6 +30,12 @@ from depthwizard.dataset import IMAGENET_MEAN, IMAGENET_STD
 from depthwizard.model import DEFAULT_MODEL, build, from_checkpoint, PATCH
 
 
+def load_image_valid(path: Path) -> tuple[np.ndarray, np.ndarray]:
+    """(RGB, valid) -- valid is False on nodata, zero alpha and footprint borders."""
+    from depthwizard.rgb import read_rgb_valid
+    return read_rgb_valid(path)
+
+
 def load_image(path: Path) -> np.ndarray:
     """Return HWC uint8 RGB. Shared with export_terrain.py, so heights and texture agree."""
     from depthwizard.rgb import read_rgb
@@ -236,6 +242,10 @@ def write_tif(path: Path, arr: np.ndarray, like: Path | None = None):
         "driver": "GTiff", "height": arr.shape[0], "width": arr.shape[1],
         "count": 1, "dtype": "float32", "compress": "deflate",
     }
+    if not np.isfinite(arr).all():
+        # Masked input pixels are NaN. Declaring it lets GIS software show them as
+        # nodata instead of reading a hole as a height.
+        profile["nodata"] = float("nan")
     if like is not None:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
@@ -342,8 +352,15 @@ def main():
         # to prove the pipeline end to end -- not to be believed.
         print("no checkpoint: ZERO-SHOT DA-V2. Output is relative, not calibrated metres.")
 
-    rgb = load_image(Path(args.image))
+    rgb, valid = load_image_valid(Path(args.image))
     print(f"{Path(args.image).name}  {rgb.shape[1]} x {rgb.shape[0]}  |  {prec}  |  {device}")
+    n_invalid = int((~valid).sum())
+    if n_invalid == valid.size:
+        raise SystemExit("the image has no valid pixels: it is entirely nodata, transparent "
+                         "or footprint border, so there is nothing to estimate heights for.")
+    if n_invalid:
+        print(f"  nodata: {n_invalid:,} px ({100 * n_invalid / valid.size:.1f}%) are nodata, "
+              f"transparent or footprint border; they are masked in every output")
 
     # ---- resolution matching -------------------------------------------------------
     # The model was fine-tuned at 0.3 m. Probe 05 measured what happens when it is not
@@ -407,6 +424,15 @@ def main():
         height, sigma = infer_scene(model, rgb, args.tile, args.overlap, device, amp_dtype,
                                     args.batch, tta=args.tta, zoom=args.zoom)
     dt = time.time() - t0
+
+    if n_invalid:
+        # From here on a masked pixel is NaN: the DSM, the control-point fits (which skip
+        # non-finite samples), every raster written and every statistic reported. The
+        # bare terrain below is NOT masked -- it is real elevation, and the viewer's flood
+        # fill needs it continuous.
+        height = np.where(valid, height, np.nan).astype(np.float32)
+        if sigma is not None:
+            sigma = np.where(valid, sigma, np.nan).astype(np.float32)
 
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -526,22 +552,31 @@ def main():
                     "caveat": ("the 30 m anchor is itself a surface model, so dense urban "
                                "areas double-count part of the building height"),
                 }
-                print(f"  absolute DSM: {dsm.min():.1f} .. {dsm.max():.1f} m  [{datum_note}]")
+                print(f"  absolute DSM: {np.nanmin(dsm):.1f} .. {np.nanmax(dsm):.1f} m  "
+                      f"[{datum_note}]")
             else:
                 print("  absolute DSM: could not be anchored; height map is relative to ground")
 
     px = rgb.shape[0] * rgb.shape[1]
     print(f"  {dt:.2f} s  ({px/dt/1e6:.2f} Mpx/s)")
-    print(f"  height {height.min():.2f} .. {height.max():.2f}  mean {height.mean():.2f}")
+    # nan-aware throughout: masked pixels are NaN, and must not become the answer.
+    print(f"  height {np.nanmin(height):.2f} .. {np.nanmax(height):.2f}  "
+          f"mean {np.nanmean(height):.2f}")
     if sigma is not None:
-        print(f"  sigma  {sigma.min():.2f} .. {sigma.max():.2f}  mean {sigma.mean():.2f}")
+        print(f"  sigma  {np.nanmin(sigma):.2f} .. {np.nanmax(sigma):.2f}  "
+              f"mean {np.nanmean(sigma):.2f}")
 
     summary = {
         "image": str(args.image), "ckpt": args.ckpt, "zero_shot": args.ckpt is None, "tta": args.tta,
         "seconds": round(dt, 3), "mpx_per_s": round(px / dt / 1e6, 3),
-        "height_min": float(height.min()), "height_max": float(height.max()),
-        "height_mean": float(height.mean()),
+        "height_min": float(np.nanmin(height)), "height_max": float(np.nanmax(height)),
+        "height_mean": float(np.nanmean(height)),
     }
+    if n_invalid:
+        summary["nodata_pixels"] = n_invalid
+        summary["nodata_note"] = ("nodata, transparent or footprint-border pixels in the "
+                                  "input; NaN in every output raster, excluded from every "
+                                  "statistic")
 
     if args.truth:
         from depthwizard.metrics import height_metrics, report
@@ -558,7 +593,7 @@ def main():
                 warnings.simplefilter("ignore")
                 with rasterio.open(cls_path) as src:
                     cls = src.read(1)
-        mask = np.isfinite(truth)
+        mask = np.isfinite(truth) & valid
         m = height_metrics(height, truth, mask, cls)
         print("\nagainst truth:")
         print("  " + str(m).replace("\n", "\n  "))

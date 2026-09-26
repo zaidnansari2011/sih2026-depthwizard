@@ -115,6 +115,7 @@ const state = {
   height: null,      // Float32Array, metres -- our prediction
   truth: null,       // Float32Array, metres -- LiDAR reference, when the scene ships it
   tvalid: null,      // Uint8Array mask, where LiDAR actually has data
+  valid: null,       // Uint8Array mask, where the input image had data (null = everywhere)
   terrain: null,     // Float32Array, metres above the scene datum -- bare earth to stand on
   sigma: null,       // Float32Array, metres
   grid: { w: 0, h: 0, stepX: 1, stepY: 1 },
@@ -355,6 +356,10 @@ async function loadSceneInner(dir) {
   const sigma = await opt(f.sigma, Float32Array);
   const truth = await opt(f.truth, Float32Array);
   const tvalid = await opt(f.truth_valid, Uint8Array);
+  // Where the INPUT image had real data. Absent means every pixel did. Nodata, transparent
+  // and footprint-border pixels are 0 here and are cut out of the surface, not drawn as a
+  // flat shelf.
+  const valid = await opt(f.valid, Uint8Array);
   // Bare earth, when the scene has it. Our model outputs height ABOVE GROUND, so without
   // this a mountain renders as a flat plane with buildings standing on it.
   const terrain = await opt(f.terrain, Float32Array);
@@ -378,7 +383,7 @@ async function loadSceneInner(dir) {
   // no matter what is actually on screen -- which is exactly how tools/verify_viewer.py
   // got a false failure. Cheap to publish, and it makes the state observable.
   document.body.dataset.scene = dir;
-  Object.assign(state, { height, sigma, truth, tvalid, terrain, buildings });
+  Object.assign(state, { height, sigma, truth, tvalid, valid, terrain, buildings });
   // A measurement is a pair of points in ONE scene. Carried across a switch, the old
   // markers floated over the new surface and a pending pick paired with a point in it.
   state.picks = [];
@@ -425,6 +430,8 @@ function surfaceGeometry(heights, base) {
   const pos = new Float32Array(gw * gh * 3);
   const uv = new Float32Array(gw * gh * 2);
   const col = new Float32Array(gw * gh * 3);
+  const valid = state.valid;
+  const vok = valid ? new Uint8Array(gw * gh) : null;   // per grid vertex
 
   const cx = ((W - 1) * gsd) / 2, cz = ((H - 1) * gsd) / 2;
   let k = 0;
@@ -437,13 +444,18 @@ function surfaceGeometry(heights, base) {
       pos[k * 3 + 2] = y * gsd - cz;
       uv[k * 2 + 0] = x / (W - 1);
       uv[k * 2 + 1] = 1 - y / (H - 1);
+      if (vok) vok[k] = valid[y * W + x];
     }
   }
 
+  // A triangle touching a nodata vertex is not drawn, so the footprint border becomes a
+  // clean cut edge rather than a shelf at the export's fill height. Hover and click
+  // raycast against these same triangles, so nothing can be measured where no image was.
   const idx = [];
   for (let j = 0; j < gh - 1; j++) {
     for (let i = 0; i < gw - 1; i++) {
       const a = j * gw + i, b = a + 1, c = a + gw, d = c + 1;
+      if (vok && !(vok[a] && vok[b] && vok[c] && vok[d])) continue;
       idx.push(a, c, b, b, c, d);
     }
   }
@@ -452,9 +464,14 @@ function surfaceGeometry(heights, base) {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
-  geo.setIndex(idx.length > 65535 ? new THREE.Uint32BufferAttribute(idx, 1)
-                                  : new THREE.Uint16BufferAttribute(idx, 1));
+  // Index width follows the highest VERTEX number, not the index count. They used to
+  // agree (a full grid has more indices than vertices), but a mostly-nodata scene can
+  // drop under 65535 indices while still addressing vertices above it, which a 16-bit
+  // index would silently wrap.
+  geo.setIndex(gw * gh > 65535 ? new THREE.Uint32BufferAttribute(idx, 1)
+                               : new THREE.Uint16BufferAttribute(idx, 1));
   geo.computeVertexNormals();
+  geo.userData.vok = vok;          // the skirt needs it too
   return geo;
 }
 
@@ -469,10 +486,10 @@ function surfaceGeometry(heights, base) {
  * between a texture drape and four vertex-coloured ramps, and a skirt sharing that
  * material would get the imagery smeared vertically down its walls.
  */
-function skirtGeometry(pos, gw, gh, baseY) {
+function skirtGeometry(pos, gw, gh, baseY, vok) {
   const P = (i, j) => {
     const k = j * gw + i;
-    return [pos.getX(k), pos.getY(k), pos.getZ(k)];
+    return [pos.getX(k), pos.getY(k), pos.getZ(k), vok ? vok[k] : 1];
   };
   const border = [];
   for (let i = 0; i < gw; i++) border.push(P(i, 0));
@@ -484,6 +501,8 @@ function skirtGeometry(pos, gw, gh, baseY) {
   const v = [];
   for (let n = 0; n < border.length - 1; n++) {
     const a = border[n], b = border[n + 1];
+    // No wall along nodata: it would stand up to the fill height around a hole.
+    if (!a[3] || !b[3]) continue;
     // Two triangles per edge segment. Winding is irrelevant -- the material is
     // DoubleSide, so a corner walked the "wrong" way still renders solid.
     v.push(a[0], a[1], a[2], b[0], b[1], b[2], b[0], baseY, b[2]);
@@ -505,7 +524,8 @@ function makeSkirt(surface, gw, gh, extent) {
   let minY = Infinity;
   for (let k = 0; k < pos.count; k++) minY = Math.min(minY, pos.getY(k));
   const base = minY - extent * 0.05;
-  const s = new THREE.Mesh(skirtGeometry(pos, gw, gh, base), new THREE.MeshStandardMaterial({
+  const s = new THREE.Mesh(skirtGeometry(pos, gw, gh, base, surface.geometry.userData.vok),
+                           new THREE.MeshStandardMaterial({
     color: 0xb6bdc4, roughness: 1.0, metalness: 0.0, side: THREE.DoubleSide,
   }));
   // Child of the surface, so vertical exaggeration and any transform carry over for free.
@@ -1835,12 +1855,17 @@ function applyFlood(L) {
 
   const cx = ((W - 1) * gsd) / 2, cz = ((H - 1) * gsd) / 2;
   const yLocal = L - datum;               // mesh space; mesh.scale.y applies the exaggeration
+  // The fill runs on the terrain, which is real everywhere, so water may flow through a
+  // nodata band; it is only not DRAWN or COUNTED there, since no image says what is there.
+  const valid = state.valid;
+  const okAt = (i, j) => !valid
+    || valid[Math.min(H - 1, j * sy) * W + Math.min(W - 1, i * sx)] === 1;
   const vi = new Int32Array(gw * gh).fill(-1);
   const pos = [];
   let n = 0;
   for (let j = 0; j < gh; j++) {
     for (let i = 0; i < gw; i++) {
-      if (!seen[j * gw + i]) continue;
+      if (!seen[j * gw + i] || !okAt(i, j)) continue;
       vi[j * gw + i] = n++;
       pos.push(Math.min(W - 1, i * sx) * gsd - cx, yLocal, Math.min(H - 1, j * sy) * gsd - cz);
     }
@@ -1870,9 +1895,15 @@ function applyFlood(L) {
   }
 
   // ---- readout
-  let wet = 0;
-  for (let k = 0; k < seen.length; k++) wet += seen[k];
-  $('f-area').textContent = `${((100 * wet) / seen.length).toFixed(1)} %`;
+  let wet = 0, cells = 0;
+  for (let j = 0; j < gh; j++) {
+    for (let i = 0; i < gw; i++) {
+      if (!okAt(i, j)) continue;
+      cells += 1;
+      wet += seen[j * gw + i];
+    }
+  }
+  $('f-area').textContent = cells ? `${((100 * wet) / cells).toFixed(1)} %` : '—';
 
   if (state.buildings && state.buildings.length) {
     let inund = 0, unc = 0;
