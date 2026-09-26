@@ -367,6 +367,10 @@
           <div class="note" id="up-hint" style="display:none">This runs on a small CPU
             server. Keep exploring; your scene opens by itself when it is ready.</div>
         </div>
+        <!-- Shown only when the file did not name its colour bands and an order was
+             assumed: the one case where the visitor may know better than the guess. -->
+        <div class="note" id="up-bands" style="display:none"><span id="up-bands-msg"></span>
+          <button id="up-bands-redo" type="button"></button></div>
 
         <!-- The problem statement asks the platform to "output a high-fidelity DSM in a
              standard geospatial format". Until this row existed it did not: the rasters

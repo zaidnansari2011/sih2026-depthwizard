@@ -173,6 +173,9 @@ def main():
                          "the problem statement, but the landing scene should be a "
                          "representative one rather than whichever landscape they name "
                          "first. Setting this clears the flag on every other scene.")
+    ap.add_argument("--band-order", default="auto", choices=["auto", "rgb", "bgr"],
+                    help="which texture bands are red, green and blue; pass what infer.py "
+                         "was given, so the drape shows the bands the heights came from")
     ap.add_argument("--out", required=True, help="output scene directory")
     ap.add_argument("--name", help="display name (default: height filename stem)")
     ap.add_argument("--max-size", type=int, default=2048,
@@ -429,7 +432,7 @@ def main():
             import sys
             sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
             from depthwizard.rgb import read_rgb
-            rgb = read_rgb(tp)
+            rgb = read_rgb(tp, args.band_order)
         im = Image.fromarray(rgb)
         if im.size != (W, H):
             im = im.resize((W, H), Image.LANCZOS)

@@ -2148,14 +2148,34 @@ async function initUpload() {
   $('upload-block').style.display = 'block';
 
   let busy = false;
-  const send = async (file) => {
+  const send = async (file, bands = 'auto') => {
     // One upload at a time from this page. A second drop used to start a second job whose
     // poller fought the first over the one progress bar.
     if (!file || busy) return;
     busy = true;
-    try { await sendOne(file); } finally { busy = false; $('pick').disabled = false; }
+    try { await sendOne(file, bands); } finally { busy = false; $('pick').disabled = false; }
   };
-  const sendOne = async (file) => {
+  // After a result: if the file did not name its colour bands, say which order was
+  // assumed and offer the other one. The colours are the visitor's to judge, and a wrong
+  // order changes what the model saw, not just the drape.
+  const offerBands = (file, b) => {
+    const box = $('up-bands');
+    if (!b || !['assumed', 'requested'].includes(b.how) || !['R,G,B', 'B,G,R'].includes(b.order)) {
+      box.style.display = 'none';
+      return;
+    }
+    const other = b.order === 'R,G,B' ? 'B,G,R' : 'R,G,B';
+    $('up-bands-msg').textContent = b.how === 'assumed'
+      ? `This file does not name its colour bands, so they were read as ${b.order}. `
+        + 'If the colours look wrong,'
+      : `Colour bands read as ${b.order}, as requested.`;
+    const redo = $('up-bands-redo');
+    redo.textContent = `re-run as ${other}`;
+    redo.onclick = () => send(file, other === 'R,G,B' ? 'rgb' : 'bgr');
+    box.style.display = 'block';
+  };
+  const sendOne = async (file, bands = 'auto') => {
+    $('up-bands').style.display = 'none';
     $('upprog').style.display = 'block';
     $('pick').disabled = true;
     const setP = (step, pct) => {
@@ -2167,7 +2187,8 @@ async function initUpload() {
     $('dl').style.display = 'none';          // the previous result's links are not this one's
     let job, eta;
     try {
-      const res = await fetch(`./api/upload?name=${encodeURIComponent(file.name)}`,
+      const res = await fetch(`./api/upload?name=${encodeURIComponent(file.name)}`
+                              + (bands !== 'auto' ? `&bands=${bands}` : ''),
                               { method: 'POST', body: file });
       let j;
       try { j = await res.json(); } catch {
@@ -2228,6 +2249,7 @@ async function initUpload() {
         showDownloads(job, s);
         setP(s.georeferenced ? 'done — heights are above sea level'
                              : 'done — heights are relative (no coordinates in that file)', 100);
+        offerBands(file, s.bands);
         break;
       }
       if (s.state === 'error') { finish(); setP(s.step, 100); break; }

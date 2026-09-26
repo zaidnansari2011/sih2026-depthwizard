@@ -30,10 +30,10 @@ from depthwizard.dataset import IMAGENET_MEAN, IMAGENET_STD
 from depthwizard.model import DEFAULT_MODEL, build, from_checkpoint, PATCH
 
 
-def load_image_valid(path: Path) -> tuple[np.ndarray, np.ndarray]:
+def load_image_valid(path: Path, band_order: str = "auto") -> tuple[np.ndarray, np.ndarray]:
     """(RGB, valid) -- valid is False on nodata, zero alpha and footprint borders."""
     from depthwizard.rgb import read_rgb_valid
-    return read_rgb_valid(path)
+    return read_rgb_valid(path, band_order)
 
 
 def load_image(path: Path) -> np.ndarray:
@@ -317,6 +317,10 @@ def main():
     ap.add_argument("--height-scale", type=float, default=None)
     ap.add_argument("--precision", default="auto", choices=["auto", "bf16", "fp16", "fp32"])
     ap.add_argument("--truth", default=None, help="AGL GeoTIFF; if given, score the result")
+    ap.add_argument("--band-order", default="auto", choices=["auto", "rgb", "bgr"],
+                    help="which GeoTIFF bands are red, green and blue. 'auto' reads the "
+                         "file's colour tags, and without them assumes R,G,B -- or B,G,R,NIR "
+                         "for 4+ band 16-bit stacks. Override when the colours come out wrong.")
     args = ap.parse_args()
 
     if args.tile % PATCH:
@@ -352,8 +356,12 @@ def main():
         # to prove the pipeline end to end -- not to be believed.
         print("no checkpoint: ZERO-SHOT DA-V2. Output is relative, not calibrated metres.")
 
-    rgb, valid = load_image_valid(Path(args.image))
+    rgb, valid = load_image_valid(Path(args.image), args.band_order)
+    from depthwizard.rgb import describe_bands
+    bands = describe_bands(args.image, args.band_order)
     print(f"{Path(args.image).name}  {rgb.shape[1]} x {rgb.shape[0]}  |  {prec}  |  {device}")
+    if bands["how"] in ("assumed", "requested"):
+        print(f"  bands: read as {bands['order']} ({bands['how']})")
     n_invalid = int((~valid).sum())
     if n_invalid == valid.size:
         raise SystemExit("the image has no valid pixels: it is entirely nodata, transparent "
@@ -571,6 +579,7 @@ def main():
         "seconds": round(dt, 3), "mpx_per_s": round(px / dt / 1e6, 3),
         "height_min": float(np.nanmin(height)), "height_max": float(np.nanmax(height)),
         "height_mean": float(np.nanmean(height)),
+        "bands": bands,
     }
     if n_invalid:
         summary["nodata_pixels"] = n_invalid

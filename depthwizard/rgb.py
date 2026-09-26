@@ -20,21 +20,64 @@ from pathlib import Path
 import numpy as np
 
 
-def _rgb_band_indices(src) -> list[int]:
-    """Zero-based indices of the red, green and blue bands of an open rasterio dataset."""
+BAND_ORDERS = ("auto", "rgb", "bgr")
+
+
+def band_plan(src, order: str = "auto") -> tuple[list[int], str]:
+    """(zero-based red, green, blue band indices, how that was decided).
+
+    `how` is "tagged" (the file names its colour bands), "grey" (one or two bands),
+    "requested" (the caller overrode it), or "assumed" -- the file does not say, and a
+    convention was applied that some files break. Only "assumed" is worth offering the
+    user a re-run for; see serve_app.py and the viewer's upload panel.
+    """
     from rasterio.enums import ColorInterp
 
+    if order not in BAND_ORDERS:
+        raise ValueError(f"band order must be one of {BAND_ORDERS}, not {order!r}")
+    n = src.count
+    if n == 1 or n == 2:                      # grey, or grey + alpha: nothing to order
+        return [0, 0, 0], "grey"
+    if order == "rgb":
+        return [0, 1, 2], "requested"
+    if order == "bgr":
+        return [2, 1, 0], "requested"
     ci = list(src.colorinterp or [])
     if all(c in ci for c in (ColorInterp.red, ColorInterp.green, ColorInterp.blue)):
-        return [ci.index(ColorInterp.red), ci.index(ColorInterp.green), ci.index(ColorInterp.blue)]
-    n = src.count
-    if n == 1 or n == 2:                      # grey, or grey + alpha
-        return [0, 0, 0]
+        return ([ci.index(ColorInterp.red), ci.index(ColorInterp.green),
+                 ci.index(ColorInterp.blue)], "tagged")
     if n >= 4 and src.dtypes[0] != "uint8":
         # Multispectral with no colour tags: blue, green, red, NIR is the convention for
         # Cartosat MX, PlanetScope, Sentinel-2 stacks and 4-band Maxar products.
-        return [2, 1, 0]
-    return [0, 1, 2]                          # RGB, or 8-bit RGBA without tags
+        return [2, 1, 0], "assumed"
+    return [0, 1, 2], "assumed"               # RGB, or 8-bit RGBA without tags
+
+
+def _rgb_band_indices(src) -> list[int]:
+    """Zero-based indices of the red, green and blue bands of an open rasterio dataset."""
+    return band_plan(src)[0]
+
+
+def describe_bands(path, order: str = "auto") -> dict:
+    """What read_rgb_valid(path, order) reads as red, green and blue, and why.
+
+    {"order": "R,G,B" | "B,G,R" | "grey", "how": tagged|grey|requested|assumed|format}
+    """
+    path = Path(path)
+    if path.suffix.lower() not in (".tif", ".tiff"):
+        # PNG and JPG define their channel order; there is nothing to guess.
+        return {"order": "R,G,B", "how": "format"}
+    import warnings
+    import rasterio
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        with rasterio.open(path) as src:
+            idx, how = band_plan(src, order)
+    label = ("grey" if how == "grey" else
+             "B,G,R" if idx == [2, 1, 0] else
+             "R,G,B" if idx == [0, 1, 2] else
+             "bands " + ",".join(str(i + 1) for i in idx))
+    return {"order": label, "how": how}
 
 
 def _stretch(a: np.ndarray) -> np.ndarray:
@@ -52,9 +95,9 @@ def _stretch(a: np.ndarray) -> np.ndarray:
     return np.where(ok, out, 0).astype(np.uint8)
 
 
-def read_rgb(path) -> np.ndarray:
+def read_rgb(path, band_order: str = "auto") -> np.ndarray:
     """HxWx3 uint8 RGB from a GeoTIFF, PNG or JPG."""
-    return read_rgb_valid(path)[0]
+    return read_rgb_valid(path, band_order)[0]
 
 
 # What separates a footprint border from a shadow that happens to touch the edge, measured
@@ -93,13 +136,14 @@ def _edge_connected(dark: np.ndarray, near_black: np.ndarray | None = None) -> n
     return border
 
 
-def read_rgb_valid(path) -> tuple[np.ndarray, np.ndarray]:
+def read_rgb_valid(path, band_order: str = "auto") -> tuple[np.ndarray, np.ndarray]:
     """(HxWx3 uint8 RGB, HxW bool valid) from a GeoTIFF, PNG or JPG.
 
     A pixel is invalid when the file says so -- declared nodata, a zero alpha, an internal
     mask, NaN -- or when it belongs to a pure-black region touching the image edge. The
     second case is the footprint border of a clipped satellite scene, which often carries
-    no nodata tag at all. Without this mask the model estimated heights for that border
+    no nodata tag at all. `band_order` ("auto", "rgb", "bgr") overrides which GeoTIFF
+    bands are read as red, green and blue; PNG and JPG define their own order. Without this mask the model estimated heights for that border
     and the viewer drew it as a flat black shelf around the scene.
 
     "Pure black" is judged on the RAW values, never after the percentile stretch: the
@@ -114,7 +158,7 @@ def read_rgb_valid(path) -> tuple[np.ndarray, np.ndarray]:
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             with rasterio.open(path) as src:
-                idx = _rgb_band_indices(src)
+                idx = band_plan(src, band_order)[0]
                 a = src.read([i + 1 for i in idx])            # 3 x H x W
                 nodata = src.nodata
                 # Declared nodata, alpha bands and internal masks, as GDAL resolves them.
