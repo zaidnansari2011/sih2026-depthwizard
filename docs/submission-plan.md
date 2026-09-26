@@ -60,7 +60,7 @@
 >     python tools/verify_upload.py --ckpt ../checkpoints/run07/best.pt
 >     node tools/test_flood.mjs              # inundation tool, 7 checks
 >     python tests/test_losses.py && python tests/test_gcp_affine.py
->     python tools/ppt/make_deck_c.py && python tools/ppt/export_pdf.py C
+>     python tools/ppt/make_deck_e.py && python tools/ppt/export_pdf.py E   # export_pdf adds the links
 >
 > A deployed model is verified by **what it serves**, not by what the deploy reports. Upload a
 > tile and compare the returned scene's `height_max_m` and `sigma_mean_m` against a local
@@ -68,9 +68,16 @@
 > run07 gives 38.3 m and sigma 1.54, run02 gives 29.6 m and 0.87.
 
 **Deadline: 30 September 2026.** **Target submission: 28 September**, leaving 29–30 Sep as
-buffer. The deliverable is the DevUp PPT (`docs/SIH2026-DevUp-SIH26175-DepthWizard-C.pptx`,
+buffer. The deliverable is the DevUp PPT (`docs/SIH2026-DevUp-SIH26175-DepthWizard-E.pptx`,
 exported to PDF); everything else in this repo exists to be evidence behind it or to survive
 a judge following a link.
+
+**Deck E, 25 Sep, supersedes C and D.** ISRO's FAQ (`docs/isro-faq.md`, 22 Sep) asks the
+initial submission to cover problem, idea and architecture, with "any preliminary work you
+have done in one extra slide". So E is six template slides plus slide 7, Preliminary work.
+Slide 7 reads probe 05b straight from `out/gsd_recheck_run07/results.json`. Team ID is
+**129655**; the "47" in C and D was wrong. The pitch-video QR is still a placeholder
+(`PITCH_VIDEO_URL` in `make_deck_e.py`).
 
 Verified from the portal 12 Sep 2026: SIH26175 reads **3/500 submissions**, deadline column
 **30-09-2026**. There is no slot to race for, and no reason to submit on the last day into a
@@ -341,6 +348,24 @@ cut the demo video or Tier 2; they are the required artefact and the 50%.
 
 Append one line per working session. Keep it factual — what moved, what was measured.
 
+- **25 Sep** — **ISRO's FAQ acted on.** ISRO published an FAQ as issue #1 of its repo;
+  it is saved verbatim in `docs/isro-faq.md`.
+  - **Evaluation resolution.** Final evaluation is Cartosat-2S at 0.6 m, with GeoTIFFs
+    scored as an absolute DSM. Probe 05b re-measured 0.6 m on run07 over 80 tiles,
+    pre-registered and committed before the run (`02f7e32`).
+    - The sanity gate passed: 3.464 m reproduced.
+    - The primary criterion (≤ 10 % cost) was **falsified**: +15.4 % with auto-zoom and
+      +20.8 % without.
+    - Auto-zoom does not help buildings ≤ 20 m.
+    - The run02 "within 3.6 %" is withdrawn everywhere.
+  - **Live site.** Set `DW_DEM=1`; `verify_upload.py --url` passes 26/26, and a GeoTIFF now
+    returns an absolute DSM.
+  - **Documentation site.** Published at `/documentation/`, from
+    `viewer/documentation/index.html`.
+  - **Deck.** Deck E built to the FAQ's structure; team ID corrected to 129655.
+  - **Found, not changed.** Live `DW_WORK` holds a Git-Bash-mangled Windows path; it is
+    harmless, since it is relative on Linux, but should be deleted. The settings table in
+    `deployment.md` is stale on `DW_CKPT` and `HF_HOME`.
 - **13 Sep** — **Tier 3 complete: A5 and A6.** The upload path now survives the files a
   judge will hand it, and returns the problem statement's named geospatial output. Two
   new harnesses (`smoke_deliverable.py`, `verify_upload.py`) found five faults between

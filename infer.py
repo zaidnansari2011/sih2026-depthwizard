@@ -31,25 +31,9 @@ from depthwizard.model import DEFAULT_MODEL, build, from_checkpoint, PATCH
 
 
 def load_image(path: Path) -> np.ndarray:
-    """Return HWC uint8 RGB."""
-    if path.suffix.lower() in (".tif", ".tiff"):
-        import rasterio
-        import warnings
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            with rasterio.open(path) as src:
-                a = src.read()
-        a = a[0] if a.shape[0] == 1 else np.transpose(a, (1, 2, 0))
-    else:
-        from PIL import Image
-        a = np.array(Image.open(path).convert("RGB"))
-    if a.ndim == 2:
-        a = np.stack([a] * 3, -1)
-    a = a[..., :3]
-    if a.dtype != np.uint8:
-        lo, hi = np.percentile(a[np.isfinite(a)], [2, 98])
-        a = (np.clip((a - lo) / max(hi - lo, 1e-6), 0, 1) * 255).astype(np.uint8)
-    return a
+    """Return HWC uint8 RGB. Shared with export_terrain.py, so heights and texture agree."""
+    from depthwizard.rgb import read_rgb
+    return read_rgb(path)
 
 
 def cosine_window(n: int, overlap: int) -> np.ndarray:

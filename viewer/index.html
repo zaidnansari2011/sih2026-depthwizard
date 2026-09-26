@@ -161,6 +161,46 @@
     color: var(--text);
   }
 
+  /* The upload picker: a small file window, because a folder of thumbnails is the one
+     file-choosing interface everyone already knows. */
+  #picker { position: fixed; inset: 0; z-index: 50; display: none; place-items: center;
+            background: rgba(16, 24, 40, .38); }
+  #picker.open { display: grid; }
+  .pk-win { width: min(720px, calc(100vw - 32px)); background: var(--panel); border-radius: 10px;
+            box-shadow: 0 12px 40px rgba(16, 24, 40, .28); overflow: hidden;
+            display: flex; flex-direction: column; max-height: calc(100vh - 32px); }
+  .pk-title { display: flex; justify-content: space-between; align-items: center;
+              padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 600; }
+  .pk-title button { border: 0; background: none; font-size: 18px; line-height: 1; padding: 2px 6px; }
+  .pk-body { display: grid; grid-template-columns: 150px 1fr; min-height: 0; flex: 1; }
+  .pk-side { border-right: 1px solid var(--line); padding: 8px; background: var(--bg);
+             display: flex; flex-direction: column; gap: 2px; }
+  .pk-loc { text-align: left; border: 0; background: none; padding: 7px 9px; border-radius: 6px;
+            font-size: 12.5px; cursor: pointer; width: 100%; }
+  .pk-loc.on { background: var(--accent-w); color: var(--accent); font-weight: 600; }
+  .pk-loc:hover:not(.on) { background: #d6dde5; }
+  .pk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(108px, 1fr));
+             gap: 6px; padding: 12px; align-content: start; overflow-y: auto; }
+  .pk-file { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 6px;
+             border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
+             font-size: 12px; line-height: 1.25; word-break: break-all; text-align: center; }
+  .pk-file img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; display: block; }
+  .pk-file:hover { background: var(--line-sw); }
+  .pk-file.sel { background: var(--accent-w); border-color: var(--accent); }
+  .pk-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+             border-top: 1px solid var(--line); }
+  .pk-info { flex: 1; font-size: 12px; color: var(--dim); min-width: 0; }
+  .pk-info b { color: var(--text); }
+  .pk-foot button { padding: 6px 14px; }
+  .pk-title button, .pk-foot button { width: auto; flex: none; }   /* the panel's buttons are full-width */
+  .pk-title span { flex: 1; }
+  /* Dark, not the accent: in this viewer the accent only ever means "this is on". */
+  #pk-open { background: var(--text); color: #fff; border-color: var(--text); }
+  #pk-open:hover:not(:disabled) { background: #33404d; }
+  #pk-open:disabled { opacity: .4; color: #fff; background: var(--text); }
+  .pk-credit { font-size: 10.5px; color: var(--dim); padding: 0 14px 8px; }
+  @media (max-width: 520px) { .pk-body { grid-template-columns: 1fr; }
+    .pk-side { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); } }
   .bar-outer { height: 4px; background: var(--line-sw); border-radius: 2px; margin-top: 5px;
                overflow: hidden; }
   .bar-inner { height: 100%; width: 0; background: var(--accent); transition: width .3s; }
@@ -277,10 +317,10 @@
         <option value="slope">Steepness</option>
       </select>
 
-      <label for="vex">Height boost · <b id="vexv">1.5×</b></label>
-      <input id="vex" type="range" min="0.5" max="6" step="0.1" value="1.5" />
-      <div class="note">Heights are stretched to make the shape readable. The numbers
-        stay true.</div>
+      <label for="vex">Height boost · <b id="vexv">1.0× (true scale)</b></label>
+      <input id="vex" type="range" min="0.5" max="6" step="0.1" value="1" />
+      <div class="note">1.0× shows the surface at its real proportions. Raise it to
+        exaggerate relief; measured numbers stay true either way.</div>
 
       <label for="sun">Sun direction · <b id="sunv">315°</b></label>
       <input id="sun" type="range" min="0" max="360" step="5" value="315" />
@@ -319,10 +359,13 @@
         <button id="pick">Upload a satellite image</button>
         <input id="file" type="file" accept=".tif,.tiff,.png,.jpg,.jpeg" hidden />
         <div class="note">Drop a file anywhere on the page. A GeoTIFF gives real heights
-          above sea level; a PNG or JPG gives relative heights only.</div>
+          above sea level; a PNG or JPG gives relative heights, read at 0.3 m per pixel.</div>
+        <div class="note" id="up-limits"></div>
         <div id="upprog" style="display:none">
           <div class="row"><span id="up-step">working…</span><span id="up-pct">0%</span></div>
           <div class="bar-outer"><div class="bar-inner" id="up-bar"></div></div>
+          <div class="note" id="up-hint" style="display:none">This runs on a small CPU
+            server. Keep exploring; your scene opens by itself when it is ready.</div>
         </div>
 
         <!-- The problem statement asks the platform to "output a high-fidelity DSM in a
@@ -405,10 +448,10 @@
          ships without georeferencing this says exactly that instead of inventing one. -->
     <div id="geo-block">
       <div class="sect">Where this is</div>
-      <div class="row"><span>Centre</span><span id="s-centre">—</span></div>
-      <div class="row"><span>Grid centre</span><span id="s-en">—</span></div>
+      <div class="row geo-only"><span>Centre</span><span id="s-centre">—</span></div>
+      <div class="row geo-only"><span>Grid centre</span><span id="s-en">—</span></div>
       <div class="stacked"><span>Coordinate system</span><b id="s-crs">—</b></div>
-      <div class="row"><span>Datum</span><span id="s-datum">—</span></div>
+      <div class="row geo-only"><span>Datum</span><span id="s-datum">—</span></div>
       <div class="row sub"><span id="s-geonote"></span></div>
     </div>
 
@@ -471,5 +514,42 @@
   <div id="loading"><div>Loading…</div></div>
 
   <script type="module" src="./main.js"></script>
+  <div id="picker" role="dialog" aria-modal="true" aria-labelledby="pk-h">
+    <div class="pk-win">
+      <div class="pk-title"><span id="pk-h">Choose an image to upload</span>
+        <button id="pk-x" title="Close" aria-label="Close">&times;</button></div>
+      <div class="pk-body">
+        <div class="pk-side">
+          <button class="pk-loc on">Sample images</button>
+          <button class="pk-loc" id="pk-browse">This computer…</button>
+        </div>
+        <div class="pk-grid">
+          <button class="pk-file" data-file="samples/sikkim_town.tif" data-kind="GeoTIFF with coordinates" data-res="0.31 m" data-size="2.8 MB" data-gives="real heights above sea level">
+            <img src="samples/sikkim_town_thumb.jpg" alt="" loading="lazy"><span>sikkim_town.tif</span></button>
+          <button class="pk-file" data-file="samples/sikkim_town_0.6m.tif" data-kind="GeoTIFF with coordinates, ISRO's 0.6 m evaluation resolution" data-res="0.62 m" data-size="2.7 MB" data-gives="real heights above sea level">
+            <img src="samples/sikkim_town_0.6m_thumb.jpg" alt="" loading="lazy"><span>sikkim_town_0.6m.tif</span></button>
+          <button class="pk-file" data-file="samples/teesta_riverside.tif" data-kind="GeoTIFF with coordinates" data-res="0.31 m" data-size="2.6 MB" data-gives="real heights above sea level">
+            <img src="samples/teesta_riverside_thumb.jpg" alt="" loading="lazy"><span>teesta_riverside.tif</span></button>
+          <button class="pk-file" data-file="samples/ridge_buildings.tif" data-kind="GeoTIFF with coordinates" data-res="0.31 m" data-size="2.7 MB" data-gives="real heights above sea level">
+            <img src="samples/ridge_buildings_thumb.jpg" alt="" loading="lazy"><span>ridge_buildings.tif</span></button>
+          <button class="pk-file" data-file="samples/hill_forest.tif" data-kind="GeoTIFF with coordinates, dense forest on a steep slope" data-res="0.31 m" data-size="2.4 MB" data-gives="real heights above sea level">
+            <img src="samples/hill_forest_thumb.jpg" alt="" loading="lazy"><span>hill_forest.tif</span></button>
+          <button class="pk-file" data-file="samples/north_sikkim_glacier_0.6m.tif" data-kind="GeoTIFF with coordinates, snow at 5,000 m" data-res="0.62 m" data-size="2.2 MB" data-gives="real heights above sea level">
+            <img src="samples/north_sikkim_glacier_0.6m_thumb.jpg" alt="" loading="lazy"><span>north_sikkim_glacier_0.6m.tif</span></button>
+          <button class="pk-file" data-file="samples/terraced_village.jpg" data-kind="Plain JPG, no coordinates" data-res="assumed 0.3 m" data-size="0.4 MB" data-gives="relative heights">
+            <img src="samples/terraced_village_thumb.jpg" alt="" loading="lazy"><span>terraced_village.jpg</span></button>
+          <button class="pk-file" data-file="samples/sikkim_hillside.png" data-kind="Plain PNG, no coordinates" data-res="assumed 0.3 m" data-size="2.1 MB" data-gives="relative heights">
+            <img src="samples/sikkim_hillside_thumb.jpg" alt="" loading="lazy"><span>sikkim_hillside.png</span></button>
+        </div>
+      </div>
+      <div class="pk-credit">Sample images: Sikkim after the October 2023 Teesta floods. Imagery
+        © Maxar Technologies, Maxar Open Data, CC-BY-4.0.</div>
+      <div class="pk-foot">
+        <div class="pk-info" id="pk-info">Select an image, or choose one from this computer.</div>
+        <button id="pk-cancel">Cancel</button>
+        <button id="pk-open" disabled>Upload</button>
+      </div>
+    </div>
+  </div>
 </body>
 </html>

@@ -1,5 +1,10 @@
 # Probe 05 — does the model survive the resolution ISRO will evaluate at?
 
+> **Superseded by `probe-05b-gsd-run07.md` (25 Sep 2026).** This probe is run02, single
+> pass, on three hand-picked tiles. On the shipped model, the shipped configuration and 80
+> tiles, 0.6 m with auto-zoom costs **+15.4 %** per building, not the 3.6 % below. Keep
+> this page for the method and the history; quote 05b.
+
 **The risk.** We train and infer at DFC2019's 0.3 m. The problem statement says final
 evaluation uses *"ISRO RGB-band optical satellite imagery"*, which in practice means
 Cartosat — nearer 0.6–1.0 m. Probe 04 established that what governs our detail is the

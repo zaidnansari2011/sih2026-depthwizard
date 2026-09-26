@@ -38,7 +38,7 @@ from build_deck_b import (BODY, BODY_BOT, BODY_TOP, COND, DEEP, DISPLAY, DST, EM
 PS_ID = "SIH26175"
 PS_TITLE = "DepthWizard - Single-View Height Estimation and 3D Flythrough"
 PS_THEME = "Disaster Management"
-TEAM_ID = "47"
+TEAM_ID = "129655"      # the portal's team id; "47" in decks built before 25 Sep was wrong
 YEAR = "2026"
 
 

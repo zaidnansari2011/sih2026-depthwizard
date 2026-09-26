@@ -102,6 +102,14 @@ addEventListener('unhandledrejection', (e) =>
 // untouched. Measured 165 fps on the 671k-point Sikkim scene, so there is headroom.
 const MAX_VERTS = 1_200_000;
 
+// The ground sample distance the checkpoint was fine-tuned at (infer.py --native-gsd). An
+// image with no pixel size is run by the model at this scale, so it is shown at it too.
+const NATIVE_GSD_M = 0.3;
+
+// The boost readout names 1.0x for what it is, so nobody takes an exaggerated view for
+// the real shape of the ground.
+const vexLabel = (v) => `${v.toFixed(1)}×` + (Math.abs(v - 1) < 0.05 ? ' (true scale)' : '');
+
 const state = {
   manifest: null,
   height: null,      // Float32Array, metres -- our prediction
@@ -110,7 +118,7 @@ const state = {
   terrain: null,     // Float32Array, metres above the scene datum -- bare earth to stand on
   sigma: null,       // Float32Array, metres
   grid: { w: 0, h: 0, stepX: 1, stepY: 1 },
-  vex: 1.5,
+  vex: 1.0,         // true scale: the surface in its real proportions
   mode: 'texture',
   measuring: false,
   picks: [],
@@ -304,41 +312,81 @@ async function bin(url, Type) {
   return new Type(await r.arrayBuffer());
 }
 
+// Bumped by every loadScene(). A scene picked while another is still loading must win
+// outright: the two loads otherwise interleave across their awaits and one scene's
+// imagery gets draped over the other's heights. Seen 25 Sep, switching scene during the
+// landing load.
+let loadSeq = 0;
+
+/**
+ * Load a scene; after the first, a failure keeps the scene already on screen.
+ *
+ * An uploaded scene can vanish from the server -- the newest dozen are kept, and a restart
+ * clears them -- and picking one from the list used to leave the full-screen "Loading…"
+ * over a working scene until the page was reloaded.
+ */
 async function loadScene(dir) {
+  try {
+    await loadSceneInner(dir);
+  } catch (e) {
+    if (!live) throw e;                     // first load: the full-screen error is right
+    $('loading').style.display = 'none';
+    if (document.body.dataset.scene) $('scene').value = document.body.dataset.scene;
+    trouble('Could not open that scene. It may have been removed from the server; the '
+            + 'previous scene is still shown.', e);
+  }
+}
+
+async function loadSceneInner(dir) {
+  const my = ++loadSeq;
+  const stale = () => my !== loadSeq;
   $('loading').style.display = 'grid';
   $('loading').innerHTML = `<div>Loading ${dir}…</div>`;
 
   const base = `./scenes/${dir}`;
-  const m = await (await fetch(`${base}/manifest.json`, { cache: 'no-store' })).json();
+  // Everything is fetched into locals first and committed in one step below, so a load
+  // that has been overtaken never writes a single array into the shared state.
+  const mr = await fetch(`${base}/manifest.json`, { cache: 'no-store' });
+  if (!mr.ok) throw new Error(`${dir}: manifest ${mr.status}`);
+  const m = await mr.json();
+  const f = m.files;
+  const opt = (name, Type) => (name ? bin(`${base}/${name}`, Type).catch(() => null) : null);
+  const height = await bin(`${base}/${f.height}`, Float32Array);
+  const sigma = await opt(f.sigma, Float32Array);
+  const truth = await opt(f.truth, Float32Array);
+  const tvalid = await opt(f.truth_valid, Uint8Array);
+  // Bare earth, when the scene has it. Our model outputs height ABOVE GROUND, so without
+  // this a mountain renders as a flat plane with buildings standing on it.
+  const terrain = await opt(f.terrain, Float32Array);
+  // Per-building elevation statistics, baked by tools/bake_buildings.py. Only scenes with
+  // absolute elevation have them; see the inundation section.
+  const buildings = f.buildings
+    ? await fetch(`${base}/${f.buildings}`).then((r) => r.json())
+      .then((d) => d.buildings).catch(() => null) : null;
+
+  let texture = null;
+  if (f.texture) {
+    texture = await new THREE.TextureLoader().loadAsync(`${base}/${f.texture}`);
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+  }
+  if (stale()) { if (texture) texture.dispose(); return; }
+
   state.manifest = m;
   // Reflect the loaded scene into the DOM. Assigning select.value does NOT add a
   // `selected` attribute, so a dumped DOM otherwise reports whichever option came first
   // no matter what is actually on screen -- which is exactly how tools/verify_viewer.py
   // got a false failure. Cheap to publish, and it makes the state observable.
   document.body.dataset.scene = dir;
-  state.height = await bin(`${base}/${m.files.height}`, Float32Array);
-
-  state.sigma = m.files.sigma ? await bin(`${base}/${m.files.sigma}`, Float32Array).catch(() => null) : null;
-  state.truth = m.files.truth ? await bin(`${base}/${m.files.truth}`, Float32Array).catch(() => null) : null;
-  state.tvalid = m.files.truth_valid
-    ? await bin(`${base}/${m.files.truth_valid}`, Uint8Array).catch(() => null) : null;
-  // Bare earth, when the scene has it. Our model outputs height ABOVE GROUND, so without
-  // this a mountain renders as a flat plane with buildings standing on it.
-  state.terrain = m.files.terrain
-    ? await bin(`${base}/${m.files.terrain}`, Float32Array).catch(() => null) : null;
-
-  // Per-building elevation statistics, baked by tools/bake_buildings.py. Only scenes with
-  // absolute elevation have them; see the inundation section.
-  state.buildings = m.files.buildings
-    ? await fetch(`${base}/${m.files.buildings}`).then((r) => r.json())
-      .then((d) => d.buildings).catch(() => null) : null;
-
-  let texture = null;
-  if (m.files.texture) {
-    texture = await new THREE.TextureLoader().loadAsync(`${base}/${m.files.texture}`);
-    texture.colorSpace = THREE.SRGBColorSpace;
-    texture.anisotropy = renderer.capabilities.getMaxAnisotropy();
-  }
+  Object.assign(state, { height, sigma, truth, tvalid, terrain, buildings });
+  // A measurement is a pair of points in ONE scene. Carried across a switch, the old
+  // markers floated over the new surface and a pending pick paired with a point in it.
+  state.picks = [];
+  markers.clear();
+  ['m-ground', 'm-dh', 'm-slope', 'm-unc'].forEach((id) => { $(id).textContent = '—'; });
+  $('m-note').textContent = '';
+  // The new mesh is built solid, so the button must not still claim "Mesh lines" is on.
+  $('wire').classList.remove('on');
 
   // A scene without LiDAR (Sikkim, and anything over India) can still be flown through;
   // it just cannot be compared or differenced. Disable rather than fail.
@@ -496,25 +544,36 @@ function buildMesh(texture) {
 
   // Ground sample distance. When the export had no metric transform we fall back to one
   // unit per pixel and say so in the HUD, rather than printing confident nonsense.
-  state.gsd = m.gsd_m || 1;
-  state.hasMetres = !!m.gsd_m;
+  // A plain PNG or JPG carries no pixel size. It used to fall back to one unit per pixel,
+  // which laid a 1024 px image out 1024 units wide under heights in metres -- a 0.3 m tile
+  // stretched 3.3x flat, so an uploaded PNG looked like the flat photo it came from. The
+  // model has already assumed a scale for such an image (infer.py runs it at its native
+  // 0.3 m, zoom 1), so the viewer assumes the same one and says so on screen.
+  state.assumedScale = !m.gsd_m;
+  // export_terrain.py shrinks anything over 2048 px and records by how much; the model saw
+  // the full-resolution image, so each exported pixel spans that many native pixels.
+  state.gsd = m.gsd_m || NATIVE_GSD_M * (m.downsampled_by || 1);
+  state.hasMetres = true;
 
-  const mat = new THREE.MeshStandardMaterial({
+  const mat = wallMaterial(new THREE.MeshStandardMaterial({
     map: texture || null, vertexColors: false, roughness: 0.95, metalness: 0.0,
     side: THREE.DoubleSide, flatShading: false,
-  });
+  }));
   const extent = Math.max(W, H) * state.gsd;
+  const drape = texture ? drapePixels(texture.image, gw, gh) : null;
   mesh = new THREE.Mesh(surfaceGeometry(state.height, state.terrain), mat);
+  addWallColours(mesh.geometry, state.height, drape);
   mesh.scale.y = state.vex;
   scene.add(mesh);
   skirt = makeSkirt(mesh, gw, gh, extent);
 
   if (state.truth) {
-    const tmat = new THREE.MeshStandardMaterial({
+    const tmat = wallMaterial(new THREE.MeshStandardMaterial({
       map: texture || null, vertexColors: false, roughness: 0.95, metalness: 0.0,
       side: THREE.DoubleSide, flatShading: false,
-    });
+    }));
     truthMesh = new THREE.Mesh(surfaceGeometry(state.truth, state.terrain), tmat);
+    addWallColours(truthMesh.geometry, state.truth, drape);
     truthMesh.scale.y = state.vex;
     truthMesh.visible = state.comparing;
     scene.add(truthMesh);
@@ -526,6 +585,122 @@ function buildMesh(texture) {
   applyMode(state.mode);
   setCompare(state.comparing && !!truthMesh);
   $('s-mesh').textContent = `${(gw * gh / 1000).toFixed(0)}k points · 1:${step}`;
+}
+
+/**
+ * Walls take the colour of what stands on top of them, not the stretched drape.
+ *
+ * A top-down image has no pixels for the side of a building or a tree, so a planar drape
+ * paints each steep face with the thin strip of image it happens to sit over, stretched
+ * down its whole height. slopeShade() below darkens that smear but cannot remove it: a
+ * darker smear is still a smear, and it is what made roofs and canopies read as melted.
+ *
+ * Instead, every vertex on a steep above-ground face is given the colour of the highest
+ * point near it -- the roof edge or the canopy top -- and the shader swaps that in for
+ * the drape on those faces only. A roof keeps its imagery; its walls become the roof's
+ * colour, shaded by the light; a tree's flanks become its canopy green.
+ *
+ * What this is and is not: colour only. Geometry, every measurement, and the height,
+ * uncertainty, error and slope modes are untouched (the swap is switched off outside the
+ * satellite view). Steepness is judged on above-ground height, not the terrain under it,
+ * so a Sikkim hillside keeps its own imagery.
+ */
+function wallMaterial(mat) {
+  mat.userData.uWall = { value: 1 };
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uWall = mat.userData.uWall;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>',
+               '#include <common>\nattribute vec4 wallCol;\nvarying vec4 vWallCol;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvWallCol = wallCol;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>',
+               '#include <common>\nuniform float uWall;\nvarying vec4 vWallCol;')
+      // wallCol holds sRGB bytes; the drape is already linear by this point.
+      .replace('#include <map_fragment>',
+               '#include <map_fragment>\n'
+               + 'diffuseColor.rgb = mix(diffuseColor.rgb, pow(vWallCol.rgb, vec3(2.2)), '
+               + 'vWallCol.a * uWall);');
+  };
+  return mat;
+}
+
+/** The drape resampled to one RGBA pixel per grid vertex, or null if it cannot be read. */
+function drapePixels(img, gw, gh) {
+  try {
+    // Down to an eighth and back up: a blur that works in every browser (ctx.filter does
+    // not). A wall wants the roof's average colour; copying single roof pixels down it
+    // draws vertical stripes, which is the smear again in another form.
+    const sw = Math.max(1, Math.round(gw / 8)), shh = Math.max(1, Math.round(gh / 8));
+    const small = document.createElement('canvas');
+    small.width = sw; small.height = shh;
+    small.getContext('2d').drawImage(img, 0, 0, sw, shh);
+    const cv = document.createElement('canvas');
+    cv.width = gw; cv.height = gh;
+    const cx = cv.getContext('2d', { willReadFrequently: true });
+    cx.imageSmoothingEnabled = true;
+    cx.drawImage(small, 0, 0, gw, gh);
+    return cx.getImageData(0, 0, gw, gh).data;
+  } catch {
+    return null;                 // walls fall back to the darkened drape; nothing breaks
+  }
+}
+
+function addWallColours(geo, heights, px) {
+  const m = state.manifest;
+  const W = m.width, H = m.height;
+  const { w: gw, h: gh, stepX: step } = state.grid;
+  const cell = (state.gsd * step) || 1;
+  const n = gw * gh;
+  // Always set the attribute: an absent one reads as alpha 1 in WebGL, which would turn
+  // every face into a "wall". No drape means no swap.
+  if (!px) { geo.setAttribute('wallCol', new THREE.BufferAttribute(new Uint8Array(n * 4), 4, true)); return; }
+
+  const hg = new Float32Array(n);
+  for (let j = 0; j < gh; j++) {
+    const y = Math.min(H - 1, j * step);
+    for (let i = 0; i < gw; i++) {
+      const v = heights[y * W + Math.min(W - 1, i * step)];
+      hg[j * gw + i] = Number.isFinite(v) ? v : 0;
+    }
+  }
+
+  // The highest vertex within ~3 m, found as a separable arg-max (rows, then columns).
+  const r = Math.max(2, Math.min(12, Math.round(3 / cell)));
+  const rowBest = new Int32Array(n);
+  for (let j = 0; j < gh; j++) {
+    for (let i = 0; i < gw; i++) {
+      let best = j * gw + i;
+      for (let t = Math.max(0, i - r), e = Math.min(gw - 1, i + r); t <= e; t++) {
+        if (hg[j * gw + t] > hg[best]) best = j * gw + t;
+      }
+      rowBest[j * gw + i] = best;
+    }
+  }
+  const out = new Uint8Array(n * 4);
+  for (let j = 0; j < gh; j++) {
+    for (let i = 0; i < gw; i++) {
+      const k = j * gw + i;
+      let best = rowBest[k];
+      for (let t = Math.max(0, j - r), e = Math.min(gh - 1, j + r); t <= e; t++) {
+        const c = rowBest[t * gw + i];
+        if (hg[c] > hg[best]) best = c;
+      }
+      // Steepness of the above-ground surface, by central differences.
+      const gx = (hg[j * gw + Math.min(gw - 1, i + 1)] - hg[j * gw + Math.max(0, i - 1)]) / (2 * cell);
+      const gy = (hg[Math.min(gh - 1, j + 1) * gw + i] - hg[Math.max(0, j - 1) * gw + i]) / (2 * cell);
+      const g = Math.hypot(gx, gy);
+      // Walls, not kerbs: steeper than ~40 degrees AND standing under something at
+      // least a metre or two taller, so cars and road edges keep their imagery.
+      const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+      const a = ss(0.8, 2.0, g) * ss(1.0, 2.5, hg[best] - hg[k]);
+      // A shade darker than the roof, so the eye reads a face in shadow, not more roof.
+      out[k * 4] = px[best * 4] * 0.8; out[k * 4 + 1] = px[best * 4 + 1] * 0.8;
+      out[k * 4 + 2] = px[best * 4 + 2] * 0.8;
+      out[k * 4 + 3] = Math.round(a * 255);
+    }
+  }
+  geo.setAttribute('wallCol', new THREE.BufferAttribute(out, 4, true));
 }
 
 /**
@@ -579,6 +754,7 @@ function applyMode(mode) {
   if (mode === 'texture') {
     mesh.material.map = mesh.material.userData?.map ?? mesh.material.map;
     mesh.material.color.setHex(0xffffff);
+    mesh.material.userData.uWall.value = 1;
     slopeShade(mesh);
     mesh.material.needsUpdate = true;
     legend.style.display = 'none';
@@ -634,6 +810,7 @@ function applyMode(mode) {
 
   if (!mesh.material.userData.map && mesh.material.map) mesh.material.userData.map = mesh.material.map;
   mesh.material.map = null;
+  mesh.material.userData.uWall.value = 0;     // the ramps colour walls like everything else
   mesh.material.vertexColors = true;
   mesh.material.color.setHex(0xffffff);
   mesh.material.needsUpdate = true;
@@ -664,12 +841,14 @@ function styleTruth(mode) {
   if (mode === 'texture') {
     mat.map = mat.userData?.map ?? mat.map;
     mat.color.setHex(0xffffff);
+    mat.userData.uWall.value = 1;
     slopeShade(truthMesh);
     mat.needsUpdate = true;
     return;
   }
   if (!mat.userData.map && mat.map) mat.userData.map = mat.map;
   mat.map = null;
+  mat.userData.uWall.value = 0;
 
   if (mode === 'height') {
     const col = truthMesh.geometry.getAttribute('color');
@@ -775,11 +954,16 @@ function updateGeoPanel() {
     $('s-crs').textContent = raw.crs || 'none';
     $('s-datum').textContent = '—';
     $('s-geonote').textContent = raw.crs
-      ? 'This tile carries a rotated transform, so the viewer will not claim a north '
-        + 'direction for it.'
-      : 'This tile ships without georeferencing — the DFC2019 rasters carry no CRS and no '
-        + 'transform, so there is no position on Earth to report. Distances and heights '
-        + 'are still metres, from the published 0.3 m ground sample distance.';
+      ? (raw.corners_lonlat_error
+        ? 'The position of this tile could not be worked out from its CRS.'
+        : 'Rotated transform, so no north direction is claimed.')
+      : state.assumedScale
+        ? 'Not georeferenced, and no pixel size in the file. Shown at the model’s native '
+          + '30 cm per pixel, so heights are relative: the problem statement’s rDSM.'
+        : 'Not georeferenced: DFC2019 tiles carry no coordinates. Distances are still metres.';
+    // Four rows of dashes say nothing the note does not; hide them on such tiles.
+    document.querySelectorAll('#geo-block .geo-only')
+      .forEach((r) => { r.style.display = 'none'; });
     $('compass').style.display = 'none';
     return;
   }
@@ -787,27 +971,25 @@ function updateGeoPanel() {
   const centre = lonLatAt((m.width - 1) / 2, (m.height - 1) / 2);
   const en = eastNorthAt((m.width - 1) / 2, (m.height - 1) / 2);
   show('s-centre', formatLonLat(centre, 4));
-  show('s-en', en ? `${en.e.toFixed(0)} E  ${en.n.toFixed(0)} N` : '—');
+  // In a geographic CRS the "eastings" are degrees, and rounding them printed "88 E 27 N".
+  show('s-en', raw.px_units === 'degrees' ? '— (lon/lat CRS)'
+    : en ? `${en.e.toFixed(0)} E  ${en.n.toFixed(0)} N` : '—');
   show('s-crs', g.crs_name ? `${g.crs} · ${g.crs_name}` : g.crs);
   // WKT spells it WGS_1984; every map legend in the world spells it WGS 84.
   const datum = (g.datum || '').replace(/^WGS 1984$/, 'WGS 84');
   show('s-datum', datum || '—');
-  $('s-geonote').textContent =
-    `Eastings and northings are ${g.units || 'metres'} in ${g.crs}. Longitude and latitude `
-    + `are WGS 84, interpolated between the tile corners to within a centimetre.`;
+  document.querySelectorAll('#geo-block .geo-only').forEach((r) => { r.style.display = ''; });
+  $('s-geonote').textContent = `Lon/lat interpolated from the tile corners, to within 1 cm.`;
   $('compass').style.display = 'block';
 }
 
 function updateStats() {
   const m = state.manifest;
   $('s-res').textContent = `${m.width} × ${m.height} px`;
-  if (m.gsd_m) {
-    $('s-gsd').textContent = `${(m.gsd_m * 100).toFixed(0)} cm`;
-    $('s-extent').textContent = `${(m.width * m.gsd_m).toFixed(0)} × ${(m.height * m.gsd_m).toFixed(0)} m`;
-  } else {
-    $('s-gsd').textContent = 'unknown';
-    $('s-extent').textContent = `${m.width} × ${m.height} px`;
-  }
+  const gsd = state.gsd, about = m.gsd_m ? '' : '≈ ';
+  $('s-gsd').textContent = `${(gsd * 100).toFixed(0)} cm${m.gsd_m ? '' : ' (assumed)'}`;
+  $('s-extent').textContent =
+    `${about}${(m.width * gsd).toFixed(0)} × ${(m.height * gsd).toFixed(0)} m`;
   $('s-range').textContent = `${m.height_min_m.toFixed(1)} – ${m.height_max_m.toFixed(1)} m`;
   $('s-sigma').textContent = m.sigma_mean_m != null ? `± ${m.sigma_mean_m.toFixed(2)} m` : '—';
   $('s-model').textContent = m.model ? `Heights produced by ${m.model}.` : '';
@@ -815,8 +997,7 @@ function updateStats() {
   // city the model never trained on -- quoted in both directions because the out-of-domain
   // number is the one a jury should weigh.
   $('s-calib').textContent =
-    'That ± is the model’s own estimate, and it is checked: expected calibration '
-    + 'error 0.063 on the held-out split, 0.044 on a city it never trained on.';
+    'The model’s own ±, checked: calibration error 0.063 held out, 0.044 on an unseen city.';
   updateGeoPanel();
 
   const dash = '—';
@@ -832,8 +1013,8 @@ function updateStats() {
       ? `${m.terrain_mean_slope_deg.toFixed(0)}°` : dash;
     // Provenance, because the mountain is not ours and the viewer must not imply it is.
     $('s-terrnote').textContent =
-      `The mountain shape comes from ${m.terrain_source || 'an external DEM'}. `
-      + `Everything standing on it — buildings, trees — is our model's.`
+      `Ground: ${(m.terrain_source || 'an external DEM').split(',')[0]}. `
+      + `Buildings and trees on it: our model.`
       // The imagery is CC-BY and the licence wants the credit visible wherever the image
       // is, not only in a NOTICE file someone opening the standalone will never see.
       + (m.imagery_source ? ` Imagery: ${m.imagery_source}.` : '');
@@ -855,11 +1036,10 @@ function updateStats() {
       $('s-errb').textContent = `${bw.rmse.toFixed(2)} m`;
       // The count belongs next to the number. On a downtown tile this is single digits,
       // and a per-building RMSE over 7 buildings must not be read as a stable result.
-      $('s-errbnote').textContent =
-        `Across ${bw.n_buildings} building${bw.n_buildings === 1 ? '' : 's'} in this scene, `
-        + `one height each. ${bw.n_buildings < 25 ? 'Too few to be a stable figure — the '
-          + 'benchmark pools 3,090 buildings over 80 tiles.' : 'The published peer reports '
-          + '5.9 m over Asia.'}`;
+      $('s-errbnote').textContent = bw.n_buildings < 25
+        ? `Only ${bw.n_buildings} building${bw.n_buildings === 1 ? '' : 's'}: too few to be `
+          + `stable. The benchmark pools 3,090.`
+        : `${bw.n_buildings} buildings, one height each. Published peer: 5.9 m.`;
     } else {
       $('s-errb').textContent = dash;
       $('s-errbnote').textContent = '';
@@ -873,10 +1053,10 @@ function updateStats() {
     let note = '';
     const gap = m.truth_max_m - m.height_max_m;
     if (gap > 8) {
-      note = `The tallest building here is ${gap.toFixed(0)} m higher than anything our `
-           + `model produced. Our training data stops at 83 m.`;
+      note = `The tallest building is ${gap.toFixed(0)} m above our highest; training data `
+           + `stops at 83 m.`;
     } else if (m.error_px_rmse_m != null) {
-      note = 'Measured over every pixel, including roof edges, where error is largest.';
+      note = 'Every pixel, roof edges included.';
     }
     $('s-errnote').textContent = note;
   } else {
@@ -1225,7 +1405,20 @@ function sceneExtent() {
 
 function resetView() {
   const extent = sceneExtent();
-  camera.position.set(0, extent * 0.45, extent * 0.75);
+  // The default height is a fraction of the scene's width, which assumes the ground is
+  // roughly level. On a steep upload -- a hillside rising 232 m across 313 m -- the half
+  // of the scene nearest the camera stands higher than that, and the view opened on a
+  // grey wall: the camera was inside the hill. Clear the near half's highest point
+  // instead. Scenes whose near half is low (the baked Sikkim valley) keep their framing.
+  let nearTop = 0;
+  if (mesh) {
+    const pos = mesh.geometry.getAttribute('position');
+    for (let k = 0; k < pos.count; k++) {
+      if (pos.getZ(k) >= 0) { const y = pos.getY(k); if (y > nearTop) nearTop = y; }
+    }
+    nearTop *= mesh.scale.y;
+  }
+  camera.position.set(0, Math.max(extent * 0.45, nearTop + extent * 0.15), extent * 0.75);
   yaw = 0;
   pitch = -0.42;
   orbit.touched = 0;              // the pivot is stale now; let the next gesture re-derive it
@@ -1723,7 +1916,11 @@ function initFlood() {
   btn.style.display = '';
   why.style.display = 'none';
 
-  const lo = m.terrain_elev_min_m, hi = m.terrain_elev_max_m;
+  // bake_buildings.py writes the elevation range for the baked scenes; an upload only has
+  // the datum (its lowest ground) and the relief above it, which say the same thing.
+  // Without this fallback the slider got NaN bounds and every upload flooded to "0.0 %".
+  const lo = m.terrain_elev_min_m ?? m.terrain_datum_m;
+  const hi = m.terrain_elev_max_m ?? (m.terrain_datum_m + (m.terrain_relief_m || 0));
   const sl = $('water');
   sl.min = Math.floor(lo);
   sl.max = Math.ceil(hi);
@@ -1810,10 +2007,10 @@ function updateScaleBar() {
 
   const metres = niceLength(120 * mPerPx);        // aim for a bar about 120 px wide
   $('sb-bar').style.width = `${Math.round(metres / mPerPx)}px`;
-  $('sb-label').textContent =
+  $('sb-label').textContent = (state.assumedScale ? '≈ ' : '') + (
     metres >= 1000 ? `${+(metres / 1000).toFixed(2)} km`
       : metres >= 1 ? `${+metres.toFixed(0)} m`
-        : `${+(metres * 100).toFixed(0)} cm`;
+        : `${+(metres * 100).toFixed(0)} cm`);
   el.style.display = 'block';
 }
 
@@ -1881,6 +2078,7 @@ function showDownloads(job, s) {
   const box = $('dl-links');
   if (!box) return;
   const label = {
+    preview: 'Quick-look picture (PNG) — opens anywhere, no GIS needed',
     dsm: 'Absolute DSM — metres above the geoid',
     ndsm: s.georeferenced ? 'nDSM — metres above ground'
                           : 'rDSM — relative heights, no sea-level reference',
@@ -1905,12 +2103,28 @@ async function initUpload() {
   try {
     const r = await fetch('./api/capabilities', { cache: 'no-store' });
     if (!r.ok) return;
-    if (!(await r.json()).upload) return;
+    const caps = await r.json();
+    if (!caps.upload) return;
+    // What works, stated before anyone tries. The limits come from the server, so the
+    // sentence cannot drift from what it will actually accept. 0.3-0.6 m is the range
+    // the model is measured on: trained at 0.3 m, re-scored at ISRO's 0.6 m.
+    // A 0.6 m image is upsampled 2x to the model's 0.3 m, so it gets half the side.
+    const lim = [caps.max_side_px && `up to ${caps.max_side_px.toLocaleString('en-IN')} px a side `
+                 + `(${Math.floor(caps.max_side_px / 2).toLocaleString('en-IN')} at 0.6 m)`,
+                 caps.max_upload_mb && `${caps.max_upload_mb} MB`].filter(Boolean).join(', ');
+    $('up-limits').textContent = `Best on 0.3–0.6 m satellite or aerial imagery${lim ? `; ${lim}` : ''}.`;
   } catch { return; }                    // static hosting or the baked build: stay hidden
   $('upload-block').style.display = 'block';
 
+  let busy = false;
   const send = async (file) => {
-    if (!file) return;
+    // One upload at a time from this page. A second drop used to start a second job whose
+    // poller fought the first over the one progress bar.
+    if (!file || busy) return;
+    busy = true;
+    try { await sendOne(file); } finally { busy = false; $('pick').disabled = false; }
+  };
+  const sendOne = async (file) => {
     $('upprog').style.display = 'block';
     $('pick').disabled = true;
     const setP = (step, pct) => {
@@ -1920,18 +2134,42 @@ async function initUpload() {
     };
     setP('uploading', 4);
     $('dl').style.display = 'none';          // the previous result's links are not this one's
-    let job;
+    let job, eta;
     try {
       const res = await fetch(`./api/upload?name=${encodeURIComponent(file.name)}`,
                               { method: 'POST', body: file });
-      const j = await res.json();
+      let j;
+      try { j = await res.json(); } catch {
+        throw new Error(`the server answered ${res.status} without a result — it may be `
+                        + 'restarting. Try again in a minute.');
+      }
       if (!res.ok) throw new Error(j.error || 'upload refused');
       job = j.job;
+      eta = j.eta_seconds;
     } catch (e) {
       setP(String(e.message || e), 100);
       $('pick').disabled = false;
       return;
     }
+    // The server reports only two milestones, so on its own the bar sat still for half a
+    // minute and read as hung. It already sends an estimate of the whole job; move the bar
+    // along that, never behind what the server has confirmed, and never to 100 on a guess.
+    const t0 = Date.now();
+    let srv = { step: 'queued', pct: 4 };
+    const tick = () => {
+      const el = (Date.now() - t0) / 1000;
+      const guess = eta ? (el < eta ? 5 + 85 * el / eta : 90 + 8 * (1 - Math.exp(-(el - eta) / 20))) : 0;
+      const pct = Math.round(Math.max(srv.pct, Math.min(98, guess)));
+      const tail = eta ? ` · ${Math.round(el)} s of about ${eta} s` : ` · ${Math.round(el)} s`;
+      setP(`${srv.step}${tail}`, pct);
+    };
+    const ticker = setInterval(tick, 250);
+    $('up-hint').style.display = 'block';
+    // The progress block sits at the foot of a panel that is already full on a laptop
+    // screen, so bring it into view. Scroll the panel itself: scrollIntoView() would also
+    // shift the overflow:hidden page under it.
+    $('hud').scrollTop = $('hud').scrollHeight;
+    const finish = () => { clearInterval(ticker); $('up-hint').style.display = 'none'; };
     // Poll rather than stream: a progress socket is more code and more to go wrong for
     // a job that takes tens of seconds.
     //
@@ -1944,23 +2182,26 @@ async function initUpload() {
     for (;;) {
       await new Promise((r2) => setTimeout(r2, 900));
       if (Date.now() > deadline) {
+        finish();
         setP('gave up waiting for the server. The job may still finish — reload to see.', 100);
         break;
       }
       let s;
       try { s = await (await fetch(`./api/job/${job}`, { cache: 'no-store' })).json(); }
       catch { continue; }                  // a dropped request is not a dead job
-      setP(s.step || s.state, s.pct ?? 50);
+      srv = { step: s.step || s.state, pct: s.pct ?? srv.pct };
       if (s.state === 'done') {
+        finish();
         sessionScenes.push({ dir: s.scene, name: s.scene_name || 'Your upload' });
-        await loadScenes(s.scene);
+        try { await loadScenes(s.scene); } catch (e) { trouble('Your scene is ready but did not open.', e); }
         showDownloads(job, s);
         setP(s.georeferenced ? 'done — heights are above sea level'
                              : 'done — heights are relative (no coordinates in that file)', 100);
         break;
       }
-      if (s.state === 'error') { setP(s.step, 100); break; }
+      if (s.state === 'error') { finish(); setP(s.step, 100); break; }
       if (s.state === 'unknown') {
+        finish();
         setP('the server no longer has that job — it was probably restarted. Try again.', 100);
         break;
       }
@@ -1968,8 +2209,56 @@ async function initUpload() {
     $('pick').disabled = false;
   };
 
-  $('pick').onclick = () => $('file').click();
-  $('file').onchange = (e) => send(e.target.files[0]);
+  // The upload button opens a small file window: the samples as a folder of thumbnails,
+  // plus "This computer…" for the native picker. Each sample is a real file fetched from
+  // this site and sent exactly as a dropped file is.
+  let chosen = null;
+  const pk = $('picker');
+  const closePicker = () => { pk.classList.remove('open'); };
+  const choose = (b) => {
+    document.querySelectorAll('.pk-file').forEach((x) => x.classList.toggle('sel', x === b));
+    chosen = b;
+    $('pk-open').disabled = !b;
+    const name = document.createElement('b');
+    name.textContent = b.querySelector('span').textContent;
+    $('pk-info').replaceChildren(name, ` · ${b.dataset.kind} · 1024 × 1024 px at `
+      + `${b.dataset.res} · ${b.dataset.size} → ${b.dataset.gives}`);
+  };
+  const uploadChosen = async () => {
+    if (!chosen || busy) return;
+    const url = chosen.dataset.file;
+    closePicker();
+    try {
+      const r = await fetch(url);
+      if (!r.ok) throw new Error(`${r.status}`);
+      send(new File([await r.blob()], url.split('/').pop()));
+    } catch (e) {
+      trouble('That sample image could not be fetched.', e);
+    }
+  };
+  $('pick').onclick = () => { if (!busy) pk.classList.add('open'); };
+  document.querySelectorAll('.pk-file').forEach((b) => {
+    b.onclick = () => choose(b);
+    b.ondblclick = () => { choose(b); uploadChosen(); };
+  });
+  $('pk-open').onclick = uploadChosen;
+  $('pk-browse').onclick = () => { closePicker(); $('file').click(); };
+  $('pk-cancel').onclick = closePicker;
+  $('pk-x').onclick = closePicker;
+  pk.onclick = (e) => { if (e.target === pk) closePicker(); };   // a click outside the window
+  addEventListener('keydown', (e) => {
+    if (!pk.classList.contains('open')) return;
+    if (e.key === 'Escape') closePicker();
+    if (e.key === 'Enter' && chosen) uploadChosen();
+    e.stopPropagation();          // W/A/S/D and Q/E must not fly the camera behind the window
+  }, true);
+  $('file').onchange = (e) => {
+    const f = e.target.files[0];
+    // Cleared so the SAME file can be picked again after a "try again" failure; otherwise
+    // the browser sees no change and nothing happens at all.
+    e.target.value = '';
+    send(f);
+  };
 
   // Drag and drop over the whole window. dragleave fires constantly as the pointer
   // crosses child elements, so track depth rather than trusting a single leave.
@@ -1993,7 +2282,7 @@ $('mode').onchange = (e) => applyMode(e.target.value);
 
 $('vex').oninput = (e) => {
   state.vex = parseFloat(e.target.value);
-  $('vexv').textContent = `${state.vex.toFixed(1)}×`;
+  $('vexv').textContent = vexLabel(state.vex);
   if (mesh) mesh.scale.y = state.vex;
   if (truthMesh) truthMesh.scale.y = state.vex;
   // The water plane is in the same exaggerated space, or it would sit at the wrong height
@@ -2075,7 +2364,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 
-$('vexv').textContent = `${state.vex.toFixed(1)}×`;
+$('vexv').textContent = vexLabel(state.vex);
 $('sun').dispatchEvent(new Event('input'));
 loadCalibration();
 initUpload();

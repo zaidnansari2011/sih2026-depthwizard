@@ -1180,7 +1180,7 @@ a{color:var(--accent-ink);text-decoration:none}
     </div>
   </div>
   <div class="qa">
-    <div class="q"><span class="qn">Q30</span><p class="qt">Your viewer stretches heights by 1.5×. Isn't that cheating?</p></div>
+    <div class="q"><span class="qn">Q30</span><p class="qt">Your viewer can stretch heights. Isn't that cheating?</p></div>
     <div class="a">
       <p>No, and you can prove it three ways.</p>
       <ul>
@@ -1188,9 +1188,9 @@ a{color:var(--accent-ink);text-decoration:none}
         <li>The measuring tool <strong>removes the stretch</strong> before it reports any number.</li>
         <li>The real laser data gets stretched by the same amount, so any comparison stays fair.</li>
       </ul>
-      <p>The slider is labelled on screen and says "the numbers stay true".</p>
-      <p><strong>Why it exists.</strong> A typical scene covers about 300 m of ground but buildings are only 5 to 30 m tall. So the heights are tiny compared to the width. Without stretching, the 3D view looks almost completely flat and you cannot see anything. Drag the slider to 1.0 to see true proportions.</p>
-      <div class="say"><b>The best follow-up</b><p>"And stretching cannot be hiding anything, because we predict buildings too <em>short</em>, not too tall. On our city test image the tallest real building is 93.6 m and we say 33.9 m. Even stretched by 1.5, it still appears shorter than it really is."</p></div>
+      <p>The viewer opens at 1.0×, labelled "true scale" on screen; stretching is something the user chooses, and the slider note says the measured numbers stay true.</p>
+      <p><strong>Why it exists.</strong> A typical scene covers about 300 m of ground but buildings are only 5 to 30 m tall, so a little stretch can make low relief easier to read. It is optional: the default is the real shape.</p>
+      <div class="say"><b>The best follow-up</b><p>"We open at true scale on purpose. Our known error is predicting tall buildings too <em>short</em> (93.6 m real, 33.9 m predicted on our city test image), and a stretched default would have hidden that. At 1.0× you see exactly what the model says."</p></div>
     </div>
   </div>
   <div class="qa">
@@ -1410,7 +1410,7 @@ a{color:var(--accent-ink);text-decoration:none}
     <div class="gi"><dt>Megapixel</dt><dd>One million pixels. This is what determines processing time — not the file size.</dd></div>
     <div class="gi"><dt>Mesh</dt><dd>The 3D surface built from your height numbers.</dd></div>
     <div class="gi"><dt>Texture drape</dt><dd>Painting the original photo onto that 3D surface so it looks real.</dd></div>
-    <div class="gi"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so you can see the shape. Yours starts at 1.5× and is removed before any measurement is reported.</dd></div>
+    <div class="gi"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so you can see the shape. Yours opens at 1.0× (true scale); any stretch the user adds is removed before a measurement is reported.</dd></div>
   </dl>
 </section>
 

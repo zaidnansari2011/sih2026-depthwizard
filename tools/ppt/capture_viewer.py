@@ -47,6 +47,13 @@ SHOTS = [
     (0, "height", "urban_height", (-32, 0.30, 0.46)),     # Omaha, height colouring
     (0, "sigma", "urban_sigma", (-32, 0.30, 0.46)),       # the confidence layer
     (5, "texture", "sikkim_town", None),                  # spare
+    # Deck D: the inundation tool on the Indian valley, the one disaster feature built.
+    # "flood" is the water level as a fraction of the scene's elevation range.
+    # The default framing left half the frame as empty grey below the ridge; azimuth 20
+    # looks up the valley so the water plane fills it.
+    # Re-framed 25 Sep for the true-scale viewer: at 1.0x the old (20, 0.42, 0.62) view saw
+    # mostly a flat blue sheet. Higher and closer, the shoreline follows the contours.
+    (2, "texture&flood=0.40", "sikkim_flood", (0, 0.70, 0.45)),
 ]
 
 CAM_HOOK = """
@@ -99,6 +106,18 @@ SHIM = """
         if (window.__frame && window.__frame(az, hf, df)) framed++;
         if (framed > 30) clearInterval(f);
       }, 120);
+    }
+    if (q.has('flood')) {
+      // Drives the real controls: press "Flood the valley", then move the slider.
+      setTimeout(() => {
+        const b = document.getElementById('flood'), w = document.getElementById('water');
+        if (!b || !w || b.style.display === 'none') return;
+        b.click();
+        const f = parseFloat(q.get('flood'));
+        const lo = parseFloat(w.min), hi = parseFloat(w.max);
+        w.value = String(Math.round(lo + (hi - lo) * f));
+        w.dispatchEvent(new Event('input', { bubbles: true }));
+      }, 5000);
     }
     setTimeout(() => { document.title = 'SHOT-READY'; }, 9000);
   }, 50);
@@ -156,9 +175,13 @@ def main() -> int:
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     print(f"  serving {STAGE} on :{port}")
 
+    # Optional names on the command line capture only those shots, so adding one capture
+    # does not silently re-shoot the stills an earlier deck was built from.
+    only = set(sys.argv[1:])
+    shots = [s for s in SHOTS if not only or s[2] in only]
     ok = 0
     try:
-        for idx, mode, name, framing in SHOTS:
+        for idx, mode, name, framing in shots:
             dest = OUT / f"{name}.png"
             url = f"http://127.0.0.1:{port}/index.html?scene={idx}&mode={mode}"
             if framing:
@@ -181,7 +204,7 @@ def main() -> int:
     finally:
         srv.shutdown()
 
-    print(f"\n  {ok}/{len(SHOTS)} captures have real content -> {OUT}")
+    print(f"\n  {ok}/{len(shots)} captures have real content -> {OUT}")
     return 0 if ok else 1
 
 

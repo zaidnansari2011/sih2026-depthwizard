@@ -290,7 +290,7 @@ def main() -> int:
     checks.append((saw.get("compass") == "none", "no north arrow where there is no north"))
     checks.append((parse_lonlat(saw.get("centre") or "") is None,
                    f"no position invented: centre reads {saw.get('centre')!r}"))
-    checks.append(("without georeferencing" in (saw.get("note") or ""),
+    checks.append(("not georeferenced" in (saw.get("note") or "").lower(),
                    f"says so in words: {(saw.get('note') or '')[:72]!r}..."))
     checks.append((saw.get("hover_row") == "none",
                    "cursor position hidden rather than blank"))

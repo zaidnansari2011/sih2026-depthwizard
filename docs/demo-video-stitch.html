@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>DepthWizard stitch script</title>
+<style>
+  @page { size: A4; margin: 14mm 14mm 14mm 14mm; }
+  :root { --ink:#14202b; --body:#33414d; --muted:#6b7884; --line:#dfe4e8; --navy:#0f2a3d;
+          --ember:#c2410c; --steel:#2f6690; --paper:#f6f8fa; --green:#15803d; }
+  * { box-sizing: border-box; }
+  body { font: 10.3pt/1.45 "Segoe UI", system-ui, sans-serif; color: var(--body); margin: 0; }
+  h1 { font-size: 19pt; color: var(--ink); margin: 0 0 1.5mm; }
+  h2 { font-size: 12.5pt; color: var(--ink); margin: 6mm 0 2.5mm; }
+  .sub { color: var(--muted); margin: 0 0 4mm; }
+  .box { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 3mm 4mm; margin-bottom: 3mm; }
+  .box b { color: var(--ink); }
+  table.seq { width: 100%; border-collapse: collapse; font-size: 9.3pt; }
+  .seq th { text-align: left; background: var(--navy); color: #fff; padding: 1.8mm 2.5mm; font-weight: 600; }
+  .seq td { padding: 1.7mm 2.5mm; border-bottom: 1px solid var(--line); vertical-align: top; }
+  .seq tr:nth-child(even) td { background: #fafbfc; }
+  code { font: 8.8pt Consolas, monospace; background: var(--paper); padding: 0 3px; border-radius: 3px; }
+  .tag { display: inline-block; font: 700 7.6pt/1 "Segoe UI", sans-serif; padding: 2px 5px; border-radius: 3px; color: #fff; }
+  .have { background: var(--green); } .you { background: var(--ember); }
+  .seg { border: 1px solid var(--line); border-radius: 8px; margin: 0 0 3.5mm; overflow: hidden; break-inside: avoid; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; background: var(--navy); color: #fff; padding: 2mm 4mm; }
+  .head h3 { font-size: 11pt; margin: 0; }
+  .head span { font: 600 9pt Consolas, monospace; color: #cfe0ee; }
+  .meta { padding: 2.2mm 4mm 0; font-size: 9.4pt; }
+  .meta p { margin: 0 0 1.4mm; }
+  .vo { margin: 1.5mm 4mm 3mm; padding: 2.2mm 4mm; border-left: 3px solid var(--ember); background: #fff7f2;
+        font: 12.3pt/1.5 Georgia, "Times New Roman", serif; color: var(--ink); }
+  .vo .at { display: block; font: 600 8.5pt "Segoe UI", sans-serif; color: var(--ember); margin: 1.6mm 0 .3mm; }
+  .vo .at:first-child { margin-top: 0; }
+  ol, ul { margin: 0; padding-left: 5mm; } li { margin-bottom: 1.4mm; }
+  .break { break-before: page; }
+  .foot { color: var(--muted); font-size: 8.3pt; margin-top: 4mm; }
+</style></head><body>
+
+<h1>DepthWizard demo video: stitch script</h1>
+<p class="sub">SIH26175 · Team Dev Up (129655) · about 2:50 · every clip is in <code>D:\sih2026\video\</code></p>
+
+<h2>1. What you still need to record</h2>
+<div class="box"><p style="margin:0"><b>Only the voice-over</b> (section 3). Every clip is already recorded.
+  Record each segment as its own take, in a quiet room, phone about 20 cm from your mouth; separate takes make it
+  easy to line each one up under its clip. Measuring and offline use are not shown as shots; both are mentioned in
+  the voice-over (segments 4 and 9).</p></div>
+
+<h2>2. The sequence</h2>
+<table class="seq">
+  <tr><th>#</th><th>Clip</th><th>Length</th><th>In final video</th><th>Shows</th></tr>
+  <tr><td>0</td><td><span class="tag have">HAVE</span> <code>c0_intro_card.mp4</code></td><td>9 s</td><td>0:00–0:09</td><td>Title card: DepthWizard, SIH26175, Team Dev Up</td></tr>
+  <tr><td>1</td><td><span class="tag have">HAVE</span> <code>c1_hook_sikkim.mp4</code></td><td>15 s</td><td>0:09–0:24</td><td>Orbit over the Sikkim valley, no panels</td></tr>
+  <tr><td>2</td><td><span class="tag have">HAVE</span> <code>c2_problem_omaha.mp4</code></td><td>20 s</td><td>0:24–0:44</td><td>Omaha flat from above, tilting into 3D</td></tr>
+  <tr><td>3</td><td><span class="tag have">HAVE</span> <code>c3_upload.mp4</code></td><td>47 s</td><td>0:44–1:31</td><td>Your upload, wait already cut out</td></tr>
+  <tr><td>4</td><td><span class="tag have">HAVE</span> <code>c4_flythrough_jacksonville.mp4</code></td><td>15 s</td><td>1:31–1:46</td><td>Low fly-through over the park</td></tr>
+  <tr><td>5</td><td><span class="tag have">HAVE</span> <code>c5a_confidence_jacksonville.mp4</code></td><td>12 s</td><td>1:46–1:58</td><td>Switches to "How sure we are" at ~4 s</td></tr>
+  <tr><td>6</td><td><span class="tag have">HAVE</span> <code>c5b_lidar_compare_omaha.mp4</code></td><td>14 s</td><td>1:58–2:12</td><td>Divider sweeps: our model vs real LiDAR</td></tr>
+  <tr><td>7</td><td><span class="tag have">HAVE</span> <code>c5c_where_wrong_omaha.mp4</code></td><td>10 s</td><td>2:12–2:22</td><td>"Where we're wrong" colours</td></tr>
+  <tr><td>8</td><td><span class="tag have">HAVE</span> <code>c6_flood_sikkim.mp4</code></td><td>18 s</td><td>2:22–2:40</td><td>Water rises to 1,143 m, readout climbs</td></tr>
+  <tr><td>9</td><td><span class="tag have">HAVE</span> <code>c8_end_card.mp4</code></td><td>8 s</td><td>2:40–2:48</td><td>Title, team, links, Maxar credit</td></tr>
+</table>
+<div class="box" style="margin-top:3mm"><b>Editing rules.</b> Cut straight from one clip to the next; a 0.3 s cross-fade is fine
+  everywhere. Lay each voice take so it starts about half a second into its clip. If a take is shorter than the
+  clip, trim the clip's end; if longer, slow the clip slightly or hold its last frame. Mute every clip's own audio.
+  Put "Sikkim imagery © Maxar Technologies, CC-BY-4.0" in the video description.</div>
+
+<h2 class="break">3. Clip by clip: what plays, and what you say</h2>
+
+<div class="seg"><div class="head"><h3>0 · Intro — c0_intro_card.mp4</h3><span>0:00–0:09</span></div>
+  <div class="meta"><p>Title card, fading in and out: Smart India Hackathon 2026 · ISRO · SIH26175, DepthWizard, the problem
+    statement's title, Team Dev Up, team ID 129655, theme Disaster Management.</p></div>
+  <div class="vo">Hello, we're Team Dev Up. This is DepthWizard — our solution to ISRO's problem statement on single-view
+    height estimation and 3D flythrough.</div></div>
+
+<div class="seg"><div class="head"><h3>1 · Hook — c1_hook_sikkim.mp4</h3><span>0:09–0:24</span></div>
+  <div class="meta"><p>Slow orbit and push-in over the Sikkim valley. No interface on screen.</p></div>
+  <div class="vo">One satellite image. No stereo pair, no laser survey, no new flight. This is Sikkim — rebuilt in 3D
+    from a single picture, by DepthWizard.</div></div>
+
+<div class="seg"><div class="head"><h3>2 · The problem — c2_problem_omaha.mp4</h3><span>0:24–0:44</span></div>
+  <div class="meta"><p>Opens straight down on Omaha (it looks like a flat photo), then tilts into 3D from about 4 s.</p></div>
+  <div class="vo">From above, a satellite image is flat. Height normally needs stereo imagery or LiDAR — expensive,
+    and impossible for the decades of archive India already holds. DepthWizard estimates height in metres from one
+    image, and tells you how sure it is.</div></div>
+
+<div class="seg"><div class="head"><h3>3 · Upload — c3_upload.mp4</h3><span>0:44–1:31</span></div>
+  <div class="meta"><p>0–7 s the sample window opens · 7–11 s a file is chosen from the computer · 11–20 s the progress bar
+    (the minute of processing is already cut) · 20–47 s the result opens and is explored, download links in the left panel.</p></div>
+  <div class="vo"><span class="at">0–11 s, while choosing</span>Anyone can try it. Pick one of our sample images, or any
+    image from your own computer — a GeoTIFF, a PNG or a JPG.
+    <span class="at">11–20 s, over the progress bar</span>It runs on an ordinary CPU server, with no GPU. This image takes
+    about a minute; we've cut the wait.
+    <span class="at">20–47 s, over the result</span>Because this file carries coordinates, the heights are anchored to open
+    Copernicus terrain — a real surface in metres above sea level, exactly what ISRO evaluates. Every result downloads as
+    standard GeoTIFFs: the DSM, height above ground, and a per-pixel uncertainty map, ready for QGIS — plus a quick-look
+    picture anyone can open.</div></div>
+
+<div class="seg"><div class="head"><h3>4 · Explore and measure — c4_flythrough_jacksonville.mp4</h3><span>1:31–1:46</span></div>
+  <div class="meta"><p>Low, sweeping fly-through over a park in Jacksonville, interface visible.</p></div>
+  <div class="vo">Fly through any scene freely. Click two points to measure the distance on the ground, the height
+    difference, and how sure the model is. It opens at true scale — nothing is stretched.</div></div>
+
+<div class="seg"><div class="head"><h3>5 · Confidence — c5a_confidence_jacksonville.mp4</h3><span>1:46–1:58</span></div>
+  <div class="meta"><p>Satellite view, switching to the "How sure we are" colours at about 4 s.</p></div>
+  <div class="vo">Every height comes with a confidence. Warm colours are where the model is unsure — and that
+    confidence is checked against real LiDAR.</div></div>
+
+<div class="seg"><div class="head"><h3>6 · Checked against LiDAR — c5b_lidar_compare_omaha.mp4</h3><span>1:58–2:12</span></div>
+  <div class="meta"><p>The divider sweeps left and right: our model on one side, the real laser survey on the other.</p></div>
+  <div class="vo">Drag to compare with real airborne LiDAR. On regions held out from training, we're within 3.5 metres
+    per building; the published figure over Asia is 5.9.</div></div>
+
+<div class="seg"><div class="head"><h3>7 · Where we're wrong — c5c_where_wrong_omaha.mp4</h3><span>2:12–2:22</span></div>
+  <div class="meta"><p>Error colours on Omaha: blue is too low, red too high.</p></div>
+  <div class="vo">And we show where we're wrong. Blue is too low — very tall towers are our known weakness, and the
+    viewer says so.</div></div>
+
+<div class="seg"><div class="head"><h3>8 · Disaster use case — c6_flood_sikkim.mp4</h3><span>2:22–2:40</span></div>
+  <div class="meta"><p>"Flood the valley" is on; the water rises for about 14 s to 1,143 m, then holds on the readout.</p></div>
+  <div class="vo">Built for disaster management. Raise the water in a Sikkim valley: at 1,143 metres, a fifth of the
+    valley and 44 buildings are under water — and buildings too close to call are flagged.</div></div>
+
+<div class="seg"><div class="head"><h3>9 · Close — c8_end_card.mp4</h3><span>2:40–2:48</span></div>
+  <div class="meta"><p>8 s; hold the last frame a few seconds if this take runs long. Title card: DepthWizard, Team Dev Up, SIH26175, team ID 129655, live / docs / code links, Maxar credit.</p></div>
+  <div class="vo">No internet? The whole viewer also ships as one HTML file that runs offline. DepthWizard — height
+    from one satellite image, with the evidence to trust it.</div></div>
+
+<p class="foot">Every number spoken is on screen in the viewer or on deck slide 7: calibration and 3.5 m per building
+  (held-out DFC2019), 5.9 m published peer, 1,143 m / 20.5 % / 44 buildings (live flood tool). Do not add others.</p>
+</body></html>

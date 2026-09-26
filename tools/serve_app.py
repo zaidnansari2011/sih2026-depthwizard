@@ -159,6 +159,39 @@ def verify_decodes(path: Path) -> None:
         pass                                   # same reasoning: not PIL's to judge
 
 
+NATIVE_GSD = 0.3          # infer.py --native-gsd: the scale the checkpoint was trained at
+MAX_ZOOM = 7              # infer.py caps zoom at tile // (5 * PATCH) = 518 // 70
+
+
+def input_zoom(path: Path) -> int:
+    """The auto-zoom infer.py will apply to this file, by the same rule.
+
+    A 0.6 m GeoTIFF -- ISRO's evaluation resolution -- is upsampled 2x to the 0.3 m the
+    model learned, which is 4x the pixels to process. The time estimate and the size cap
+    used to ignore that: measured 25 Sep on the live site, a 1024 x 1024 0.6 m sample was
+    promised 60 s and took 155 s, and an image near the cap would have been accepted and
+    then run into the timeout ten minutes later instead of being refused up front.
+    """
+    if path.suffix.lower() not in (".tif", ".tiff"):
+        return 1
+    try:
+        import math
+        import rasterio
+        with rasterio.open(path) as src:
+            if not src.crs or not src.transform:
+                return 1
+            if src.crs.is_geographic:
+                lat = (src.bounds.bottom + src.bounds.top) / 2
+                gsd = abs(src.transform.a) * 111320.0 * math.cos(math.radians(lat))
+            elif src.crs.linear_units_factor[1] == 1.0:
+                gsd = abs(src.transform.a)
+            else:
+                return 1
+        return max(1, min(MAX_ZOOM, int(round(gsd / NATIVE_GSD))))
+    except Exception:
+        return 1
+
+
 def estimate_seconds(mpx: float, quality: str) -> float:
     """Projected wall time for an upload of this size, from measured constants."""
     per_mpx = SEC_PER_MPX * (TTA_FACTOR if quality == "accurate" else 1.0)
@@ -303,6 +336,9 @@ def plain_failure(raw: str) -> str:
 # above-ground layer is an nDSM. Those are the names on the files a judge opens in QGIS;
 # `.height.tif` is our working name for the same raster and stays as it is on disk.
 RESULT_KINDS: dict[str, tuple[str, str, str]] = {
+    # First, because it is the one file anyone can open. See depthwizard/preview.py.
+    "preview": (".preview.png", "image/png",
+                "colour quick look of the height and uncertainty maps -- a picture, not data"),
     "dsm":     (".dsm.tif", "image/tiff",
                 "absolute DSM -- metres above the geoid"),
     "ndsm":    (".height.tif", "image/tiff",
@@ -388,6 +424,13 @@ def result_readme(job_id: str, job: dict) -> str:
         lines.append(f"  {name:<34} {what}")
     lines += [
         "",
+        "OPENING THE FILES",
+        "  The .tif files are elevation rasters: 32-bit values in metres. Open them in",
+        "  QGIS, ArcGIS or any GIS tool. Ordinary photo viewers (Windows Photos, for one)",
+        "  read them as 0 = black and 1 = white, so anything taller than a metre shows as",
+        "  white. The data is fine; the viewer is not built for it. For a look without GIS",
+        "  software, open the _preview.png.",
+        "",
         "REFERENCE SYSTEM",
         f"  horizontal CRS   {crs}",
         f"  horizontal units {units}",
@@ -430,7 +473,7 @@ def download_name(job: dict, job_id: str, kind: str) -> str:
     if kind == "ndsm" and not (OUT / f"{job_id}.dsm.tif").exists():
         # No absolute anchor, so this raster is the problem statement's rDSM.
         return f"{stem}_rdsm.tif"
-    tail = {"dsm": "_dsm.tif", "ndsm": "_ndsm.tif", "sigma": "_sigma.tif",
+    tail = {"preview": "_preview.png", "dsm": "_dsm.tif", "ndsm": "_ndsm.tif", "sigma": "_sigma.tif",
             "terrain": "_terrain_dem.tif", "summary": "_summary.json",
             "readme": "_readme.txt"}[kind]
     return f"{stem}{tail}"
@@ -507,6 +550,22 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             if e.returncode != 0:
                 out = e.stderr or e.stdout or ""
                 raise JobFailed(plain_failure(out), out)
+
+            # The quick look. Best effort: a picture that fails to draw must not cost the
+            # visitor the rasters it describes.
+            try:
+                if str(ROOT) not in sys.path:      # run as tools/serve_app.py
+                    sys.path.insert(0, str(ROOT))
+                from depthwizard.preview import make_preview
+                make_preview(f"{out_prefix}.height.tif", f"{out_prefix}.sigma.tif",
+                             f"{out_prefix}.preview.png",
+                             heading=f"{j.get('name') or stem}  -  " + (
+                                 "heights above ground; the DSM download adds the terrain"
+                                 if georef else
+                                 "relative heights (rDSM), no sea-level reference"))
+            except Exception as e:                         # noqa: BLE001
+                print(f"  preview skipped for {job_id}: {type(e).__name__}: {e}",
+                      file=sys.stderr)
 
             reap_scenes()
             j.update(state="done", step="ready", pct=100,
@@ -736,15 +795,19 @@ class Handler(SimpleHTTPRequestHandler):
             return reject(400, str(exc))
 
         mpx = (iw * ih) / 1e6
-        est = estimate_seconds(mpx, quality)
+        zoom = input_zoom(dest)
+        work = mpx * zoom * zoom          # megapixels the model actually processes
+        est = estimate_seconds(work, quality)
         cap = max_megapixels(quality, ARGS.timeout)
-        if mpx > cap:
-            side = int((cap * 1e6) ** 0.5)
+        if work > cap:
+            side = int((cap * 1e6) ** 0.5 / zoom)
+            why = (f", processed at the model's {NATIVE_GSD} m scale ({zoom}x upsampling, "
+                   f"{work:.0f} megapixels of work)" if zoom > 1 else "")
             return reject(413,
-                          f"{iw}x{ih} is {mpx:.0f} megapixels, which would take about "
+                          f"{iw}x{ih} is {mpx:.0f} megapixels{why}, which would take about "
                           f"{human_time(est)} on this CPU box -- past the "
                           f"{human_time(ARGS.timeout)} limit. Crop it to about "
-                          f"{side}x{side} ({cap:.0f} Mpx) or smaller and try again. "
+                          f"{side}x{side} or smaller and try again. "
                           f"Satellite strips are often huge even when the file is small.")
 
         with STATE_LOCK:
