@@ -200,13 +200,15 @@ def slide_title(s) -> None:
     # Blank, the form fits at 24 pt and double spacing; filled, the title wraps and pushes
     # the last fields off the slide, so size and spacing come down to fit. Left-aligned as
     # in the reference: justified, the wrapped title line opens wide gaps.
+    # With "TITLE PAGE" gone, the list sits 1 in higher, level with the top of the art.
+    box.top = box.top - Inches(1.0)
     for p in box.text_frame.paragraphs:
         p.alignment = PP_ALIGN.LEFT
         p.line_spacing = 1.5
         for r in p.runs:
             r.font.size = Pt(20)
 
-    tf = para(s, X0, 6.90, 6.40, 0.32,
+    tf = para(s, X0, 5.95, 6.40, 0.32,
               [("LIVE  ", {"colour": EMBER, "font": COND, "size": 9.4}),
                ("project5.zaidansari.tech", {"colour": STEEL, "font": SANS_B}),
                ("      DOCS  ", {"colour": EMBER, "font": COND, "size": 9.4}),
