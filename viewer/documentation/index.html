@@ -1,0 +1,682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DepthWizard — Project Documentation</title>
+<meta name="description" content="How DepthWizard turns one satellite image into a measurable 3D surface: data, model, training, evaluation, results, failures and deployment. SIH 2026, SIH26175.">
+<style>
+:root{
+  --navy:#0e2a3f; --deep:#163f5c; --steel:#2e6e92; --sky:#7fb0cb; --sand:#d89e3c; --ember:#c1440e;
+  --ink:#141b22; --body:#2a3540; --slate:#55636e; --line:#d5dfe7; --mist:#ecf1f5; --paper:#f7fafc;
+  --good:#1e8e5a; --bad:#c0392b;
+  --side:272px; --measure:760px;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:24px}
+body{margin:0;background:#fff;color:var(--body);font:16px/1.62 "Segoe UI",system-ui,-apple-system,"Helvetica Neue",Arial,sans-serif;-webkit-font-smoothing:antialiased}
+a{color:var(--steel);text-underline-offset:2px}
+a:hover{color:var(--ember)}
+code,kbd{font:0.88em/1.4 Consolas,"SFMono-Regular",Menlo,monospace;background:var(--mist);padding:1px 5px;border-radius:4px;color:var(--ink)}
+h1,h2,h3,h4{color:var(--ink);line-height:1.25;margin:0}
+h2{font-size:1.72rem;margin:0 0 .35rem;letter-spacing:-.01em}
+h3{font-size:1.18rem;margin:2rem 0 .6rem}
+h4{font-size:1rem;margin:1.4rem 0 .4rem}
+p{margin:.7rem 0}
+ul,ol{padding-left:1.25rem;margin:.6rem 0}
+li{margin:.3rem 0}
+strong{color:var(--ink)}
+.ramp{display:flex;height:6px}.ramp i{flex:1}
+.ramp i:nth-child(1){background:var(--navy)}.ramp i:nth-child(2){background:var(--deep)}.ramp i:nth-child(3){background:var(--steel)}
+.ramp i:nth-child(4){background:var(--sky)}.ramp i:nth-child(5){background:var(--sand)}.ramp i:nth-child(6){background:var(--ember)}
+
+/* ---------- layout */
+.wrap{display:flex;align-items:flex-start}
+nav.side{position:sticky;top:0;flex:0 0 var(--side);height:100vh;overflow-y:auto;background:var(--paper);border-right:1px solid var(--line);padding:22px 18px 40px}
+nav.side .brand{display:block;text-decoration:none;font-weight:800;font-size:1.25rem;letter-spacing:.02em;color:var(--navy)}
+nav.side .brand span{color:var(--ember)}
+nav.side .sub{font-size:.8rem;color:var(--slate);margin:.15rem 0 1.1rem}
+nav.side ol{list-style:none;padding:0;margin:0;counter-reset:s}
+nav.side li{margin:0}
+nav.side a{display:block;padding:5px 10px;border-radius:6px;color:var(--body);text-decoration:none;font-size:.9rem;border-left:3px solid transparent}
+nav.side a:hover{background:var(--mist);color:var(--ink)}
+nav.side a.on{background:#e3edf4;color:var(--navy);font-weight:600;border-left-color:var(--ember)}
+nav.side .grp{font-size:.7rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;color:var(--slate);margin:1rem 10px .3rem}
+nav.side .links{margin-top:1.4rem;display:grid;gap:6px}
+nav.side .links a{border:1px solid var(--line);background:#fff;font-size:.85rem}
+main{flex:1;min-width:0}
+section{padding:56px 48px 8px;max-width:calc(var(--measure) + 96px)}
+section.wide{max-width:1100px}
+.kicker{font-size:.74rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ember);margin-bottom:.35rem}
+.lede{font-size:1.08rem;color:var(--slate);margin-top:.2rem}
+.topbar{display:none}
+
+/* ---------- hero */
+header.hero{background:var(--navy);color:#dce8f0;padding:56px 48px 44px}
+header.hero h1{color:#fff;font-size:2.7rem;letter-spacing:.01em;font-weight:800}
+header.hero h1 span{color:var(--sand)}
+header.hero .tag{font-size:1.22rem;color:#fff;margin:.45rem 0 .2rem}
+header.hero .meta{font-size:.9rem;color:#9fbdd0}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin:30px 0 26px;max-width:1000px}
+.stat{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px}
+.stat b{display:block;font-size:1.9rem;color:var(--sand);line-height:1.1}
+.stat small{font-size:.83rem;color:#c4d3de;line-height:1.35;display:block;margin-top:4px}
+.btns{display:flex;flex-wrap:wrap;gap:10px}
+.btn{display:inline-block;padding:10px 16px;border-radius:8px;text-decoration:none;font-weight:600;font-size:.93rem;border:1px solid rgba(255,255,255,.3);color:#fff}
+.btn.primary{background:var(--ember);border-color:var(--ember)}
+.btn:hover{color:#fff;filter:brightness(1.1)}
+
+/* ---------- components */
+.callout{border-left:4px solid var(--steel);background:var(--paper);padding:12px 16px;border-radius:0 8px 8px 0;margin:1rem 0}
+.callout.warn{border-left-color:var(--ember);background:#fdf4ef}
+.callout.good{border-left-color:var(--good);background:#eef8f2}
+.callout p:first-child{margin-top:0}.callout p:last-child{margin-bottom:0}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:1rem 0}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin:1rem 0}
+.card{border:1px solid var(--line);border-radius:10px;padding:14px 16px;background:#fff}
+.card h4{margin:0 0 .3rem}
+.card p{margin:.3rem 0 0;font-size:.94rem}
+.card .pill{display:inline-block;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 8px;border-radius:99px;background:var(--mist);color:var(--deep);margin-bottom:.4rem}
+.pill.red{background:#fbe6dd;color:var(--ember)}.pill.green{background:#e0f2e8;color:var(--good)}
+.tablewrap{overflow-x:auto;margin:1rem 0;border:1px solid var(--line);border-radius:10px}
+table{border-collapse:collapse;width:100%;font-size:.92rem;background:#fff}
+th,td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{background:var(--mist);color:var(--ink);font-weight:600;font-size:.84rem;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tr.hl td{background:#fdf4ef}
+tr.ship td{background:#eef5fa;font-weight:600}
+.yes{color:var(--good);font-weight:700}.no{color:var(--bad);font-weight:700}
+figure{margin:1.3rem 0}
+figure img{display:block;width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff;cursor:zoom-in}
+figcaption{font-size:.86rem;color:var(--slate);margin-top:.45rem}
+.flow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin:1.2rem 0}
+.flow .st{flex:1 1 130px;background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--steel);border-radius:8px;padding:10px 12px;font-size:.86rem}
+.flow .st b{display:block;color:var(--ink);font-size:.92rem;margin-bottom:2px}
+.flow .st:last-child{border-top-color:var(--ember)}
+.flow .ar{align-self:center;color:var(--sky);font-size:1.2rem}
+.timeline{list-style:none;padding:0;margin:1rem 0;border-left:2px solid var(--line)}
+.timeline li{position:relative;padding:0 0 1rem 22px;margin:0}
+.timeline li::before{content:"";position:absolute;left:-7px;top:6px;width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid var(--steel)}
+.timeline li.key::before{border-color:var(--ember)}
+.timeline .d{font-weight:700;color:var(--ink);font-size:.9rem;display:block}
+.dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;margin:1rem 0;font-size:.94rem}
+.dl dt{font-weight:600;color:var(--ink)}.dl dd{margin:0}
+footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px solid var(--line);margin-top:48px}
+.toTop{position:fixed;right:18px;bottom:18px;background:var(--navy);color:#fff;border-radius:99px;padding:8px 13px;font-size:.85rem;text-decoration:none;opacity:0;pointer-events:none;transition:opacity .2s}
+.toTop.show{opacity:.9;pointer-events:auto}
+.lb{position:fixed;inset:0;background:rgba(10,20,30,.88);display:none;align-items:center;justify-content:center;z-index:50;padding:24px;cursor:zoom-out}
+.lb.show{display:flex}.lb img{max-width:100%;max-height:100%;border-radius:6px;background:#fff}
+
+/* ---------- small screens */
+@media (max-width:980px){
+  nav.side{position:fixed;left:0;top:0;z-index:40;transform:translateX(-100%);transition:transform .2s}
+  nav.side.open{transform:none;box-shadow:0 0 40px rgba(0,0,0,.25)}
+  .topbar{display:flex;position:sticky;top:0;z-index:30;align-items:center;gap:12px;background:var(--navy);color:#fff;padding:10px 16px}
+  .topbar button{background:none;border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:6px;padding:5px 10px;font:inherit;font-size:.9rem}
+  .topbar b{font-size:1rem}.topbar b span{color:var(--sand)}
+  section,header.hero,footer{padding-left:16px;padding-right:16px}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid2,.grid3{grid-template-columns:1fr}
+  header.hero h1{font-size:2.1rem}
+}
+@media print{nav.side,.topbar,.toTop{display:none}section{padding:18px 0;max-width:none}header.hero{padding:18px}}
+</style>
+</head>
+<body>
+
+<div class="topbar"><button id="menu" aria-controls="side" aria-expanded="false">☰ Contents</button><b>DEPTH<span>WIZARD</span> docs</b></div>
+
+<div class="wrap">
+<nav class="side" id="side" aria-label="Contents">
+  <a class="brand" href="#top">DEPTH<span>WIZARD</span></a>
+  <div class="sub">Project documentation · SIH26175</div>
+  <div class="grp">Overview</div>
+  <ol>
+    <li><a href="#overview">What it is</a></li>
+    <li><a href="#problem">The problem</a></li>
+    <li><a href="#pipeline">How it works</a></li>
+  </ol>
+  <div class="grp">Building it</div>
+  <ol>
+    <li><a href="#data">Datasets</a></li>
+    <li><a href="#model">Model</a></li>
+    <li><a href="#training">Training journal</a></li>
+    <li><a href="#evaluation">How we evaluate</a></li>
+  </ol>
+  <div class="grp">What we found</div>
+  <ol>
+    <li><a href="#results">Results</a></li>
+    <li><a href="#failures">Where it fails</a></li>
+    <li><a href="#scale">Absolute height</a></li>
+    <li><a href="#negative">What didn't work</a></li>
+  </ol>
+  <div class="grp">The product</div>
+  <ol>
+    <li><a href="#viewer">3D viewer</a></li>
+    <li><a href="#deployment">Deployment &amp; API</a></li>
+    <li><a href="#testing">Testing</a></li>
+  </ol>
+  <div class="grp">Record</div>
+  <ol>
+    <li><a href="#corrections">Corrections</a></li>
+    <li><a href="#timeline">Timeline</a></li>
+    <li><a href="#references">References &amp; credits</a></li>
+  </ol>
+  <div class="links">
+    <a href="/">▶ Open the live 3D viewer</a>
+    <a href="https://github.com/zaidnansari2011/sih2026-depthwizard">⌥ Source code on GitHub</a>
+  </div>
+</nav>
+
+<main id="top">
+
+<header class="hero">
+  <div class="kicker" style="color:var(--sand)">Smart India Hackathon 2026 · SIH26175 · Team Dev Up</div>
+  <h1>DEPTH<span>WIZARD</span></h1>
+  <p class="tag">One satellite image in, a measurable 3D surface out.</p>
+  <p class="meta">Single-view height estimation and 3D flythrough, for ISRO’s Space Applications Centre. Theme: Disaster Management. This page is the project’s full record: what we built, how, on which data, how it was measured, and where it still fails.</p>
+  <div class="stats">
+    <div class="stat"><b>3.464 m</b><small>per-building RMSE against airborne LiDAR, vs 5.9 m published for Asia</small></div>
+    <div class="stat"><b>6.008 m</b><small>whole-tile RMSE on 80 held-out tiles from unseen regions</small></div>
+    <div class="stat"><b>0.063</b><small>expected calibration error of the per-pixel uncertainty</small></div>
+    <div class="stat"><b>536 ms</b><small>per tile on a CPU; no GPU needed to run it</small></div>
+  </div>
+  <div class="btns">
+    <a class="btn primary" href="/">Open the live viewer</a>
+    <a class="btn" href="https://github.com/zaidnansari2011/sih2026-depthwizard">Source code</a>
+    <a class="btn" href="https://github.com/zaidnansari2011/sih2026-depthwizard/blob/master/docs/evidence-pack.md">Full evidence pack</a>
+  </div>
+</header>
+<div class="ramp" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+
+<!-- ================================================================ overview -->
+<section id="overview">
+  <div class="kicker">01 · Overview</div>
+  <h2>What DepthWizard is</h2>
+  <p class="lede">An end-to-end system that estimates the height of every pixel in a single optical satellite image, says how sure it is, and turns the result into a 3D scene you can fly through and measure.</p>
+  <p>Height from space normally needs a stereo pair, LiDAR or radar interferometry: a second sensor, a second pass, or an aircraft. None of these can be flown into the past, so decades of single-view archive imagery carry no height at all. DepthWizard works from the one image you already have.</p>
+  <div class="grid3">
+    <div class="card"><span class="pill">In</span><h4>One image</h4><p>A GeoTIFF with coordinates, or a plain PNG / JPG with none. Resolution is read from the file and normalised automatically.</p></div>
+    <div class="card"><span class="pill">Out</span><h4>Height + confidence</h4><p>A digital surface model in a standard geospatial format, and beside every height a per-pixel uncertainty (σ) in metres.</p></div>
+    <div class="card"><span class="pill">Use</span><h4>A 3D scene</h4><p>A browser flythrough with measuring, flood, compare-against-LiDAR and error-map tools. It also ships as one HTML file that opens offline.</p></div>
+  </div>
+  <div class="callout">
+    <p><strong>How to read this page.</strong> Every number here is measured on the configuration we actually ship (called <em>run07</em>, with test-time augmentation and resolution fusion) and traces to a file in the repository. Where a claim failed, it says so. The per-section sources are in the <a href="https://github.com/zaidnansari2011/sih2026-depthwizard/tree/master/docs">docs folder</a>.</p>
+  </div>
+</section>
+
+<!-- ================================================================ problem -->
+<section id="problem">
+  <div class="kicker">02 · The problem</div>
+  <h2>What ISRO asked for</h2>
+  <p>Problem statement SIH26175, from the Indian Space Research Organisation, asks for a pipeline that turns single-view optical RGB remote-sensing images into high-precision elevation maps, then projects the image onto a navigable 3D terrain.</p>
+  <div class="callout"><p>“Accurate Digital Elevation Models (DEMs) and Digital Surface Models (DSMs) are fundamental to urban planning, disaster management, and military reconnaissance. Traditionally, elevation data is acquired through stereo-imaging pairs, LiDAR, or Interferometric Synthetic Aperture Radar (InSAR). These approaches can be cost-prohibitive, dependent on specific sensor availability, and computationally intensive.”</p><p style="font-size:.86rem;color:var(--slate)">— SIH26175 background, verbatim</p></div>
+  <h3>The three milestones</h3>
+  <div class="dl">
+    <dt>Elevation extraction</dt><dd>Use a pre-trained monocular depth model to recover structure from one image.</dd>
+    <dt>Scale calibration</dt><dd>Convert relative depth to absolute metric height, using a low-resolution DEM or a few ground control points when the image is georeferenced.</dd>
+    <dt>Visualisation layer</dt><dd>An immersive, navigable 3D environment, deployable as a standalone application.</dd>
+  </div>
+  <h3>How it is scored</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Weight</th><th>Criterion</th></tr>
+    <tr><td class="n">50%</td><td><strong>DSM accuracy and validation</strong> — RMSE, MAE and correlation against LiDAR, including stability across urban, sparse, hilly and forested landscapes.</td></tr>
+    <tr><td class="n">50%</td><td><strong>Visualisation</strong> — projection accuracy, visual fidelity, navigability, interface, stability and standalone deployment.</td></tr>
+  </table></div>
+  <p>Two things in that brief shaped everything. First, <strong>“stable across landscapes”</strong>: one flattering average would not answer it, so every result below is broken down by terrain. Second, <strong>half the marks are the front end</strong>, so the viewer is treated as a product, not a demo.</p>
+  <h3>Why it is hard</h3>
+  <ul>
+    <li><strong>Depth models see the world from the ground.</strong> Foundation models are trained on everyday photos and predict <em>relative</em> depth. Looking straight down from orbit, they get shapes but not metres.</li>
+    <li><strong>One image is ambiguous.</strong> Many 3D scenes produce the same picture, so a single height number implies a certainty the model does not have.</li>
+    <li><strong>Tall buildings are rare.</strong> In our validation set the median building is 4.22 m tall; the few towers dominate the error.</li>
+  </ul>
+</section>
+
+<!-- ================================================================ pipeline -->
+<section id="pipeline" class="wide">
+  <div class="kicker">03 · How it works</div>
+  <h2>From one image to a checked surface</h2>
+  <div class="flow">
+    <div class="st"><b>Input</b>GeoTIFF with metadata, or a plain PNG / JPG</div><div class="ar">→</div>
+    <div class="st"><b>Normalise</b>Read ground sample distance; auto-zoom to the 0.3 m scale the model was trained at</div><div class="ar">→</div>
+    <div class="st"><b>Model</b>Depth Anything V2 (ViT encoder + DPT neck), fine-tuned on LiDAR</div><div class="ar">→</div>
+    <div class="st"><b>Twin head</b>Height μ and log-variance σ² for every pixel</div><div class="ar">→</div>
+    <div class="st"><b>Post-process</b>518 px sliding window, cosine blending, 8-way TTA, resolution fusion</div><div class="ar">→</div>
+    <div class="st"><b>Anchor</b>Copernicus GLO-30 terrain, or ground control points</div><div class="ar">→</div>
+    <div class="st"><b>Output</b>DSM / nDSM GeoTIFF, σ map, 3D scene</div>
+  </div>
+  <p>Heights are regressed in metres above ground. When the input carries coordinates, the ground itself comes from Copernicus GLO-30, and the two together give an absolute surface model referenced to sea level. When it carries none, the output is a relative surface model, which is the problem statement’s own second branch.</p>
+  <figure><img src="img/error_map.jpg" alt="Four panels: satellite image, LiDAR truth, our estimate, signed error" loading="lazy">
+    <figcaption>Input, truth, output and error on the <em>median</em> urban tile (Omaha, OMA_288_042), chosen as the median rather than the best. The dark blue block in the error panel is a 72.8 m building we call 14.1 m: the tall-building failure described in <a href="#failures">Where it fails</a>.</figcaption></figure>
+</section>
+
+<!-- ================================================================ data -->
+<section id="data" class="wide">
+  <div class="kicker">04 · Datasets</div>
+  <h2>What we trained and tested on</h2>
+  <div class="tablewrap"><table>
+    <tr><th>Dataset</th><th>What it is</th><th>Role</th><th>Licence</th></tr>
+    <tr><td><strong>DFC2019 Track 1</strong> (US3D)</td><td>2,783 WorldView-3 RGB tiles of 1024×1024 at 0.3 m over Jacksonville and Omaha, each with an airborne-LiDAR height-above-ground map and a class map. 108 regions.</td><td>Training and the main validation set</td><td>IEEE DataPort, free account</td></tr>
+    <tr><td><strong>GAMUS</strong></td><td>ISRO’s recommended dataset. 0.33 m tiles with LiDAR nDSM over Washington DC, Philadelphia and New York.</td><td>Second training corpus; a held-out DC block for cross-domain testing</td><td>CC-BY-4.0</td></tr>
+    <tr><td><strong>Maxar Open Data</strong>, Sikkim</td><td>0.31 m imagery over the Teesta valley, India, from Maxar’s India-Floods-Oct-2023 event (acquired 14 Mar 2022).</td><td>Indian and hilly-terrain demonstration; no LiDAR exists here</td><td>CC-BY-4.0, © Maxar Technologies</td></tr>
+    <tr><td><strong>Copernicus GLO-30</strong></td><td>Free 30 m global elevation model.</td><td>Absolute-height anchor and the terrain under the Sikkim scenes</td><td>Open, no authentication</td></tr>
+    <tr><td><strong>Google Open Buildings 2.5D</strong></td><td>Building footprints and heights derived from Sentinel-2 at about 4 m effective resolution.</td><td>A cross-check over India, never used as truth; building outlines for the flood tool</td><td>Open</td></tr>
+  </table></div>
+
+  <h3>DFC2019: the details that mattered</h3>
+  <ul>
+    <li><strong>The tiles carry no georeferencing.</strong> The coordinate system is stripped and the resolution is not stored, so it is passed explicitly as 0.3 m. This is why the DFC demo scenes cannot show sea level, and say so.</li>
+    <li><strong>Crops are 518 px, not 256.</strong> 518 = 14 × 37 is the backbone’s native size; a 256 crop silently comes back as 252. A stride of 506 tiles each 1024 image exactly 2×2 with 12 px overlap, and labels are never resampled.</li>
+    <li><strong>The split is region-disjoint</strong>: 76 train / 16 validation / 16 test regions, seed 1337. A random tile split leaks, because neighbouring tiles share buildings, lighting and architecture.</li>
+    <li><strong>Tall buildings are scarce.</strong> Training holds 166 buildings above 30 m, the tallest 82.8 m. Validation reaches 155.3 m.</li>
+    <li><strong>The test split is held back</strong> and is not scored until the very end. It is also easier: it contains exactly one building above 30 m, which will flatter any number quoted from it.</li>
+  </ul>
+
+  <h3>GAMUS: what was usable</h3>
+  <ul>
+    <li>8,724 height tiles ship, but only 6,557 have imagery. <strong>All 2,167 New York tiles are height-only</strong> and cannot train an image model.</li>
+    <li>Voids are a −5 sentinel value, not NaN, and class 3 is building while class 6 is tree. Both would silently corrupt training if read naively.</li>
+    <li><strong>GAMUS’s own splits leak spatially</strong> (we counted 900 adjacent test/train pairs), so we made our own: DC grid columns 2–48 train, column 49 discarded as a <strong>338 m buffer</strong>, columns 50–67 held out (317 tiles).</li>
+    <li>6,204 tiles were streamed download → shard → delete into 192 training shards, alongside DFC2019’s 61. GAMUS carries roughly 36× DFC2019’s supply of buildings above 20 m.</li>
+  </ul>
+  <div class="callout warn"><p><strong>No Indian LiDAR exists in any open dataset.</strong> Everything over India is therefore reported as agreement with another model (Google Open Buildings), not as accuracy. See <a href="#results-india">Results over India</a>.</p></div>
+</section>
+
+<!-- ================================================================ model -->
+<section id="model">
+  <div class="kicker">05 · Model</div>
+  <h2>The network and how it learns</h2>
+  <h3>Backbone</h3>
+  <p><strong>Depth Anything V2 Small</strong>: a ViT encoder with a DPT decoder, 24.8 M parameters, Apache-2.0. The Base and Large variants are CC-BY-NC and could not go into a deliverable. The problem statement asks for a pre-trained monocular depth backbone; used zero-shot on satellite images it correlates with height (r ≈ 0.43) but compresses the range. Fine-tuning on metric LiDAR labels is what fixes that.</p>
+  <h3>A twin head: height and uncertainty</h3>
+  <p>The decoder ends in two outputs per pixel: the height <strong>μ</strong>, and a <strong>log-variance</strong> that becomes σ. The mean branch reuses the pretrained final convolution; the variance branch is a new zero-initialised 1×1 convolution. Output is scaled by the training set’s 95th-percentile height (13.22 m) so the network works in a sensible range.</p>
+  <h3>Loss</h3>
+  <ul>
+    <li><strong>Heteroscedastic Gaussian negative log-likelihood</strong>: ½(log σ² + (y − μ)² / σ²), with the log-variance clamped to [−7, 7]. The model is rewarded for being confident only where it is right.</li>
+    <li><strong>β-NLL</strong> (Seitzer et al., 2022) at β = 0.5, which stops plain NLL from learning to ignore hard pixels by inflating their σ.</li>
+    <li><strong>Gradient matching</strong> at weight 0.5 to keep edges, and 200 steps of plain MSE warm-up.</li>
+  </ul>
+  <h3>Training set-up</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Setting</th><th>Value</th></tr>
+    <tr><td>Optimiser</td><td>AdamW (0.9, 0.999), weight decay 0.01</td></tr>
+    <tr><td>Learning rate</td><td>backbone 5e-6, head 50× that; 5% linear warm-up, then linear decay</td></tr>
+    <tr><td>Batch</td><td>8 crops of 518×518, gradient clip 1.0, seed 1337</td></tr>
+    <tr><td>Precision</td><td>bf16 on Ampere</td></tr>
+    <tr><td>Augmentation</td><td>the 8 flips and rotations (D4), brightness and contrast ±0.2, gamma ±0.15, Gaussian noise 0.01</td></tr>
+    <tr><td>Hardware</td><td>one consumer <strong>RTX 3060, 12 GB</strong></td></tr>
+  </table></div>
+  <div class="callout"><p><strong>Keeping a consumer GPU alive.</strong> Unmanaged, the RTX 3060 reached 91 °C and throttled itself. A fan curve plus a temperature-first power limit held it at a mean of 80 °C, and <code>train.py</code> carries its own thermal governor as a backstop that pauses training above 87 °C. The shipped model’s final training stage peaked at 83 °C with no pauses.</p></div>
+</section>
+
+<!-- ================================================================ training -->
+<section id="training" class="wide">
+  <div class="kicker">06 · Training journal</div>
+  <h2>Every run, including the ones that failed</h2>
+  <p>Whole-tile RMSE is scored on the same 80 validation tiles throughout. Lower is better. Per-building RMSE is the headline metric (see <a href="#evaluation">How we evaluate</a>).</p>
+  <div class="tablewrap"><table>
+    <tr><th>Run</th><th>What changed</th><th class="n">Whole-tile</th><th class="n">Per-building</th><th class="n">ECE</th><th>Outcome</th></tr>
+    <tr><td>Zero-shot</td><td>Depth Anything V2 untouched, with the best single global scale-and-offset (the deployable baseline)</td><td class="n">9.308 m</td><td class="n">—</td><td class="n">—</td><td>The bar to beat</td></tr>
+    <tr><td>run01</td><td>Regression head, NLL + gradient matching, β = 0</td><td class="n">6.811 m</td><td class="n">—</td><td class="n">0.163</td><td>Stopped after epoch 5. Diagnosed: plain NLL let the model give up on buildings</td></tr>
+    <tr><td>run02</td><td>Same recipe with β-NLL (β = 0.5); 12 epochs, 11,532 steps, ~130 min</td><td class="n">6.454 m</td><td class="n">3.771 m</td><td class="n">0.083</td><td>Best single-dataset model. 30.7% better than zero-shot</td></tr>
+    <tr><td>run03</td><td>Binned head: 128 bins over −3 to 120 m, soft-argmax</td><td class="n">6.950 m</td><td class="n">4.050 m</td><td class="n">0.106</td><td>Negative. Crop-wise validation called it the winner; whole-tile called it the loser</td></tr>
+    <tr><td>run04</td><td>Bins + the head-tail cut from HTC-DC Net, re-implemented from the paper</td><td class="n">7.031 m</td><td class="n">3.991 m</td><td class="n">0.048</td><td>Negative on accuracy, best calibration</td></tr>
+    <tr><td>run05</td><td>A 335 M-parameter backbone (DA V1-Large) on a Kaggle GPU</td><td class="n" colspan="3">void</td><td>Never learned. Traced to an initialisation bug: the starting error was 666 m, and NLL shrank the gradient to the height output about 1,100-fold. Fixed with a constant initialisation</td></tr>
+    <tr><td>run06</td><td>The large backbone again, with the fix</td><td class="n" colspan="3">—</td><td>Did not complete (the local attempt ran out of host memory in data loading). No result is claimed</td></tr>
+    <tr><td>Pilot</td><td>1,500 steps on DFC2019 + GAMUS, warm-started from run02</td><td class="n" colspan="3">passed 7 of 7 gates</td><td>Written go/no-go gates before the full run</td></tr>
+    <tr class="ship"><td>run07</td><td>DFC2019 + GAMUS union (76% GAMUS), 14,000 steps warm-started from run02, 75.5 min on the RTX 3060</td><td class="n">6.008 m</td><td class="n">3.464 m</td><td class="n">0.063</td><td><strong>Ships.</strong> Better on both datasets</td></tr>
+  </table></div>
+  <p style="font-size:.88rem;color:var(--slate)">run01–run04 figures are single-pass; run07’s are the shipped configuration (8-way test-time augmentation + resolution fusion). On that same shipped protocol run02 scores 6.401 m / 3.667 m, which is the fair comparison for run07.</p>
+
+  <h3>Three decisions the journal records</h3>
+  <div class="grid3">
+    <div class="card"><span class="pill">Head</span><h4>The simplest head won</h4><p>Regression, binned and head-tail-cut heads all compress heights to the same 0.43–0.49 slope. No head fixes the tall-building problem, so the simplest ships.</p></div>
+    <div class="card"><span class="pill">Protocol</span><h4>Crop scores lie</h4><p>Scoring 518 px crops differs from whole-tile scoring by ~1.5 m on the same checkpoint, and picked the wrong winner three times. Whole tiles only, from then on.</p></div>
+    <div class="card"><span class="pill">Process</span><h4>Predict first</h4><p>From 27 Aug: write the prediction and what would falsify it, probe cheaply, then decide. The GAMUS run’s criteria were written before it started, and one was failed.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ evaluation -->
+<section id="evaluation">
+  <div class="kicker">07 · How we evaluate</div>
+  <h2>Choices that make our numbers look worse, on purpose</h2>
+  <h3>Whole tiles, not crops</h3>
+  <p>Every score runs the full sliding-window inference over whole 1024×1024 tiles, the way the product runs. Crop-wise scoring removes tile-edge context and flatters.</p>
+  <h3>Per building, measured the way the field does</h3>
+  <p>Per-pixel building error is dominated by roof edges, where the prediction crosses from ground to roof and is briefly wrong by the whole building’s height. It is not comparable to any published figure. The field reports one height per building, so we do too: buildings are the connected components of the building class (at least 25 m²), and each gets the <strong>median</strong> height on both sides. Using a higher percentile of ours against the truth’s median would manufacture accuracy; we measured that at +1.3 m when we made the mistake.</p>
+  <h3>What is reported</h3>
+  <ul>
+    <li>RMSE, MAE, bias and correlation, overall, per class (ground, vegetation, building, water, bridge) and <strong>per terrain</strong> (urban, sparse, forested, mixed).</li>
+    <li>Per-building error by true-height band, so the tall-building tail cannot hide in an average.</li>
+    <li>Calibration of σ: expected calibration error, coverage at each σ multiple, and the rank correlation between σ and actual error.</li>
+    <li>Significance by paired bootstrap over the same buildings (20,000 resamples) whenever two models are compared.</li>
+  </ul>
+  <h3>Pre-registration</h3>
+  <p>Before the GAMUS run, the pass/fail criteria were written down and committed. The run was then scored against them as written:</p>
+  <div class="tablewrap"><table>
+    <tr><th>Criterion</th><th>Bar</th><th class="n">run07</th><th>Result</th></tr>
+    <tr class="hl"><td>Primary: bias on buildings &gt; 20 m</td><td>better than −13 m</td><td class="n">−15.64 m</td><td class="no">Not met</td></tr>
+    <tr><td>3–6 m band must not degrade</td><td>≤ +0.3 m</td><td class="n">1.363 m (was 1.429)</td><td class="yes">Met</td></tr>
+    <tr><td>Whole-tile RMSE</td><td>≤ 6.401 m</td><td class="n">6.008 m</td><td class="yes">Met</td></tr>
+    <tr><td>Per-building RMSE</td><td>≤ 3.667 m</td><td class="n">3.464 m</td><td class="yes">Met</td></tr>
+    <tr><td>Calibration (ECE)</td><td>≤ 0.083</td><td class="n">0.063</td><td class="yes">Met</td></tr>
+  </table></div>
+  <p>The primary criterion failed and is reported as failed, everywhere we quote the result.</p>
+</section>
+
+<!-- ================================================================ results -->
+<section id="results" class="wide">
+  <div class="kicker">08 · Results</div>
+  <h2>How accurate it is</h2>
+  <div class="grid2">
+    <div class="tablewrap" style="margin:0"><table>
+      <tr><th>Per building (3,090)</th><th class="n">Value</th></tr>
+      <tr class="ship"><td>RMSE</td><td class="n">3.464 m</td></tr>
+      <tr><td>MAE</td><td class="n">1.416 m</td></tr>
+      <tr><td>Median absolute error</td><td class="n">0.840 m</td></tr>
+      <tr><td>Bias</td><td class="n">−0.474 m</td></tr>
+      <tr><td>Correlation</td><td class="n">+0.809</td></tr>
+    </table></div>
+    <div class="tablewrap" style="margin:0"><table>
+      <tr><th>Whole tile (11,983,760 px)</th><th class="n">Value</th></tr>
+      <tr><td>RMSE</td><td class="n">6.008 m</td></tr>
+      <tr><td>MAE</td><td class="n">1.681 m</td></tr>
+      <tr><td>Median absolute error</td><td class="n">0.280 m</td></tr>
+      <tr><td>Correlation</td><td class="n">+0.843</td></tr>
+      <tr><td>Ground-class RMSE</td><td class="n">1.542 m</td></tr>
+    </table></div>
+  </div>
+  <p>For scale: the median validation building is 4.22 m tall and the 90th percentile is 7.53 m. The external bar is <strong>GlobalBuildingAtlas</strong> (ESSD 2025), which publishes 5.9 m per-building RMSE over Asia; we are 41% below it, on US data with LiDAR truth.</p>
+
+  <h3 id="results-terrain">Across the four landscapes</h3>
+  <div class="grid2">
+    <figure style="margin:0"><img src="img/terrain.jpg" alt="Bar chart of whole-tile RMSE by terrain" loading="lazy"><figcaption>Whole-tile RMSE by landscape class.</figcaption></figure>
+    <div class="tablewrap" style="margin:0"><table>
+      <tr><th>Landscape</th><th class="n">RMSE</th><th class="n">MAE</th><th class="n">r</th></tr>
+      <tr><td>Sparse</td><td class="n">1.074 m</td><td class="n">0.338 m</td><td class="n">+0.844</td></tr>
+      <tr><td>Mixed</td><td class="n">2.600 m</td><td class="n">1.324 m</td><td class="n">+0.840</td></tr>
+      <tr><td>Forested</td><td class="n">3.286 m</td><td class="n">2.299 m</td><td class="n">+0.779</td></tr>
+      <tr class="hl"><td>Urban</td><td class="n">13.084 m</td><td class="n">4.610 m</td><td class="n">+0.838</td></tr>
+    </table></div>
+  </div>
+  <p>Urban is 4–12× the others for one specific reason: cities are where the buildings above 20 m are. Correlation stays at +0.838, so the <em>shape</em> is right and the <em>scale</em> of tall structures is not. Hilly terrain is missing from this table because DFC2019 has no hills; it is covered by Sikkim, below, as a cross-check.</p>
+
+  <h3>Where the error lives</h3>
+  <figure style="max-width:720px"><img src="img/error_by_height.jpg" alt="Per-building RMSE and bias by true height band" loading="lazy"><figcaption>Per-building error by true height. 77% of all squared error comes from the 60 buildings above 20 m, which are 1.9% of the stock. Below 10 m, 94% of buildings, the error is 1.4 m.</figcaption></figure>
+
+  <h3>Does it know when it is wrong?</h3>
+  <div class="grid2">
+    <figure style="margin:0"><img src="img/calibration.jpg" alt="Calibration curve of predicted uncertainty" loading="lazy"><figcaption>Predicted σ against the actual RMSE of the pixels in each σ bin. Points on the diagonal are perfectly calibrated.</figcaption></figure>
+    <div>
+      <div class="dl"><dt>ECE</dt><dd><strong>0.063</strong></dd><dt>σ-vs-error rank r</dt><dd><strong>+0.866</strong></dd><dt>Mean predicted σ</dt><dd>1.350 m</dd></div>
+      <p>The rank correlation is the operational number: where the model says it is unsure, it is wrong, monotonically. That makes the uncertainty usable for triage, and it drives the viewer’s confidence layer and the flood tool’s “too close to call” count.</p>
+    </div>
+  </div>
+
+  <h3>Another city, another sensor</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Trained on</th><th class="n">DFC2019 val (80 tiles)</th><th class="n">GAMUS DC holdout (317 tiles)</th></tr>
+    <tr><td>DFC2019 only (run02)</td><td class="n">6.401 m (3.667 m), ECE 0.077</td><td class="n">6.873 m (2.725 m), ECE 0.231</td></tr>
+    <tr class="ship"><td>DFC2019 + GAMUS (run07)</td><td class="n">6.008 m (3.464 m), ECE 0.063</td><td class="n">3.497 m (1.788 m), ECE 0.044</td></tr>
+  </table></div>
+  <p style="font-size:.9rem">Whole-tile RMSE, per-building in brackets. <strong>Read this carefully:</strong> run07 trained on GAMUS, so the DC column is domain adaptation, not a generalisation win. The defensible claim is the conjunction: it adapted to a second dataset <em>and</em> improved on the first. run02’s uncertainty is well calibrated in domain (0.077) and badly off it (0.231), which is the correct direction for it to fail.</p>
+
+  <h3 id="results-india">Over India, where there is no LiDAR</h3>
+  <p>Our Indian scene (Sikkim) is compared against Google Open Buildings, itself a satellite model at about 4 m effective resolution. On the 168 footprints it is most confident about, we read <strong>6.28 m lower</strong>. That is agreement between two models, not accuracy, and it is consistent with our known tall-building under-call in a dense hill town. Terrain leakage was tested and ruled out: on 31° slopes the correlation between predicted height and slope is −0.044.</p>
+
+  <h3 id="results-06m">At ISRO’s evaluation resolution: 0.6 m</h3>
+  <p>ISRO’s FAQ (22 Sep 2026) fixes final evaluation at <strong>Cartosat-2S, 0.6 m</strong>, twice as coarse as our 0.3 m training data. <code>--auto-zoom</code> reads the resolution from a GeoTIFF and upsamples so the model sees its trained scale. We re-measured this on the shipped model, with the criteria written down before the run (<a href="https://github.com/zaidnansari2011/sih2026-depthwizard/blob/master/docs/probe-05b-gsd-run07.md">probe 05b</a>): the same 80 held-out tiles and shipped configuration as the headline number, with 0.6 m simulated by downsampling.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Input</th><th class="n">Per building</th><th class="n">Buildings ≤ 20 m</th><th class="n">Whole tile</th></tr>
+    <tr><td>0.3 m, native</td><td class="n">3.464 m</td><td class="n">1.667 m</td><td class="n">6.008 m</td></tr>
+    <tr><td>0.6 m, untreated</td><td class="n">4.185 m (+20.8%)</td><td class="n">2.090 m</td><td class="n">6.738 m</td></tr>
+    <tr class="hl"><td>0.6 m, auto-zoom</td><td class="n">3.999 m (+15.4%)</td><td class="n">2.095 m</td><td class="n">6.494 m</td></tr>
+  </table></div>
+  <div class="callout warn"><p><strong>A prediction we failed, and a number we retract.</strong> We pre-registered that auto-zoom would hold the 0.6 m cost under 10%. It costs 15.4%. An earlier figure, “within 3.6% of native”, came from the older run02 model on three hand-picked tiles, and does not hold for the model we ship. Auto-zoom’s gain is all on tall buildings: on buildings up to 20 m it does not help, and both 0.6 m conditions cost about 25%. Simulating 0.6 m by downsampling measures the resolution gap only, not differences in the Cartosat sensor. Closing this gap is the first item after submission.</p></div>
+</section>
+
+<!-- ================================================================ failures -->
+<section id="failures">
+  <div class="kicker">09 · Where it fails</div>
+  <h2>Limitations, stated plainly</h2>
+  <figure style="max-width:560px"><img src="img/buildings_scatter.jpg" alt="Scatter of predicted vs true building height" loading="lazy"><figcaption>Predicted vs true height per building. Above ~20 m the model compresses toward the mean.</figcaption></figure>
+  <ol>
+    <li><strong>Tall buildings are under-called.</strong> Above 20 m the average under-call is 15.6 m. Adding GAMUS improved this significantly (from 17.2 m, p = 0.0002), but short of the −13 m we pre-registered. The limit is now the data: no open dataset at this resolution contains buildings above ~50 m.</li>
+    <li><strong>The improvement cost a little bias.</strong> Overall per-building bias moved from −0.24 to −0.47 m. It was a deliberate bias-for-variance trade, because per-building RMSE improved.</li>
+    <li><strong>Forested ground carries 2.5 m of error</strong> (vs 0.61 m on open ground) because LiDAR sees through canopy and a camera cannot.</li>
+    <li><strong>Tile borders are worse</strong>, about double the interior RMSE; a known property of patch-based transformers.</li>
+    <li><strong>The absolute anchor is itself a surface model.</strong> GLO-30 includes buildings and canopy, so dense urban composites double-count part of the building height.</li>
+    <li><strong>ISRO’s 0.6 m imagery costs 15.4%</strong> per building even with auto-zoom (3.999 m vs 3.464 m), and about 25% on buildings under 20 m. Measured on simulated 0.6 m; see <a href="#results-06m">0.6 m results</a>.</li>
+    <li><strong>No Indian LiDAR</strong>, so everything over India is agreement, not accuracy.</li>
+    <li><strong>The test split is unscored</strong>, by design, until the very end, once.</li>
+  </ol>
+</section>
+
+<!-- ================================================================ scale -->
+<section id="scale">
+  <div class="kicker">10 · Absolute height</div>
+  <h2>Turning relative depth into metres</h2>
+  <p>ISRO’s second milestone asks for scale calibration. DepthWizard handles it three ways:</p>
+  <div class="grid3">
+    <div class="card"><h4>Metric by training</h4><p>The head regresses metres above ground directly, learned from LiDAR, so no per-image scale fitting is needed to get heights.</p></div>
+    <div class="card"><h4>DEM anchor</h4><p>For georeferenced input, Copernicus GLO-30 supplies the ground: DSM = terrain + height above ground, referenced to the EGM2008 geoid. The default in the pipeline since 13 Sep, and on the live site since 25 Sep, because ISRO scores GeoTIFF inputs as an absolute DSM.</p></div>
+    <div class="card"><h4>Ground control points</h4><p>With a few known heights, a power-law fit corrects range compression. Over 10 tiles with a tall building, 8 points cut RMSE by 24.9%.</p></div>
+  </div>
+  <p><strong>Why a power law and not a straight line.</strong> The model’s compression is not linear: it over-calls by 1.20× at 0–3 m and under-calls at 0.52× above 40 m. Across all 57 tiles tested, the power form was the only one that beat doing nothing (−4.4%, where affine was +0.1%). It carries guards: at least two control points in the upper 60% of the height range, and an exponent of at least 0.95. On tiles without enough spread it declines and falls back to an offset only.</p>
+  <h3>What you get back</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Input</th><th>Output</th></tr>
+    <tr><td>GeoTIFF with coordinates</td><td>Absolute <strong>DSM</strong> (metres above the geoid), <strong>nDSM</strong> (height above ground), σ map, the bare-earth anchor, a summary and a readme naming CRS, units, datum and checkpoint</td></tr>
+    <tr><td>PNG / JPG, no coordinates</td><td>Relative <strong>rDSM</strong> and σ map, the problem statement’s own second branch</td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ negative -->
+<section id="negative" class="wide">
+  <div class="kicker">11 · What didn’t work</div>
+  <h2>Probes and negative results</h2>
+  <p>Each probe states a prediction first and what would falsify it. Negative results are evidence too: they show which levers are spent.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Probe</th><th>Question</th><th>Result</th><th>Conclusion</th></tr>
+    <tr><td>01 Tall buildings</td><td>Can training harder on the tall buildings we have move the tail?</td><td>Fit improved (10.22 → 8.81 m) but transfer got worse (−18.22 → −19.10 m)</td><td>Data scarcity, not architecture. More tall buildings needed, which GAMUS then partly supplied</td></tr>
+    <tr><td>02 Backbone</td><td>Would a bigger backbone see height better?</td><td>Zero-shot per-building r: Small +0.351, V1-Base +0.470, V1-Large +0.659</td><td>Motivated run05/06, which did not produce a result</td></tr>
+    <tr><td>03 Guided filtering</td><td>Can post-processing square off blurred roofs?</td><td>Every setting was worse (+0.009 to +0.359 m)</td><td>The blur is structural; filters cannot create edges never predicted</td></tr>
+    <tr><td>04 Resolution</td><td>Where does roof detail go?</td><td>One token covers 4.2 m. Fusing a 2× zoomed pass at σ = 8 gave +29% sharpness for +0.072 m</td><td>Shipped as resolution fusion</td></tr>
+    <tr><td>05 / 05b Input resolution</td><td>What does ISRO’s 0.6 m cost?</td><td>On run02 and three tiles, auto-zoom looked near-free. Re-measured on the shipped model and 80 tiles: +15.4% per building</td><td>Auto-zoom ships; the pre-registered “under 10%” failed. See <a href="#results-06m">0.6 m results</a></td></tr>
+    <tr><td>06 Compression</td><td>How are heights distorted?</td><td>Ours = 0.473 × truth + 2.66 m</td><td>A global de-compression moved error without removing it; not shipped</td></tr>
+  </table></div>
+  <h3>Also measured and rejected</h3>
+  <div class="grid2">
+    <div class="card"><h4>Ordinal / binned heads</h4><p>All heads land at a 0.43–0.49 slope. The most likely bin sits only 1.86 m from the average, so no hidden tall mode is being averaged away.</p></div>
+    <div class="card"><h4>Tail re-weighting (LDS)</h4><p>Pixels above 20 m are 7.5% of building pixels but already carry 78.8% of squared error. Re-weighting further was ruled out.</p></div>
+    <div class="card"><h4>Two-model ensemble</h4><p>The two best models’ errors correlate at 0.925; the best mix gave 3.647 m against 3.616 m. Averaging buys nothing.</p></div>
+    <div class="card"><h4>Shadow photogrammetry</h4><p>Even perfect (oracle) shadows reach r 0.503 against the network’s 0.787, so shadows cannot lift the tail.</p></div>
+  </div>
+</section>
+
+<!-- ================================================================ viewer -->
+<section id="viewer" class="wide">
+  <div class="kicker">12 · The 3D viewer</div>
+  <h2>Half the marks: a viewer that measures</h2>
+  <p>Built on three.js. It is a measuring instrument first: heights travel to the browser as raw float32, never through an 8-bit image, so the metres you read are the metres the model produced.</p>
+  <div class="grid2">
+    <figure style="margin:0"><img src="img/viewer_urban.jpg" alt="Viewer showing Omaha buildings coloured by height" loading="lazy"><figcaption>Height above ground, Omaha. The panel checks the scene against LiDAR.</figcaption></figure>
+    <figure style="margin:0"><img src="img/viewer_sigma.jpg" alt="Viewer showing the uncertainty layer" loading="lazy"><figcaption>The same scene coloured by the model’s own uncertainty.</figcaption></figure>
+  </div>
+  <h3>What you can do</h3>
+  <div class="grid3">
+    <div class="card"><h4>Four surfaces</h4><p>Satellite drape, height ramp, uncertainty and slope, with height exaggeration and sun direction.</p></div>
+    <div class="card"><h4>Fly and orbit</h4><p>Drag to orbit, wheel zoom, right-drag pan, click to fly with <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd>, pinch on touch, and an automatic tour.</p></div>
+    <div class="card"><h4>Measure</h4><p>Two clicks give ground distance, height difference and slope in metres, with an error bar corrected for how errors correlate with distance.</p></div>
+    <div class="card"><h4>Compare with LiDAR</h4><p>Drag a split line across the scene to compare our surface with the truth, plus a “where we’re wrong” error map.</p></div>
+    <div class="card"><h4>Know where it is</h4><p>Coordinate system, datum, centre position, cursor position and a north arrow. Scenes without coordinates say so plainly.</p></div>
+    <div class="card"><h4>Upload your own</h4><p>Upload an image on the live site and get a scene back. A GeoTIFF returns an absolute DSM, nDSM and σ as GeoTIFF downloads; a PNG or JPG returns a relative DSM.</p></div>
+  </div>
+  <h3 id="flood">The flood tool: the disaster use case</h3>
+  <div class="grid2">
+    <figure style="margin:0"><img src="img/viewer_flood.jpg" alt="Flood tool on the Sikkim valley scene" loading="lazy"><figcaption>Sikkim valley at a 1,143 m water level: 20.5% of ground under water, 44 buildings flooded.</figcaption></figure>
+    <div>
+      <p>On the Indian scene, drag a water level and the viewer shows which ground floods, which buildings go under, and which are <strong>too close to call</strong> given the model’s own σ.</p>
+      <p>It runs on absolute elevation (GLO-30 terrain + our heights), not height above ground, because a hut on a ridge does not flood before a tower in a valley. Water fills only what connects to the edge of the scene, so enclosed hollows stay dry. Building outlines come from Google Open Buildings; the heights are ours.</p>
+      <p>It is a flat-water (“bathtub”) model, with no flow, volume or time, and the interface says so. On the US scenes it switches itself off and explains why: they have no coordinates, so there is no sea level to measure against.</p>
+    </div>
+  </div>
+  <figure><img src="img/viewer_sikkim_town.jpg" alt="Sikkim hill town in the viewer with satellite imagery draped" loading="lazy"><figcaption>A Sikkim hill town: our building heights standing on GLO-30 terrain. Imagery © Maxar Technologies, CC-BY-4.0.</figcaption></figure>
+  <h3>Standalone</h3>
+  <p>The whole viewer, with its demo scenes, also builds into <strong>one 15 MB HTML file</strong> that opens by double-click from disk, with no server and no network. It was verified by loading it in a headless browser with software rendering: the file contains no <code>&lt;canvas&gt;</code>, and the rendered page has one, which only happens if three.js actually ran.</p>
+</section>
+
+<!-- ================================================================ deployment -->
+<section id="deployment">
+  <div class="kicker">13 · Deployment &amp; API</div>
+  <h2>Runs on a CPU, anywhere</h2>
+  <div class="dl">
+    <dt>Model file</dt><dd>ONNX, int8-quantised: <strong>36.8 MB</strong> (fp32 is 100.7 MB). Agrees with PyTorch to 0.0007 cm; quantisation costs 0.030 m of height.</dd>
+    <dt>Speed</dt><dd><strong>536 ms</strong> per 518×518 tile on a CPU. A 1024×1024 tile takes 5.0 s single-pass or 57.2 s at the full scored quality on a desktop CPU.</dd>
+    <dt>Live site</dt><dd><a href="/">project5.zaidansari.tech</a>, on an Azure App Service plan with 2 vCPUs and no GPU. About 60 s from upload to a served scene.</dd>
+  </div>
+  <h3>HTTP API</h3>
+  <div class="tablewrap"><table>
+    <tr><th>Endpoint</th><th>Does</th></tr>
+    <tr><td><code>POST /api/upload</code></td><td>Accepts a TIF, PNG or JPG and starts a job</td></tr>
+    <tr><td><code>GET /api/job/&lt;id&gt;</code></td><td>Job progress</td></tr>
+    <tr><td><code>GET /api/result/&lt;id&gt;/&lt;kind&gt;</code></td><td>Downloads a result: DSM, nDSM, σ, terrain, summary or readme</td></tr>
+    <tr><td><code>GET /api/capabilities</code></td><td>Upload limits, so a client can check before uploading</td></tr>
+  </table></div>
+  <p>Because one request costs CPU-minutes, the public server enforces limits: 50 MB per upload, an image-area cap derived from measured cost (a 303-megapixel strip fits in 12 MB and would take hours), three jobs in flight, and 20 s between jobs per visitor. Every refusal is immediate and says what to change.</p>
+  <p>There is no database: outputs are files (GeoTIFF rasters and float32 scene tiles), which is what a GIS workflow expects.</p>
+</section>
+
+<!-- ================================================================ testing -->
+<section id="testing" class="wide">
+  <div class="kicker">14 · Testing</div>
+  <h2>Verified by what it does, not by what it reports</h2>
+  <p>Each harness below was written to check one claim, and each caught at least one real fault.</p>
+  <div class="tablewrap"><table>
+    <tr><th>Harness</th><th>Checks</th><th>What it caught</th></tr>
+    <tr><td><code>verify_viewer.py</code></td><td>The standalone page actually renders</td><td>Its own “fatal panel” check had been passing unconditionally; fixed and proven against a browser with WebGL disabled</td></tr>
+    <tr><td><code>verify_layout.py</code></td><td>The interface fits on four screen sizes</td><td>An 889 px panel on a 673 px viewport; 7 layout problems before, 0 after</td></tr>
+    <tr><td><code>verify_controls.py</code></td><td>Mouse and touch controls, checked in pixels</td><td>A scale bar stretched to 476 px; an error thrown on every pinch gesture</td></tr>
+    <tr><td><code>verify_geo.py</code></td><td>Displayed coordinates against rasterio</td><td>A 330 m position error from applying a transform to a decimated grid</td></tr>
+    <tr><td><code>test_flood.mjs</code></td><td>7 flood-tool acceptance checks, e.g. enclosed basins stay dry</td><td>A re-bake that had silently dropped the building data and disabled the tool</td></tr>
+    <tr><td><code>smoke_deliverable.py</code></td><td>12 awkward inputs and every entry point’s <code>--help</code></td><td>A truncated PNG rendered as heights over 26% invented black pixels</td></tr>
+    <tr><td><code>verify_upload.py</code></td><td>23 checks on the upload path, including path traversal, against local or live</td><td>Windows file paths leaking into the downloadable summary</td></tr>
+    <tr><td>ONNX parity</td><td>Exported model vs PyTorch on 804,972 inputs</td><td>Three export defects in the first version</td></tr>
+  </table></div>
+</section>
+
+<!-- ================================================================ corrections -->
+<section id="corrections">
+  <div class="kicker">15 · Corrections</div>
+  <h2>Numbers we published and then fixed</h2>
+  <p>A project that never corrects itself has not been checking. These were caught by re-measuring, and the originals were replaced:</p>
+  <ul>
+    <li><strong>“Depth Anything sees albedo, not height.”</strong> Measured and found too harsh: zero-shot it correlates r ≈ 0.43 with true height. The problem is range compression, which fine-tuning fixes.</li>
+    <li><strong>The error-map building.</strong> An early caption said we call a 93.6 m building 31.5 m. That could not be reproduced from any raster; the measured figures are a 72.8 m median building called 14.1 m.</li>
+    <li><strong>Sikkim alignment.</strong> An automatic co-registration was being applied that had no real correlation peak (0.006). Both models were re-scored without it, on the same footprints.</li>
+    <li><strong>Uncertainty at long range.</strong> A “68.1%, essentially exact” coverage claim from 3 tiles became 51.7% on 20, and the claim was withdrawn.</li>
+    <li><strong>“0.6 m costs 3.6% after auto-zoom.”</strong> That was run02 on three hand-picked tiles, single pass. Re-measured on the shipped model and 80 tiles against a pre-registered bar, it is 15.4%, and the claim is withdrawn.</li>
+    <li><strong>A significance test on the wrong protocol.</strong> The GAMUS bootstrap was re-run on the shipped configuration.</li>
+    <li><strong>A warm-start that trained nothing.</strong> An early resume path trained zero steps while printing the parent model’s score as its own; caught by audit and replaced before run07.</li>
+  </ul>
+</section>
+
+<!-- ================================================================ timeline -->
+<section id="timeline">
+  <div class="kicker">16 · Timeline</div>
+  <h2>How the project unfolded</h2>
+  <ol class="timeline">
+    <li class="key"><span class="d">26 Aug 2026</span>Plan written; solo vertical-slice build. The slice ran end to end on day one: zero-shot model → GeoTIFF → three.js flythrough. Zero-shot baseline measured (9.308 m).</li>
+    <li><span class="d">27 Aug</span>run01–run04: regression, β-NLL, binned and head-tail-cut heads. run02 becomes the model to beat. Test-time augmentation, per-building scoring, the Sikkim scene and probe 01 added. Rule adopted: predict in writing before running.</li>
+    <li><span class="d">28 Aug</span>Probes 03–06; range compression measured (0.473 × truth). The large-backbone run05 declared void. Ground-control calibration and CPU export (ONNX, int8) built; standalone viewer verified.</li>
+    <li><span class="d">29 Aug</span>run05’s cause found (an initialisation bug); pre-flight checks added. Viewer theme and per-building statistics.</li>
+    <li class="key"><span class="d">6–7 Sep</span>GAMUS integration planned with pre-registered criteria; NYC found to be height-only. Pilot run passes all 7 gates; run07 launched.</li>
+    <li><span class="d">8–9 Sep</span>run07 scored: better everywhere, primary criterion failed and recorded as failed. Flood tool, hover readout and scale bar shipped.</li>
+    <li class="key"><span class="d">12 Sep</span>run07 ships and is deployed; six demo scenes re-baked; four published numbers corrected; repository made public (Apache-2.0). Viewer rebuilt for projectors, touch and geolocation.</li>
+    <li><span class="d">13 Sep</span>Upload path hardened; the platform returns an absolute DSM for georeferenced input.</li>
+    <li><span class="d">22–24 Sep</span>ISRO publishes an FAQ: final evaluation on Cartosat-2S at 0.6 m, GeoTIFFs scored as an absolute DSM.</li>
+    <li class="key"><span class="d">25 Sep</span>0.6 m re-measured on the shipped model (probe 05b): +15.4%, failing its pre-registered 10% bar. Absolute-DSM output switched on for the live site. Submission deck rebuilt to ISRO’s guidance; this documentation published.</li>
+  </ol>
+</section>
+
+<!-- ================================================================ references -->
+<section id="references">
+  <div class="kicker">17 · References &amp; credits</div>
+  <h2>Research, data and licences</h2>
+  <h3>Research that shaped the build</h3>
+  <ul>
+    <li><strong>Depth Anything V2</strong> — Yang et al., NeurIPS 2024. The backbone.</li>
+    <li><strong>HTC-DC Net</strong> — Chen et al., IEEE TGRS 2023. Head-tail cut and distribution constraints; re-implemented and compared as run04.</li>
+    <li><strong>Depth Any Canopy</strong> — Ouaknine et al., 2024. The fine-tuning recipe for aerial height.</li>
+    <li><strong>β-NLL</strong> — Seitzer et al., ICLR 2022. Keeps the mean head learning under NLL.</li>
+    <li><strong>Heteroscedastic uncertainty</strong> — Kendall &amp; Gal, NeurIPS 2017. The twin-head formulation.</li>
+    <li><strong>LDS / FDS</strong> — Yang et al., ICML 2021. Imbalanced-regression re-weighting; tested and ruled out.</li>
+    <li><strong>IM2HEIGHT, TSE-Net</strong> — prior single-view height estimation.</li>
+    <li><strong>GlobalBuildingAtlas</strong> — ESSD 2025. The 5.9 m per-building bar over Asia.</li>
+    <li><strong>Guided filter</strong> — He, Sun &amp; Tang, ECCV 2010. Probe 03.</li>
+  </ul>
+  <h3>Data and credits</h3>
+  <ul>
+    <li>DFC2019 / US3D — IEEE GRSS Data Fusion Contest 2019, via IEEE DataPort. Not redistributed.</li>
+    <li>GAMUS — Earthflow, CC-BY-4.0; recommended by ISRO for this problem statement.</li>
+    <li>Sikkim imagery — Maxar Open Data Program, CC-BY-4.0, © Maxar Technologies.</li>
+    <li>Copernicus GLO-30 — © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.</li>
+    <li>Google Open Buildings 2.5D Temporal — Google Research.</li>
+    <li>three.js — MIT licence.</li>
+  </ul>
+  <h3>Licence</h3>
+  <p>DepthWizard’s code is released under the <strong>Apache-2.0</strong> licence, and so is the Depth Anything V2 Small backbone it fine-tunes.</p>
+</section>
+
+<footer>
+  <p><strong>DepthWizard</strong> · Team Dev Up · Smart India Hackathon 2026, problem statement SIH26175 (ISRO). Documentation last updated 25 September 2026.</p>
+  <p><a href="/">Live viewer</a> · <a href="https://github.com/zaidnansari2011/sih2026-depthwizard">Source code</a> · <a href="https://github.com/zaidnansari2011/sih2026-depthwizard/blob/master/docs/evidence-pack.md">Evidence pack</a> · <a href="#top">Back to top</a></p>
+</footer>
+</main>
+</div>
+
+<a class="toTop" id="toTop" href="#top">↑ Top</a>
+<div class="lb" id="lb" role="dialog" aria-label="Enlarged figure"><img alt=""></div>
+
+<script>
+(function () {
+  var side = document.getElementById('side'), menu = document.getElementById('menu');
+  menu.addEventListener('click', function () {
+    var open = side.classList.toggle('open');
+    menu.setAttribute('aria-expanded', open);
+  });
+  side.addEventListener('click', function (e) {
+    if (e.target.tagName === 'A') side.classList.remove('open');
+  });
+
+  // Highlight the section in view.
+  var links = {};
+  side.querySelectorAll('a[href^="#"]').forEach(function (a) { links[a.getAttribute('href').slice(1)] = a; });
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting || !links[en.target.id]) return;
+        Object.keys(links).forEach(function (k) { links[k].classList.remove('on'); });
+        links[en.target.id].classList.add('on');
+      });
+    }, { rootMargin: '-20% 0px -70% 0px' });
+    document.querySelectorAll('main section[id]').forEach(function (s) { io.observe(s); });
+  }
+
+  var top = document.getElementById('toTop');
+  window.addEventListener('scroll', function () {
+    top.classList.toggle('show', window.scrollY > 900);
+  }, { passive: true });
+
+  // Click a figure to see it full size.
+  var lb = document.getElementById('lb'), lbi = lb.querySelector('img');
+  document.querySelectorAll('figure img').forEach(function (img) {
+    img.addEventListener('click', function () { lbi.src = img.src; lbi.alt = img.alt; lb.classList.add('show'); });
+  });
+  lb.addEventListener('click', function () { lb.classList.remove('show'); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') lb.classList.remove('show'); });
+})();
+</script>
+</body>
+</html>

@@ -22,6 +22,36 @@ PREVIEW_ROOT = Path("D:/sih2026/depthwizard/tools/ppt")
 PP_SAVE_AS_PDF = 32
 
 
+def link_pdf(pdf: Path, variant: str) -> int | None:
+    """Make every printed address in the PDF clickable.
+
+    PowerPoint's export does not carry run hyperlinks through reliably: measured 25 Sep,
+    deck D's pptx held six and the PDF came out with four, and a five-link test slide came
+    out with none. So the links are written into the PDF itself, over the text they
+    label. Addresses come from the deck's own LINKS table (make_deck_<v>.LINKS), longest
+    first, so "site/documentation" is not also claimed by "site".
+    """
+    try:
+        links = __import__(f"make_deck_{variant.lower()}").LINKS
+    except (ImportError, AttributeError):
+        return None                                  # this deck prints no addresses
+    doc = pymupdf.open(str(pdf))
+    n = 0
+    for page in doc:
+        taken = [pymupdf.Rect(l["from"]) for l in page.get_links()]
+        for text in sorted(links, key=len, reverse=True):
+            for r in page.search_for(text):
+                if any(r.intersects(t) and (r & t).get_area() > 0.5 * r.get_area()
+                       for t in taken):
+                    continue
+                page.insert_link({"kind": pymupdf.LINK_URI, "from": r,
+                                  "uri": links[text]})
+                taken.append(r)
+                n += 1
+    doc.saveIncr()
+    return n
+
+
 def main() -> int:
     # Deck B is a second variant, not a replacement, so it exports to its own file and
     # its own preview folder; neither run can overwrite the other's output.
@@ -45,6 +75,10 @@ def main() -> int:
         if deck is not None:
             deck.Close()
         app.Quit()
+
+    n = link_pdf(PDF, variant)
+    if n is not None:
+        print(f"  links {n} address(es) made clickable")
 
     doc = pymupdf.open(str(PDF))
     PREVIEW.mkdir(parents=True, exist_ok=True)

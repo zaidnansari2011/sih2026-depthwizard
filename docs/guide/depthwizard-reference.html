@@ -1632,7 +1632,7 @@ Distance on ground &middot; Height difference &middot; Straight-line distance &m
   <div class="di"><dt>Where we're wrong</dt><dd>The error map. LiDAR voids are greyed rather than reported as zero error.</dd></div>
   <div class="di"><dt>Measurement</dt><dd>Two clicks give ground distance, height difference and straight-line distance in metres, with a <em>calibrated</em> error bar on the height difference (Part 9.8).</dd></div>
   <div class="di"><dt>Sun direction</dt><dd>Hillshade azimuth slider, default 315&deg; &mdash; north-west, the cartographic convention. Lighting from the lower right inverts relief perception.</dd></div>
-  <div class="di"><dt>Height boost</dt><dd>Vertical exaggeration slider, starting at 1.5&times;. See the honesty note below.</dd></div>
+  <div class="di"><dt>Height boost</dt><dd>Vertical exaggeration slider, starting at 1.0&times; (true scale). See the honesty note below.</dd></div>
   <div class="di"><dt>Navigation</dt><dd>Click to look, <span class="t">WASD</span> to move, <span class="t">Q</span>/<span class="t">E</span> down and up, <span class="t">Shift</span> to sprint, <span class="t">Esc</span> to release the pointer.</dd></div>
   <div class="di"><dt>Auto tour</dt><dd>A cinematic orbit path, used for the demo video.</dd></div>
   <div class="di"><dt>Other</dt><dd>Wireframe toggle, reset view, legend, statistics panel, frames-per-second readout, grid size readout, upload panel.</dd></div>
@@ -2364,7 +2364,7 @@ PYTHONPATH=D:/sih2026/depthwizard python tests/test_gcp_affine.py</pre>
   <div class="di"><dt>rDSM</dt><dd>Relative DSM. The shape of the surface with no absolute datum. What we produce for a photo with no location data.</dd></div>
   <div class="di"><dt>AGL / nDSM</dt><dd>Above Ground Level, also called a normalised DSM. How tall something is compared to the ground right underneath it. A 10 m building on a 100 m hill is 10 m AGL. This is what our model predicts.</dd></div>
   <div class="di"><dt>Vertical datum</dt><dd>The zero surface elevations are measured from &mdash; roughly, sea level.</dd></div>
-  <div class="di"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so the shape is visible. Ours starts at 1.5&times; and is removed before any measurement is reported.</dd></div>
+  <div class="di"><dt>Vertical exaggeration</dt><dd>Stretching heights in the 3D view so the shape is visible. Ours opens at 1.0&times; (true scale); any stretch the user adds is removed before a measurement is reported.</dd></div>
   <div class="di"><dt>Relief</dt><dd>The total height range across a scene. Sikkim's 2 km crop has 947 m of relief.</dd></div>
 </div>
 <h5>Imaging</h5>

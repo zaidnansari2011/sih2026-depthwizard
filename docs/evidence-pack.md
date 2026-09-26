@@ -245,6 +245,14 @@ predicted height and ground slope is **−0.044**.
 
 ## Robustness to the evaluation resolution
 
+> **Superseded 25 Sep 2026 — read `probe-05b-gsd-run07.md` first.** ISRO's FAQ fixes final
+> evaluation at Cartosat-2S 0.6 m. Re-measured on run07 with the shipped configuration over
+> the same 80 tiles as the headline, 0.6 m with auto-zoom scores **3.999 m per building
+> against 3.464 m native: +15.4 %**. Without auto-zoom it is 4.185 m, +20.8 %. That fails
+> the pre-registered ≤ 10 % bar. The "within 3.6 %" below is run02 on three hand-picked
+> non-urban tiles, and does not hold for the model we ship. It is kept for the record, not
+> for quoting.
+
 We train at 0.3 m. ISRO will evaluate on their own imagery, likely nearer 0.6–1.0 m
 (`probe-05-gsd.md`). Untreated, that costs us badly — on ordinary tiles per-building error
 roughly doubles by 1 m, almost all of it as bias, because a backbone token then covers
@@ -384,7 +392,7 @@ human looking at it, and it is the one deployment check still owed.
 | Morphological toggle contrast sharpens them | **Wrong.** Worse, monotonically (probe 03) |
 | Tall-building tail is a capacity problem | **Wrong.** It is data scarcity (probe 01) |
 | Terrain slope leaks into height on hills | **Ruled out.** r = −0.044 at 31° |
-| Coarse-GSD loss is irrecoverable | **Wrong.** 3.6% of it remains after `--auto-zoom` |
+| Coarse-GSD loss is irrecoverable | **Partly.** At 0.6 m auto-zoom recovers the loss from +20.8 % to +15.4 % on run07, and none of it on buildings ≤ 20 m (probe 05b). The earlier "3.6 % remains" was run02 on three tiles |
 
 Each was predicted in writing with a falsification condition before the run, then measured.
 Two of the five falsified something we believed.

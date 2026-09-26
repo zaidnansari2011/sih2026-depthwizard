@@ -55,3 +55,53 @@ resolution gap only, not the sensor gap.
 ## Result
 
 *(filled in after the run; the section above is not edited)*
+
+Run 25 Sep 2026, 7.5 min on the RTX 3060. The thermal guard paused four times at 84–86 °C.
+Raw numbers are in `out/gsd_recheck_run07/results.json`.
+
+| condition | per-building | bias | r | buildings ≤ 20 m | whole-tile |
+|---|---|---|---|---|---|
+| **A** native 0.3 m | **3.464 m** | −0.47 | +0.809 | 1.667 m | 6.008 m |
+| **B** 0.6 m untreated | 4.185 m (+20.8 %) | −1.66 | +0.787 | 2.090 m | 6.738 m |
+| **C** 0.6 m auto-zoom | 3.999 m (+15.4 %) | −1.35 | +0.761 | 2.095 m | 6.494 m |
+
+Per-terrain whole-tile RMSE, A / B / C:
+
+| terrain | A | B | C |
+|---|---|---|---|
+| sparse | 1.074 | 1.279 | 1.366 |
+| mixed | 2.600 | 3.037 | 2.981 |
+| forested | 3.286 | 3.961 | 3.784 |
+| urban | 13.084 | 14.590 | 14.012 |
+
+### Against the pre-registration
+
+| | criterion | result |
+|---|---|---|
+| Sanity gate | A reproduces 3.464 m ± 0.01 | **PASS** (3.464) |
+| Primary | C ≤ 1.10 × A (≤ 3.811 m) | **FALSIFIED** (3.999 m, +15.4 %) |
+| Secondary | C < B | **holds** (3.999 < 4.185) |
+
+### What it means
+
+**"0.6 m costs 3.6 % after auto-zoom" does not hold for the shipped model.** On ISRO's
+stated evaluation resolution, run07 loses 15.4 % of its per-building accuracy even with
+auto-zoom, and 20.8 % without it. Probe 05's 3.6 % came from run02, single pass, three
+hand-picked non-urban tiles; it should not be quoted again.
+
+**Auto-zoom's gain is concentrated in the tall buildings.** On the 3,030 buildings at or
+below 20 m, C and B are the same (2.095 vs 2.090 m); both cost about 25 % against native.
+On sparse tiles auto-zoom is slightly *worse* than doing nothing (1.366 vs 1.279 m), and
+correlation drops (+0.761 vs +0.787). So the pooled improvement from B to C is the tall
+tail, which auto-zoom lets the model see at a larger scale.
+
+This is recorded, not acted on. Candidate explanations, **none tested**:
+
+- the fusion detail pass at zoom 4 over-sharpens a 0.6 m input;
+- Lanczos downsampling is a poor stand-in for a real 0.6 m sensor;
+- the model was never trained on upsampled imagery.
+
+Any follow-up needs its own pre-registration.
+
+**What changes now:** every place that says "within 3.6 %" is corrected to the measured
++15.4 %, and the deck reports this result as measured.

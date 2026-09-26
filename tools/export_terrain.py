@@ -65,6 +65,13 @@ def _load_raster(path: Path):
                 meta["px_units"] = "pixels"
             elif src.crs.is_geographic:
                 meta["px_units"] = "degrees"
+                # Metres per pixel at the tile's centre latitude -- the same conversion
+                # infer.py's auto-zoom uses. Without it a lon/lat GeoTIFF (common for
+                # satellite products) reached the viewer with no pixel size at all.
+                import math
+                lat = math.radians((src.bounds.bottom + src.bounds.top) / 2)
+                meta["px_size_x_m"] = abs(src.transform.a) * 111320.0 * math.cos(lat)
+                meta["px_size_y_m"] = abs(src.transform.e) * 110574.0
             else:
                 meta["px_units"] = "metres"
 
@@ -242,6 +249,14 @@ def main():
     elif gsd and hmeta.get("px_units") == "metres":
         manifest["gsd_m"] = float(gsd) / scale
         manifest["gsd_source"] = "GeoTIFF transform"
+    elif hmeta.get("px_units") == "degrees" and hmeta.get("px_size_x_m"):
+        # The viewer lays pixels out square, so use the geometric mean of the two
+        # spacings; a lon/lat pixel is not square on the ground (cos(latitude)), and the
+        # note records by how much.
+        gx, gy = hmeta["px_size_x_m"], hmeta["px_size_y_m"]
+        manifest["gsd_m"] = float(np.sqrt(gx * gy)) / scale
+        manifest["gsd_source"] = ("GeoTIFF transform in degrees, converted at the tile's "
+                                  f"centre latitude ({gx:.3f} x {gy:.3f} m per pixel)")
     else:
         manifest["gsd_m"] = None
         manifest["gsd_note"] = (
@@ -389,8 +404,16 @@ def main():
 
     if args.texture:
         from PIL import Image
-        tex, _ = _load_raster(Path(args.texture))
-        rgb = _to_uint8_rgb(np.asarray(tex))
+        tp = Path(args.texture)
+        if tp.suffix.lower() == ".npy":
+            rgb = _to_uint8_rgb(np.load(tp))
+        else:
+            # The same reader infer.py feeds the model through, so the drape shows the
+            # bands the heights were estimated from (palette PNGs, B,G,R,NIR GeoTIFFs).
+            import sys
+            sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+            from depthwizard.rgb import read_rgb
+            rgb = read_rgb(tp)
         im = Image.fromarray(rgb)
         if im.size != (W, H):
             im = im.resize((W, H), Image.LANCZOS)

@@ -76,3 +76,7 @@ docs/SIH2025-*.pptx
 
 # verify_controls.py --keep writes its frames here
 out_controls/
+
+# --- demo-video staging copy of the viewer (regenerable; holds DFC2019 scene imagery,
+# which is not redistributed) ---
+tools/video/_stage/
