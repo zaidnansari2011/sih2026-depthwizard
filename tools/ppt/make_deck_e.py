@@ -55,6 +55,7 @@ from build_deck_b import (BODY, BODY_TOP, COND, DEEP, DISPLAY, EMBER, GREEN, INK
                           compare_table, mark, panel, para, pill, qr_png, rect, rounded,
                           stat_chip, tag, w_)
 from make_deck_b import PS_ID, PS_THEME, PS_TITLE, TEAM_ID
+from prep_assets_d import E_HEIGHT, E_TERRAIN
 
 DST = Path("D:/sih2026/depthwizard/docs/SIH2026-DevUp-SIH26175-DepthWizard-E.pptx")
 FIG = Path("D:/sih2026/depthwizard/tools/ppt/figures/d")
@@ -71,7 +72,6 @@ EVIDENCE_TEXT = "github.com/…/sih2026-depthwizard/docs/evidence-pack.md"
 # tools/ppt/export_pdf.py also writes these into the PDF itself from this table.
 LINKS = {"project5.zaidansari.tech": LIVE_URL,
          "project5.zaidansari.tech/documentation": DOCS_URL,
-         "github.com/zaidnansari2011/sih2026-depthwizard": CODE_URL,
          EVIDENCE_TEXT: EVIDENCE_URL}
 # The hosted pitch clip. Set to None and slide 6 draws the reserved slot instead.
 PITCH_VIDEO_URL = "https://youtu.be/4NpR74MS5oE"
@@ -212,9 +212,6 @@ def slide_title(s) -> None:
                ("      DOCS  ", {"colour": EMBER, "font": COND, "size": 9.4}),
                ("project5.zaidansari.tech/documentation",
                 {"colour": STEEL, "font": SANS_B})], size=8.4, line=1.0)
-    w_(tf, [("CODE  ", {"colour": EMBER, "font": COND, "size": 9.4}),
-            ("github.com/zaidnansari2011/sih2026-depthwizard",
-             {"colour": STEEL, "font": SANS_B})], size=8.4, line=1.0)
 
 
 # ------------------------------------------------------------------------- slide 2
@@ -750,7 +747,7 @@ def slide_references(s) -> None:
         ("Global de-compression", "A rescale moves error, it does not remove it."),
     ], fill=EMBER)
     stack_col(BX, BW, y + 0.12, "Probes we ran, and what each closed", [
-        ("01 Tall buildings", "Data, not capacity. No open set at 0.3 m reaches 50 m."),
+        ("01 Tall buildings", "Data, not capacity. Open 0.3 m sets hold few towers."),
         ("03 Guided filtering", "Squaring off roofs made every metric worse."),
         ("04 Where detail went", "Detail follows the ground area one token covers."),
         ("05b ISRO's 0.6 m", f"Shipped model, 80 tiles: {g['cost']:+.0f}% per building "
@@ -844,7 +841,7 @@ def slide_preliminary(s) -> None:
     pill(s, X0, 2.14, LW, "Accuracy across the four landscapes ISRO names", h=0.30,
          size=T_PILL_S)
     panel(s, X0, 2.50, LW, 2.16)
-    img(s, "terrain.png", X0 + 0.12, 2.58, 3.30, 3.30 / 2.093, edge=False)
+    img(s, "terrain_e.png", X0 + 0.10, 2.57, *E_TERRAIN, edge=False)
     para(s, X0 + 3.56, 2.60, LW - 3.70, 1.98,
          [("Three of four classes at or under 3.3 m", {"colour": INK, "font": SANS_B}),
           (", correlation never below +0.77. Urban is one specific thing: the "
@@ -856,7 +853,7 @@ def slide_preliminary(s) -> None:
 
     pill(s, X0, 4.76, LW, "Where the error lives", h=0.30, fill=EMBER, size=T_PILL_S)
     panel(s, X0, 5.12, LW, 2.02)
-    img(s, "error_by_height.png", X0 + 0.12, 5.28, 3.34, 3.34 / 2.510, edge=False)
+    img(s, "error_by_height_e.png", X0 + 0.10, 5.19, *E_HEIGHT, edge=False)
     para(s, X0 + 3.60, 5.22, LW - 3.74, 1.86,
          [("77% of squared error comes from 1.9% of buildings.",
            {"colour": EMBER, "font": SANS_B}),
@@ -965,7 +962,7 @@ def main() -> None:
         build(s)
 
     n = link_runs(prs)
-    assert n == 7, f"expected 7 linked addresses (3 on 1, 3 on 6, 1 on 7), got {n}"
+    assert n == 6, f"expected 6 linked addresses (2 on 1, 3 on 6, 1 on 7), got {n}"
     prs.save(str(DST))
     print(f"  wrote {DST}  ({len(prs.slides)} slides)")
 
