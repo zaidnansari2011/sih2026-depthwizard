@@ -515,7 +515,7 @@ at 509 ms per 518&times;518 tile, and a live public deployment on a 2-vCPU virtu
 <tr><td>Copernicus GLO-30</td><td>open, no account or key</td><td>Fetched at runtime from a public S3 bucket.</td></tr>
 <tr class="bad"><td>CartoDEM (ISRO)</td><td>free to Indian Government Entities only</td><td><strong>Not used.</strong> As students we do not qualify, so the honest choice is Copernicus.</td></tr>
 <tr class="bad"><td>FABDEM (true bare earth)</td><td>non-commercial</td><td>Not used. Its absence is why the bare-earth correction is an approximation and is labelled as one.</td></tr>
-<tr><td>Maxar Open Data</td><td>CC-BY-4.0</td><td>Source of the Indian imagery at 0.31 m.</td></tr>
+<tr><td>Maxar Open Data</td><td>CC BY-NC 4.0</td><td>Source of the Indian imagery at 0.31 m.</td></tr>
 <tr><td>pubgeo/dfc2019 baselines</td><td>MIT</td><td>Reference metrics implementation.</td></tr>
 </table></div>
 </section>
@@ -949,7 +949,7 @@ with roughly 1 GB free, and the ingest has already pushed the page file up once.
 
 <h3>6.7 Indian imagery &mdash; Maxar Open Data</h3>
 <div class="dl">
-  <div class="di"><dt>Source</dt><dd>Maxar Open Data programme, CC-BY-4.0, free 0.3&ndash;0.6 m imagery including India</dd></div>
+  <div class="di"><dt>Source</dt><dd>Maxar Open Data programme, CC BY-NC 4.0, free 0.3&ndash;0.6 m imagery including India</dd></div>
   <div class="di"><dt>Scene</dt><dd>Teesta valley, Sikkim. Event folder <span class="t">India-Floods-Oct-2023</span>, but the actual acquisitions in it are dated <strong>2022-03-14</strong> &mdash; so the matching Open Buildings year is 2022, not 2023.</dd></div>
   <div class="di"><dt>Resolution</dt><dd>0.31 m, essentially our training resolution</dd></div>
   <div class="di"><dt>View geometry</dt><dd>26&deg; off-nadir, which means a roof sits about 5 m from its own footprint &mdash; a co-registration problem addressed in Part 9.7</dd></div>
@@ -1979,7 +1979,7 @@ and the virtual environment live <em>outside</em> it, under <span class="t">D:\s
   <div class="di"><dt>prepare_gamus.py (567)</dt><dd>GAMUS: list &rarr; probe &rarr; shard, streaming, keeping no raw data.</dd></div>
   <div class="di"><dt>link_union.py</dt><dd>Builds <span class="t">data/shards_union</span> as hardlinks to the DFC2019 and GAMUS shards &mdash; zero extra bytes.</dd></div>
   <div class="di"><dt>parse_imd.py</dt><dd>Parses WorldView <span class="t">.IMD</span> metadata into JSON: solar and viewing geometry.</dd></div>
-  <div class="di"><dt>maxar_opendata.py (202)</dt><dd>Maxar Open Data: free 0.3&ndash;0.6 m imagery including India, CC-BY-4.0.</dd></div>
+  <div class="di"><dt>maxar_opendata.py (202)</dt><dd>Maxar Open Data: free 0.3&ndash;0.6 m imagery including India, CC BY-NC 4.0.</dd></div>
   <div class="di"><dt>open_buildings.py (201)</dt><dd>Google Open Buildings 2.5D Temporal: independent building heights over India.</dd></div>
   <div class="di"><dt>bhoonidhi.py (257)</dt><dd>Bhoonidhi (NRSC) API client: authenticate, list collections, search, download.</dd></div>
   <div class="di"><dt>kaggle_push.py (165) / kaggle_watch.py</dt><dd>Push shards to Kaggle as a private dataset; poll a kernel and print one line per state change.</dd></div>
@@ -2278,7 +2278,7 @@ it is easier than validation when doing so.</li>
   <div class="di w"><dt>GAMUS</dt><dd>huggingface.co/datasets/earthflow/GAMUS, CC-BY-4.0. Dataloader: github.com/EarthNets/RSI-MMSegmentation.</dd></div>
   <div class="di w"><dt>Copernicus GLO-30</dt><dd><span class="t">https://copernicus-dem-30m.s3.amazonaws.com</span> &mdash; open, no account.</dd></div>
   <div class="di w"><dt>Google Open Buildings 2.5D Temporal</dt><dd>Sentinel-2 derived building heights, field <span class="t">building_height</span> in [0, 100] m.</dd></div>
-  <div class="di w"><dt>Maxar Open Data</dt><dd>CC-BY-4.0. Event folder <span class="t">India-Floods-Oct-2023</span>, acquisitions dated 2022-03-14.</dd></div>
+  <div class="di w"><dt>Maxar Open Data</dt><dd>CC BY-NC 4.0. Event folder <span class="t">India-Floods-Oct-2023</span>, acquisitions dated 2022-03-14.</dd></div>
   <div class="di w"><dt>Bhoonidhi (NRSC)</dt><dd>ISRO's data portal. Client implemented; open products not at a useful resolution for building heights.</dd></div>
   <div class="di w"><dt>ISRO reference repository</dt><dd>github.com/IMG-PROCESS-SAC/SIH-DepthWizard-2026</dd></div>
   <div class="di w"><dt>Problem statement portal</dt><dd>sih.gov.in/sih2026PS</dd></div>

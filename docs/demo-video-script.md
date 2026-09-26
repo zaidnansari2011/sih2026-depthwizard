@@ -100,7 +100,7 @@ code links.
    - Capture a browser window at 1920 × 1080, 60 fps.
    - Hide the bookmarks bar and zoom the browser to 100 %.
    - Close other tabs, and turn off notifications (Focus assist on Windows).
-4. **Credit Maxar.** Put "Imagery © Maxar Technologies, CC-BY-4.0" in the end card and the
+4. **Credit Maxar.** Put "Imagery © Maxar Technologies, CC BY-NC 4.0" in the end card and the
    video description.
 5. **Record the voice-over separately.** Record it in a quiet room with the phone about
    20 cm away. Then lay the clips under it; this is easier than talking while clicking.

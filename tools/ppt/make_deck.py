@@ -407,7 +407,7 @@ def slide_references(s) -> None:
                                   "arxiv.org/abs/2406.09414"),
             ("HTC-DC Net", "Chen et al., IEEE TGRS 2023. Head-tail cut and distribution "
                            "constraints. arxiv.org/abs/2309.16486"),
-            ("Depth Any Canopy", "Ouaknine et al., 2024. The published recipe for "
+            ("Depth Any Canopy", "Rege Cambrin et al., ECCV-W 2024. The published recipe for "
                                  "adapting Depth Anything to aerial height."),
             ("Beta-NLL", "Seitzer et al., ICLR 2022. Keeps the mean head learning under "
                          "a heteroscedastic loss. arxiv.org/abs/2203.09168"),

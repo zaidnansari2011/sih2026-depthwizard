@@ -202,7 +202,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
     <div class="card"><span class="pill">Use</span><h4>A 3D scene</h4><p>A browser flythrough with measuring, flood, compare-against-LiDAR and error-map tools. It also ships as one HTML file that opens offline.</p></div>
   </div>
   <div class="callout">
-    <p><strong>How to read this page.</strong> Every number here is measured on the configuration we actually ship (called <em>run07</em>, with test-time augmentation and resolution fusion) and traces to a file in the repository. Where a claim failed, it says so. The per-section sources are in the <a href="https://github.com/zaidnansari2011/sih2026-depthwizard/tree/master/docs">docs folder</a>.</p>
+    <p><strong>How to read this page.</strong> Every headline and results number is measured on the configuration we actually ship (called <em>run07</em>, with test-time augmentation and resolution fusion); older runs and probes are labelled as such where they appear. Each traces to a file in the repository. Where a claim failed, it says so. The per-section sources are in the <a href="https://github.com/zaidnansari2011/sih2026-depthwizard/tree/master/docs">docs folder</a>.</p>
   </div>
 </section>
 
@@ -259,7 +259,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
     <tr><th>Dataset</th><th>What it is</th><th>Role</th><th>Licence</th></tr>
     <tr><td><strong>DFC2019 Track 1</strong> (US3D)</td><td>2,783 WorldView-3 RGB tiles of 1024×1024 at 0.3 m over Jacksonville and Omaha, each with an airborne-LiDAR height-above-ground map and a class map. 108 regions.</td><td>Training and the main validation set</td><td>IEEE DataPort, free account</td></tr>
     <tr><td><strong>GAMUS</strong></td><td>ISRO’s recommended dataset. 0.33 m tiles with LiDAR nDSM over Washington DC, Philadelphia and New York.</td><td>Second training corpus; a held-out DC block for cross-domain testing</td><td>CC-BY-4.0</td></tr>
-    <tr><td><strong>Maxar Open Data</strong>, Sikkim</td><td>0.31 m imagery over the Teesta valley, India, from Maxar’s India-Floods-Oct-2023 event (acquired 14 Mar 2022).</td><td>Indian and hilly-terrain demonstration; no LiDAR exists here</td><td>CC-BY-4.0, © Maxar Technologies</td></tr>
+    <tr><td><strong>Maxar Open Data</strong>, Sikkim</td><td>0.31 m imagery over the Teesta valley, India, from Maxar’s India-Floods-Oct-2023 event (acquired 14 Mar 2022).</td><td>Indian and hilly-terrain demonstration; no LiDAR exists here</td><td>CC BY-NC 4.0, © Maxar Technologies</td></tr>
     <tr><td><strong>Copernicus GLO-30</strong></td><td>Free 30 m global elevation model.</td><td>Absolute-height anchor and the terrain under the Sikkim scenes</td><td>Open, no authentication</td></tr>
     <tr><td><strong>Google Open Buildings 2.5D</strong></td><td>Building footprints and heights derived from Sentinel-2 at about 4 m effective resolution.</td><td>A cross-check over India, never used as truth; building outlines for the flood tool</td><td>Open</td></tr>
   </table></div>
@@ -270,7 +270,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
     <li><strong>Crops are 518 px, not 256.</strong> 518 = 14 × 37 is the backbone’s native size; a 256 crop silently comes back as 252. A stride of 506 tiles each 1024 image exactly 2×2 with 12 px overlap, and labels are never resampled.</li>
     <li><strong>The split is region-disjoint</strong>: 76 train / 16 validation / 16 test regions, seed 1337. A random tile split leaks, because neighbouring tiles share buildings, lighting and architecture.</li>
     <li><strong>Tall buildings are scarce.</strong> Training holds 166 buildings above 30 m, the tallest 82.8 m. Validation reaches 155.3 m.</li>
-    <li><strong>The test split is held back</strong> and is not scored until the very end. It is also easier: it contains exactly one building above 30 m, which will flatter any number quoted from it.</li>
+    <li><strong>The test split is held back</strong>: no trained model is scored on it until the very end. (Only the untrained zero-shot baseline was measured there, at 4.68 m.) It is also easier: it contains exactly one building above 30 m, which will flatter any number quoted from it.</li>
   </ul>
 
   <h3>GAMUS: what was usable</h3>
@@ -357,7 +357,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
   <div class="tablewrap"><table>
     <tr><th>Criterion</th><th>Bar</th><th class="n">run07</th><th>Result</th></tr>
     <tr class="hl"><td>Primary: bias on buildings &gt; 20 m</td><td>better than −13 m</td><td class="n">−15.64 m</td><td class="no">Not met</td></tr>
-    <tr><td>3–6 m band must not degrade</td><td>≤ +0.3 m</td><td class="n">1.363 m (was 1.429)</td><td class="yes">Met</td></tr>
+    <tr><td>3–6 m band must not degrade</td><td>≤ +0.3 m</td><td class="n">1.343 m (was 1.429)</td><td class="yes">Met</td></tr>
     <tr><td>Whole-tile RMSE</td><td>≤ 6.401 m</td><td class="n">6.008 m</td><td class="yes">Met</td></tr>
     <tr><td>Per-building RMSE</td><td>≤ 3.667 m</td><td class="n">3.464 m</td><td class="yes">Met</td></tr>
     <tr><td>Calibration (ECE)</td><td>≤ 0.083</td><td class="n">0.063</td><td class="yes">Met</td></tr>
@@ -442,14 +442,14 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
   <h2>Limitations, stated plainly</h2>
   <figure style="max-width:560px"><img src="img/buildings_scatter.jpg" alt="Scatter of predicted vs true building height" loading="lazy"><figcaption>Predicted vs true height per building. Above ~20 m the model compresses toward the mean.</figcaption></figure>
   <ol>
-    <li><strong>Tall buildings are under-called.</strong> Above 20 m the average under-call is 15.6 m. Adding GAMUS improved this significantly (from 17.2 m, p = 0.0002), but short of the −13 m we pre-registered. The limit is now the data: no open dataset at this resolution contains buildings above ~50 m.</li>
+    <li><strong>Tall buildings are under-called.</strong> Above 20 m the average under-call is 15.6 m. Adding GAMUS improved this significantly (from 17.2 m, p = 0.0002), but short of the −13 m we pre-registered. The limit is now the data: GAMUS has no buildings above 50 m, and DFC2019’s training split holds only 166 above 30 m, the tallest 82.8 m.</li>
     <li><strong>The improvement cost a little bias.</strong> Overall per-building bias moved from −0.24 to −0.47 m. It was a deliberate bias-for-variance trade, because per-building RMSE improved.</li>
     <li><strong>Forested ground carries 2.5 m of error</strong> (vs 0.61 m on open ground) because LiDAR sees through canopy and a camera cannot.</li>
     <li><strong>Tile borders are worse</strong>, about double the interior RMSE; a known property of patch-based transformers.</li>
     <li><strong>The absolute anchor is itself a surface model.</strong> GLO-30 includes buildings and canopy, so dense urban composites double-count part of the building height.</li>
     <li><strong>ISRO’s 0.6 m imagery costs 15.4%</strong> per building even with auto-zoom (3.999 m vs 3.464 m), and about 25% on buildings under 20 m. Measured on simulated 0.6 m; see <a href="#results-06m">0.6 m results</a>.</li>
     <li><strong>No Indian LiDAR</strong>, so everything over India is agreement, not accuracy.</li>
-    <li><strong>The test split is unscored</strong>, by design, until the very end, once.</li>
+    <li><strong>No trained model has been scored on the test split</strong>, by design, until the very end, once.</li>
   </ol>
 </section>
 
@@ -461,7 +461,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
   <div class="grid3">
     <div class="card"><h4>Metric by training</h4><p>The head regresses metres above ground directly, learned from LiDAR, so no per-image scale fitting is needed to get heights.</p></div>
     <div class="card"><h4>DEM anchor</h4><p>For georeferenced input, Copernicus GLO-30 supplies the ground: DSM = terrain + height above ground, referenced to the EGM2008 geoid. The default in the pipeline since 13 Sep, and on the live site since 25 Sep, because ISRO scores GeoTIFF inputs as an absolute DSM.</p></div>
-    <div class="card"><h4>Ground control points</h4><p>With a few known heights, a power-law fit corrects range compression. Over 10 tiles with a tall building, 8 points cut RMSE by 24.9%.</p></div>
+    <div class="card"><h4>Ground control points</h4><p>With a few known heights, a power-law fit corrects range compression. Over 10 tiles with a tall building, 8 points cut RMSE by 24.9%, though 5 of the 10 tiles got worse: a trade, not a fix.</p></div>
   </div>
   <p><strong>Why a power law and not a straight line.</strong> The model’s compression is not linear: it over-calls by 1.20× at 0–3 m and under-calls at 0.52× above 40 m. Across all 57 tiles tested, the power form was the only one that beat doing nothing (−4.4%, where affine was +0.1%). It carries guards: at least two control points in the upper 60% of the height range, and an exponent of at least 0.95. On tiles without enough spread it declines and falls back to an offset only.</p>
   <h3>What you get back</h3>
@@ -479,7 +479,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
   <p>Each probe states a prediction first and what would falsify it. Negative results are evidence too: they show which levers are spent.</p>
   <div class="tablewrap"><table>
     <tr><th>Probe</th><th>Question</th><th>Result</th><th>Conclusion</th></tr>
-    <tr><td>01 Tall buildings</td><td>Can training harder on the tall buildings we have move the tail?</td><td>Fit improved (10.22 → 8.81 m) but transfer got worse (−18.22 → −19.10 m)</td><td>Data scarcity, not architecture. More tall buildings needed, which GAMUS then partly supplied</td></tr>
+    <tr><td>01 Tall buildings</td><td>Can training harder on the tall buildings we have move the tail?</td><td>After 400 steps, fit improved (10.22 → 7.63 m) but transfer barely moved (bias −18.22 → −18.04 m)</td><td>Data scarcity, not architecture. More tall buildings needed, which GAMUS then partly supplied</td></tr>
     <tr><td>02 Backbone</td><td>Would a bigger backbone see height better?</td><td>Zero-shot per-building r: Small +0.351, V1-Base +0.470, V1-Large +0.659</td><td>Motivated run05/06, which did not produce a result</td></tr>
     <tr><td>03 Guided filtering</td><td>Can post-processing square off blurred roofs?</td><td>Every setting was worse (+0.009 to +0.359 m)</td><td>The blur is structural; filters cannot create edges never predicted</td></tr>
     <tr><td>04 Resolution</td><td>Where does roof detail go?</td><td>One token covers 4.2 m. Fusing a 2× zoomed pass at σ = 8 gave +29% sharpness for +0.072 m</td><td>Shipped as resolution fusion</td></tr>
@@ -491,7 +491,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
     <div class="card"><h4>Ordinal / binned heads</h4><p>All heads land at a 0.43–0.49 slope. The most likely bin sits only 1.86 m from the average, so no hidden tall mode is being averaged away.</p></div>
     <div class="card"><h4>Tail re-weighting (LDS)</h4><p>Pixels above 20 m are 7.5% of building pixels but already carry 78.8% of squared error. Re-weighting further was ruled out.</p></div>
     <div class="card"><h4>Two-model ensemble</h4><p>The two best models’ errors correlate at 0.925; the best mix gave 3.647 m against 3.616 m. Averaging buys nothing.</p></div>
-    <div class="card"><h4>Shadow photogrammetry</h4><p>Even perfect (oracle) shadows reach r 0.503 against the network’s 0.787, so shadows cannot lift the tail.</p></div>
+    <div class="card"><h4>Shadow photogrammetry</h4><p>Even perfect (oracle) shadows reach r 0.503 against 0.787 for our earlier run02 network (the shipped model reaches 0.809), so shadows cannot lift the tail.</p></div>
   </div>
 </section>
 
@@ -522,7 +522,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
       <p>It is a flat-water (“bathtub”) model, with no flow, volume or time, and the interface says so. On the US scenes it switches itself off and explains why: they have no coordinates, so there is no sea level to measure against.</p>
     </div>
   </div>
-  <figure><img src="img/viewer_sikkim_town.jpg" alt="Sikkim hill town in the viewer with satellite imagery draped" loading="lazy"><figcaption>A Sikkim hill town: our building heights standing on GLO-30 terrain. Imagery © Maxar Technologies, CC-BY-4.0.</figcaption></figure>
+  <figure><img src="img/viewer_sikkim_town.jpg" alt="Sikkim hill town in the viewer with satellite imagery draped" loading="lazy"><figcaption>A Sikkim hill town: our building heights standing on GLO-30 terrain. Imagery © Maxar Technologies, CC BY-NC 4.0.</figcaption></figure>
   <h3>Standalone</h3>
   <p>The whole viewer, with its demo scenes, also builds into <strong>one 15 MB HTML file</strong> that opens by double-click from disk, with no server and no network. It was verified by loading it in a headless browser with software rendering: the file contains no <code>&lt;canvas&gt;</code>, and the rendered page has one, which only happens if three.js actually ran.</p>
 </section>
@@ -562,7 +562,7 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
     <tr><td><code>test_flood.mjs</code></td><td>7 flood-tool acceptance checks, e.g. enclosed basins stay dry</td><td>A re-bake that had silently dropped the building data and disabled the tool</td></tr>
     <tr><td><code>smoke_deliverable.py</code></td><td>12 awkward inputs and every entry point’s <code>--help</code></td><td>A truncated PNG rendered as heights over 26% invented black pixels</td></tr>
     <tr><td><code>verify_upload.py</code></td><td>23 checks on the upload path, including path traversal, against local or live</td><td>Windows file paths leaking into the downloadable summary</td></tr>
-    <tr><td>ONNX parity</td><td>Exported model vs PyTorch on 804,972 inputs</td><td>Three export defects in the first version</td></tr>
+    <tr><td>ONNX parity</td><td>Exported model vs PyTorch on a random 518×518 input (804,972 values)</td><td>Three export defects in the first version</td></tr>
   </table></div>
 </section>
 
@@ -608,19 +608,19 @@ footer{padding:40px 48px 60px;color:var(--slate);font-size:.86rem;border-top:1px
   <ul>
     <li><strong>Depth Anything V2</strong> — Yang et al., NeurIPS 2024. The backbone.</li>
     <li><strong>HTC-DC Net</strong> — Chen et al., IEEE TGRS 2023. Head-tail cut and distribution constraints; re-implemented and compared as run04.</li>
-    <li><strong>Depth Any Canopy</strong> — Ouaknine et al., 2024. The fine-tuning recipe for aerial height.</li>
+    <li><strong>Depth Any Canopy</strong> — Rege Cambrin, Corley &amp; Garza, ECCV 2024 Workshops. The fine-tuning recipe for aerial height.</li>
     <li><strong>β-NLL</strong> — Seitzer et al., ICLR 2022. Keeps the mean head learning under NLL.</li>
     <li><strong>Heteroscedastic uncertainty</strong> — Kendall &amp; Gal, NeurIPS 2017. The twin-head formulation.</li>
     <li><strong>LDS / FDS</strong> — Yang et al., ICML 2021. Imbalanced-regression re-weighting; tested and ruled out.</li>
-    <li><strong>IM2HEIGHT, TSE-Net</strong> — prior single-view height estimation.</li>
+    <li><strong>IM2HEIGHT</strong> — Mou &amp; Zhu, arXiv 2018; <strong>TSE-Net</strong> — Chen &amp; Zhu, arXiv 2025. Prior single-view height estimation.</li>
     <li><strong>GlobalBuildingAtlas</strong> — ESSD 2025. The 5.9 m per-building bar over Asia.</li>
     <li><strong>Guided filter</strong> — He, Sun &amp; Tang, ECCV 2010. Probe 03.</li>
   </ul>
   <h3>Data and credits</h3>
   <ul>
     <li>DFC2019 / US3D — IEEE GRSS Data Fusion Contest 2019, via IEEE DataPort. Not redistributed.</li>
-    <li>GAMUS — Earthflow, CC-BY-4.0; recommended by ISRO for this problem statement.</li>
-    <li>Sikkim imagery — Maxar Open Data Program, CC-BY-4.0, © Maxar Technologies.</li>
+    <li>GAMUS — Xiong et al., 2023 (TUM), hosted by Earthflow on Hugging Face, CC-BY-4.0; recommended by ISRO for this problem statement.</li>
+    <li>Sikkim imagery — Maxar Open Data Program, CC BY-NC 4.0 (non-commercial), © Maxar Technologies. It is not covered by the repository’s Apache-2.0 licence.</li>
     <li>Copernicus GLO-30 — © DLR e.V. 2010–2014 and © Airbus Defence and Space GmbH 2014–2018, provided under COPERNICUS by the European Union and ESA.</li>
     <li>Google Open Buildings 2.5D Temporal — Google Research.</li>
     <li>three.js — MIT licence.</li>

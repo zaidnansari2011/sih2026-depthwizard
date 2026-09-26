@@ -405,7 +405,7 @@ statement.md, evidence-pack.md, deployment.md and gamus-integration.md. Work, in
 sitting: (a) commit in coherent chunks and push the branch (`docs/figures/` is NOT
 gitignored — it comes along free, which un-breaks the five `figures/fig_*.png` embeds in
 evidence-pack.md); (b) add Apache-2.0 `LICENSE` (compatible with the DA-V2 backbone) plus
-`NOTICE.md` covering GAMUS CC-BY-4.0, Maxar Open Data CC-BY-4.0 (the Sikkim `texture.jpg`
+`NOTICE.md` covering GAMUS CC BY-NC 4.0, Maxar Open Data CC BY-NC 4.0 (the Sikkim `texture.jpg`
 baked into the 15.2 MB standalone with no attribution — `grep -i maxar viewer/main.js
 viewer/index.html` = 0 hits), Google Open Buildings, Copernicus GLO-30, three.js MIT; add an
 `imagery_source` manifest field so the credit travels inside the standalone; (c)

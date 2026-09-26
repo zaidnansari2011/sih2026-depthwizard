@@ -318,7 +318,7 @@ def slide_problem_solution(s) -> None:
     label(s, sx, IY, "Sikkim, India · hilly", fill=DEEP)
     para(s, sx, 6.88, AW_, 0.20,
          [("967 m of relief across 2 km, draped.", {"colour": SLATE}),
-          ("  Imagery © Maxar, CC-BY-4.0", {"colour": SLATE, "size": 7.0})],
+          ("  Imagery © Maxar, CC BY-NC 4.0", {"colour": SLATE, "size": 7.0})],
          size=T_MICRO, line=0.98)
 
 
@@ -695,7 +695,7 @@ def slide_references(s) -> None:
     y = stack_col(X0, AW, BODY_TOP, "Research that changed what we built", [
         ("Depth Anything V2", "Yang et al., NeurIPS 2024. The backbone we fine-tune."),
         ("HTC-DC Net", "Chen et al., TGRS 2023. Head-tail cut, distribution constraints."),
-        ("Depth Any Canopy", "Ouaknine et al., 2024. The recipe for aerial height."),
+        ("Depth Any Canopy", "Rege Cambrin et al., ECCV-W 2024. The recipe for aerial height."),
         ("Beta-NLL", "Seitzer et al., ICLR 2022. Keeps the mean head learning."),
         ("IM2HEIGHT, TSE-Net", "Prior single-view height — our baseline for the field."),
     ])
@@ -705,7 +705,7 @@ def slide_references(s) -> None:
         ("Copernicus GLO-30", "Free 30 m global DEM; the absolute metric anchor."),
         ("GlobalBuildingAtlas", "Published 5.9 m RMSE over Asia — the external bar."),
         ("Google Open Buildings", "A cross-check over India, never used as truth."),
-        ("Maxar Open Data", "Sikkim imagery, CC-BY-4.0, © Maxar Technologies."),
+        ("Maxar Open Data", "Sikkim imagery, CC BY-NC 4.0, © Maxar Technologies."),
     ])
 
     y = stack_col(BX, BW, BODY_TOP, "Tried, measured, rejected", [

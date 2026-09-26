@@ -29,7 +29,11 @@ Python dependencies keep their own licences; see `requirements.txt` and
 
 **Maxar Open Data Program** — imagery over Sikkim, India, used for the two `hilly_sikkim_*`
 viewer scenes and baked into `viewer_standalone.html` as `texture.jpg`.
-Released under **CC-BY-4.0**; © Maxar Technologies, via the Maxar Open Data Program.
+Released under **CC BY-NC 4.0** (non-commercial; the event's STAC collection record,
+`India-Floods-Oct-2023/collection.json`, says `"license": "CC-BY-NC-4.0"`); © Maxar
+Technologies, via the Maxar Open Data Program. This imagery, the `viewer/samples/` images
+and any scene or figure drawn from it are **not** covered by the repository's Apache-2.0
+licence and may not be used commercially.
 Attribution also travels *inside* the product: each affected scene manifest carries an
 `imagery_source` field, so the credit survives someone opening the standalone file alone
 with no repository and no README.
