@@ -37,6 +37,8 @@ OUT = ROOT / "tools/ppt/figures/d"
 
 STRIP = 3.30 / 1.74        # slide 2's after-panels, width over height in inches
 FLOOD = 6.10 / 2.26        # slide 5's use-case frame
+E_TERRAIN = (3.36, 2.02)   # deck E slide 7's two chart slots, in inches, placed 1:1
+E_HEIGHT = (3.36, 1.88)
 
 INK, SLATE, ACCENT, STEEL, RULE = "#14181D", "#5B6670", "#C1440E", "#2E6E92", "#D3D8DD"
 plt.rcParams.update({
@@ -48,56 +50,71 @@ plt.rcParams.update({
 
 
 # --------------------------------------------------------------------------- charts
-def terrain(m: dict) -> None:
+def terrain(m: dict, size=(4.5, 2.15), fs=8.5, name="terrain.png") -> None:
+    """`size` is the figure in inches. Drawn at the size it is placed on the slide, `fs`
+    prints at its nominal point size; decks B-D shrink the default by 25-50 %."""
     order = ["sparse", "mixed", "forested", "urban"]
     rmse = [m["per_terrain"][k]["rmse"] for k in order]
     corr = [m["per_terrain"][k]["corr"] for k in order]
-    fig, ax = plt.subplots(figsize=(4.5, 2.15), dpi=220)
+    fig, ax = plt.subplots(figsize=size, dpi=220)
     cols = [STEEL] * 3 + [ACCENT]
     names = [k.capitalize() for k in order]
-    bars = ax.barh(names[::-1], rmse[::-1], color=cols[::-1], height=0.58)
+    bars = ax.barh(names[::-1], rmse[::-1], color=cols[::-1], height=0.62)
     for b, v in zip(bars, rmse[::-1]):
         ax.text(v + 0.3, b.get_y() + b.get_height() / 2, f"{v:.2f} m", va="center",
-                fontsize=8.5, color=INK, fontweight="bold")
+                fontsize=fs + 0.5, color=INK, fontweight="bold")
     ax.set_xlim(0, math.ceil(max(rmse) / 2) * 2 + 2)
-    ax.set_xlabel("Whole-tile RMSE (m), 80 held-out tiles", fontsize=8.5)
+    ax.set_xlabel("Whole-tile RMSE (m), 80 held-out tiles", fontsize=fs - 0.5)
     for side in ("top", "right", "left"):
         ax.spines[side].set_visible(False)
-    ax.tick_params(length=0, labelsize=8.5)
+    ax.tick_params(axis="x", length=0, labelsize=fs - 0.5)
+    ax.tick_params(axis="y", length=0, labelsize=fs, labelcolor=INK)
     ax.grid(axis="x", color=RULE, linewidth=0.6, alpha=0.7)
     ax.set_axisbelow(True)
     fig.tight_layout(pad=0.4)
-    fig.savefig(OUT / "terrain.png")
+    fig.savefig(OUT / name)
     plt.close(fig)
-    for k, r, c in zip(order, rmse, corr):
-        print(f"    terrain {k:<9} rmse {r:6.3f}  corr {c:+.3f}")
+    if name == "terrain.png":
+        for k, r, c in zip(order, rmse, corr):
+            print(f"    terrain {k:<9} rmse {r:6.3f}  corr {c:+.3f}")
 
 
-def error_by_height(m: dict) -> None:
+def error_by_height(m: dict, size=(6.4, 2.55), fs=8.5, name="error_by_height.png",
+                    bare_y=False) -> None:
+    """`bare_y` drops the y axis: every bar carries its value, and at slide size the axis
+    only competes with those labels for room."""
     bands = m["building_wise_by_height"]
     labels = ["0–3 m", "3–6 m", "6–10 m", "10–20 m", "> 20 m"]
     assert len(bands) == len(labels), f"expected 5 height bands, got {len(bands)}"
     rmse = [b["rmse"] for b in bands]
     n = [b["n_buildings"] for b in bands]
 
-    fig, ax = plt.subplots(figsize=(6.4, 2.55), dpi=220)
-    bars = ax.bar(labels, rmse, color=[STEEL] * 4 + [ACCENT], width=0.62)
+    fig, ax = plt.subplots(figsize=size, dpi=220)
+    bars = ax.bar(labels, rmse, color=[STEEL] * 4 + [ACCENT], width=0.66)
     for b, v in zip(bars, rmse):
         ax.text(b.get_x() + b.get_width() / 2, v + 0.6, f"{v:.2f} m", ha="center",
-                fontsize=8.5, color=INK, fontweight="bold")
-    ax.set_ylim(0, math.ceil(max(rmse) / 5) * 5 + 3)
-    ax.set_ylabel("Per-building RMSE (m)", fontsize=8.5)
+                fontsize=fs + (0.5 if bare_y else 0), color=INK, fontweight="bold")
+    ax.set_ylim(0, math.ceil(max(rmse) / 5) * 5 + (1 if bare_y else 3))
     for side in ("top", "right"):
         ax.spines[side].set_visible(False)
-    ax.tick_params(length=0, labelsize=8)
-    ax.grid(axis="y", color=RULE, linewidth=0.6, alpha=0.7)
+    if bare_y:
+        ax.spines["left"].set_visible(False)
+        ax.set_yticks([])
+    else:
+        ax.set_ylabel("Per-building RMSE (m)", fontsize=fs)
+        ax.grid(axis="y", color=RULE, linewidth=0.6, alpha=0.7)
+    ax.tick_params(length=0, labelsize=fs - 0.5)
     ax.set_axisbelow(True)
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels([f"{b}\nn={c:,}" for b, c in zip(labels, n)], fontsize=8.5,
+    ax.set_xticklabels([f"{b}\nn={c:,}" for b, c in zip(labels, n)], fontsize=fs,
                        color=INK)
+    if bare_y:
+        ax.set_xlabel("Per-building RMSE by true height", fontsize=fs - 0.5)
     fig.tight_layout(pad=0.4)
-    fig.savefig(OUT / "error_by_height.png")
+    fig.savefig(OUT / name)
     plt.close(fig)
+    if name != "error_by_height.png":
+        return
 
     # The sentences beside this chart, recomputed rather than carried over.
     sq = [k * r * r for k, r in zip(n, rmse)]
@@ -154,6 +171,9 @@ def main() -> None:
           f"ECE {m['ece']:.3f}, sigma rank r {m['sigma_rank_corr']:+.3f}")
     terrain(m)
     error_by_height(m)
+    # Deck E's slide 7 places these at exactly E_TERRAIN / E_HEIGHT, so 9.5 pt is 9.5 pt.
+    terrain(m, size=E_TERRAIN, fs=9.5, name="terrain_e.png")
+    error_by_height(m, size=E_HEIGHT, fs=9.5, name="error_by_height_e.png", bare_y=True)
 
     print("  crops")
     omaha_input()
