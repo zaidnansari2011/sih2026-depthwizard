@@ -416,6 +416,13 @@ def result_readme(job_id: str, job: dict) -> str:
         + ("  (TTA x8 + zoom-2 fusion, the configuration every published number was "
            "measured with)" if job.get("quality") == "accurate" else
            "  (single pass; the published numbers use the accurate setting)"),
+    ]
+    b = summary.get("bands") or {}
+    if b.get("how") in ("assumed", "requested"):
+        lines.append(f"colour bands     read as {b.get('order')}"
+                     + ("  (the file does not name its bands, so this was assumed)"
+                        if b["how"] == "assumed" else "  (as requested at upload)"))
+    lines += [
         "",
         "FILES",
     ]
@@ -513,8 +520,9 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             out_prefix = OUT / job_id
             out_prefix.parent.mkdir(parents=True, exist_ok=True)
 
+            band_order = j.get("band_order", "auto")
             cmd = [sys.executable, "infer.py", "--image", str(src),
-                   "--out", str(out_prefix), "--auto-zoom"]
+                   "--out", str(out_prefix), "--auto-zoom", "--band-order", band_order]
             if quality == "accurate":
                 # The settings every published per-terrain number was measured with.
                 cmd += ["--tta", "--fuse-zoom", "2", "--fuse-sigma", "8"]
@@ -538,6 +546,13 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             # input whether or not a DEM anchor was even attempted, and --dem is off unless
             # DW_DEM is set. The claim was therefore routinely false. Ask the filesystem.
             georef = Path(f"{out_prefix}.dsm.tif").exists()
+            # How the colour bands were read. "assumed" is the case the viewer offers a
+            # re-run for: the file did not say, and a convention was applied.
+            try:
+                band_info = json.loads(Path(f"{out_prefix}.json").read_text(
+                    encoding="utf-8")).get("bands")
+            except (OSError, ValueError):
+                band_info = None
 
             j.update(step="building 3D scene", pct=70)
             scene_dir = SCENES / f"upload_{stem}_{job_id[:6]}"
@@ -546,6 +561,7 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
                   "--texture", str(src),
                   "--out", str(scene_dir),
                   "--terrain", "upload", "--place", "your image",
+                  "--band-order", band_order,
                   "--name", f"Uploaded — {stem}",
                   # Not in scenes/index.json. export_terrain.py appends every scene it
                   # writes, and this directory is shared, so without this one visitor's
@@ -583,7 +599,7 @@ def run_job(job_id: str, src: Path, stem: str, quality: str):
             reap_scenes()
             j.update(state="done", step="ready", pct=100,
                      scene=scene_dir.name, scene_name=f"Uploaded — {stem}",
-                     georeferenced=georef, quality=quality,
+                     georeferenced=georef, quality=quality, bands=band_info,
                      results=available_results(job_id))
     except subprocess.TimeoutExpired:
         JOBS[job_id].update(state="error", pct=100,
@@ -726,6 +742,11 @@ class Handler(SimpleHTTPRequestHandler):
         quality = (q.get("quality") or [ARGS.quality])[0]
         if quality not in ("fast", "accurate"):
             quality = ARGS.quality
+        # Which GeoTIFF bands are red, green, blue. "auto" unless the visitor is re-running
+        # an upload whose colours came out wrong; anything unrecognised means auto.
+        bands = (q.get("bands") or ["auto"])[0]
+        if bands not in ("auto", "rgb", "bgr"):
+            bands = "auto"
 
         ext = Path(name).suffix.lower()
         if ext not in ALLOWED:
@@ -756,7 +777,8 @@ class Handler(SimpleHTTPRequestHandler):
             LAST_BY_IP[ip] = now
             job_id = uuid.uuid4().hex
             JOBS[job_id] = {"state": "queued", "step": "waiting for a worker", "pct": 2,
-                            "name": name, "started": now, "quality": quality}
+                            "name": name, "started": now, "quality": quality,
+                            "band_order": bands}
             JOB_ORDER.append(job_id)
 
         stem = safe_stem(name)
