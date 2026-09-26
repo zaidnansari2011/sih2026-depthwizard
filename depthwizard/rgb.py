@@ -54,6 +54,59 @@ def _stretch(a: np.ndarray) -> np.ndarray:
 
 def read_rgb(path) -> np.ndarray:
     """HxWx3 uint8 RGB from a GeoTIFF, PNG or JPG."""
+    return read_rgb_valid(path)[0]
+
+
+# What separates a footprint border from a shadow that happens to touch the edge, measured
+# 26 Sep on 419 real border-free images (DFC2019, Maxar Sikkim/Nepal crops, samples) and 8
+# real footprint edges cut from raw Maxar tiles with their masks dropped:
+#   shadows:  at most 0.71 % of the perimeter in contact, 0.06 % of the area
+#   borders:  47-68 % of the perimeter, 45-86 % of the area
+# "Black and touching the edge" alone is NOT enough: a building shadow in OMA_281_005 is
+# exactly (0,0,0) and touches the edge. The thresholds sit 4x above the worst shadow; a
+# 150 px corner clip of a 1024 px tile (7 % contact, 2 % area) still qualifies.
+_MIN_CONTACT = 0.03          # fraction of the image perimeter the region runs along
+_MIN_AREA = 0.0025           # fraction of the image it covers
+# JPEG compression -- in a .jpg, or inside a Maxar visual GeoTIFF -- leaves the border's
+# boundary at 1-6 rather than 0. Grow a confirmed border this far into near-black.
+_FRINGE_PX, _FRINGE_TOL = 4, 8
+
+
+def _edge_connected(dark: np.ndarray, near_black: np.ndarray | None = None) -> np.ndarray:
+    """The footprint border within `dark`: components running along the image edge.
+
+    `near_black` (optional) is where the confirmed border may grow by a few pixels, to
+    take in the compression fringe along its boundary."""
+    if not dark.any():
+        return dark
+    from scipy.ndimage import binary_dilation, label
+    lab, n = label(dark)
+    H, W = lab.shape
+    ring = np.concatenate([lab[0], lab[-1], lab[:, 0], lab[:, -1]])
+    contact = np.bincount(ring, minlength=n + 1)
+    area = np.bincount(lab.ravel(), minlength=n + 1)
+    keep = (contact >= _MIN_CONTACT * 2 * (H + W)) & (area >= _MIN_AREA * H * W)
+    keep[0] = False
+    border = keep[lab]
+    if near_black is not None and border.any():
+        border |= binary_dilation(border, iterations=_FRINGE_PX) & near_black
+    return border
+
+
+def read_rgb_valid(path) -> tuple[np.ndarray, np.ndarray]:
+    """(HxWx3 uint8 RGB, HxW bool valid) from a GeoTIFF, PNG or JPG.
+
+    A pixel is invalid when the file says so -- declared nodata, a zero alpha, an internal
+    mask, NaN -- or when it belongs to a pure-black region touching the image edge. The
+    second case is the footprint border of a clipped satellite scene, which often carries
+    no nodata tag at all. Without this mask the model estimated heights for that border
+    and the viewer drew it as a flat black shelf around the scene.
+
+    "Pure black" is judged on the RAW values, never after the percentile stretch: the
+    stretch clips the darkest 2% of real pixels (deep shadow) to 0, and those must stay
+    valid. Only regions connected to the edge count, so a black roof or a shadow inside
+    the scene is never masked.
+    """
     path = Path(path)
     if path.suffix.lower() in (".tif", ".tiff"):
         import warnings
@@ -64,20 +117,47 @@ def read_rgb(path) -> np.ndarray:
                 idx = _rgb_band_indices(src)
                 a = src.read([i + 1 for i in idx])            # 3 x H x W
                 nodata = src.nodata
+                # Declared nodata, alpha bands and internal masks, as GDAL resolves them.
+                valid = src.dataset_mask() > 0
+                if (src.count == 4 and src.dtypes[0] == "uint8" and idx == [0, 1, 2]
+                        and not any(c.name == "alpha" for c in src.colorinterp)):
+                    # Untagged 8-bit 4-band is read as RGBA (see _rgb_band_indices), so
+                    # its fourth band is the alpha GDAL did not know to apply.
+                    valid &= src.read(4) > 0
         a = np.transpose(a, (1, 2, 0))
+        if a.dtype.kind == "f":
+            valid &= np.isfinite(a).all(-1)
+        # Raw zero in every band. For 8-bit this is pure black; for 16-bit or float it
+        # is a value real sensor data does not produce across all three bands at once.
+        valid &= ~_edge_connected((a == 0).all(-1) & valid,
+                                  (a.max(-1) <= _FRINGE_TOL) if a.dtype == np.uint8 else None)
         if a.dtype == np.uint8:
-            return np.ascontiguousarray(a)
+            return np.ascontiguousarray(a), valid
         a = a.astype(np.float32)
         if nodata is not None:
             # A finite nodata value (-9999, 0 on an unsigned border) would otherwise set
             # the low percentile and wash the whole image out.
             a[a == nodata] = np.nan
-        return _stretch(a)
+        a[~valid] = np.nan              # keep masked pixels out of the stretch percentiles
+        return _stretch(a), valid
 
     from PIL import Image, ImageOps
     im = ImageOps.exif_transpose(Image.open(path))
     if im.mode in ("I;16", "I;16B", "I;16L", "I", "F"):
         # 16-bit / float greyscale: convert("RGB") would clip everything above 255 to white.
-        g = _stretch(np.array(im))
-        return np.stack([g] * 3, -1)
-    return np.array(im.convert("RGB"))
+        raw = np.array(im)
+        valid = np.isfinite(raw) if raw.dtype.kind == "f" else np.ones(raw.shape, bool)
+        valid &= ~_edge_connected((raw == 0) & valid)
+        g = _stretch(np.where(valid, raw, np.nan))
+        return np.stack([g] * 3, -1), valid
+    if im.mode in ("RGBA", "LA", "PA") or "transparency" in im.info:
+        valid = np.array(im.convert("RGBA"))[..., 3] > 0
+    else:
+        valid = np.ones((im.height, im.width), bool)
+    rgb = np.array(im.convert("RGB"))
+    # PNG is lossless, so a border is exactly 0. JPEG can lift a flat black block to 1-3;
+    # the contact and area thresholds, not this tolerance, are what keep shadows valid.
+    core = 3 if path.suffix.lower() in (".jpg", ".jpeg") else 0
+    mx = rgb.max(-1)
+    valid &= ~_edge_connected((mx <= core) & valid, mx <= _FRINGE_TOL)
+    return rgb, valid

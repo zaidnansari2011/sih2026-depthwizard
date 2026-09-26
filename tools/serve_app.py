@@ -303,6 +303,9 @@ FAILURE_SIGNS: list[tuple[str, str]] = [
      "the uploaded file went missing before it could be processed. Try again."),
     ("MemoryError",
      "that image is too large to hold in memory. Try a smaller one."),
+    # infer.py refuses an image whose every pixel is nodata, transparent or border.
+    ("has no valid pixels",
+     "that image has no usable pixels: all of it is nodata, transparent or black border."),
 ]
 
 
@@ -450,6 +453,16 @@ def result_readme(job_id: str, job: dict) -> str:
             "  metres above the local ground, with no sea-level reference. That is the",
             "  problem statement's rDSM branch, and it is what a file with no coordinate",
             "  system can honestly support.",
+        ]
+    if summary.get("nodata_pixels"):
+        n = int(summary["nodata_pixels"])
+        lines += [
+            "",
+            "NODATA",
+            f"  {n:,} input pixels were nodata, transparent or black footprint border.",
+            "  They carry no image, so no height is estimated there: they are NaN in every",
+            "  raster, tagged as nodata, and left out of every statistic. The terrain",
+            "  raster is the exception: it is the external elevation model, not ours.",
         ]
     lines += [
         "",

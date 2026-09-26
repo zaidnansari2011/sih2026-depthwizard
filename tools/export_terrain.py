@@ -197,9 +197,16 @@ def main():
     # -- an honest number here is worth more than a clean-looking render.
     bad = ~np.isfinite(height)
     n_bad = int(bad.sum())
+    if n_bad == bad.size:
+        raise SystemExit("height map has no finite pixels; nothing to build a scene from")
     if n_bad:
-        fill = float(np.median(height[~bad])) if (~bad).any() else 0.0
+        fill = float(np.median(height[~bad]))
         height = np.where(bad, fill, height)
+    # The fill keeps vertex positions finite; the viewer must still not DRAW those pixels.
+    # infer.py writes NaN exactly where the input was nodata or footprint border, so the
+    # same mask ships with the scene and the viewer cuts those triangles out. Without it
+    # the border rendered as a flat shelf at the fill height.
+    valid_full = ~bad
 
     # Per-building scoring needs the native grid. Connected components cannot be recovered
     # from a thinned array -- decimating merges neighbouring roofs and splits long ones --
@@ -216,7 +223,9 @@ def main():
         ys = (np.linspace(0, H - 1, nh)).astype(np.int32)
         xs = (np.linspace(0, W - 1, nw)).astype(np.int32)
         height = height[np.ix_(ys, xs)]
+        valid_full = valid_full[np.ix_(ys, xs)]      # same samples, so the grids agree
         H, W = height.shape
+    valid = valid_full
 
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -226,8 +235,9 @@ def main():
         "name": args.name or hpath.stem,
         "width": W,
         "height": H,
-        "height_min_m": float(height.min()),
-        "height_max_m": float(height.max()),
+        # Over valid pixels only: the fill value is not a height anyone measured.
+        "height_min_m": float(height[valid].min()),
+        "height_max_m": float(height[valid].max()),
         "void_pixels_filled": n_bad,
         "downsampled_by": round(1.0 / scale, 3) if scale != 1.0 else 1.0,
         "vertical_exaggeration": args.vertical_exaggeration,
@@ -236,6 +246,10 @@ def main():
     }
     if args.model:
         manifest["model"] = args.model
+    if not valid.all():
+        valid.astype(np.uint8).tofile(out / "valid.bin")
+        manifest["files"]["valid"] = "valid.bin"
+        manifest["nodata_fraction"] = round(float((~valid).mean()), 6)
 
     # Ground sample distance, corrected for any downsampling we just did. Everything the
     # measurement tool reports is derived from this one number, so it is worth being
@@ -273,12 +287,14 @@ def main():
             ys = np.linspace(0, sig.shape[0] - 1, H).astype(np.int32)
             xs = np.linspace(0, sig.shape[1] - 1, W).astype(np.int32)
             sig = sig[np.ix_(ys, xs)]
+        sok = np.isfinite(sig) & valid
         sig = np.where(np.isfinite(sig), sig, 0.0)
         sig.astype("<f4").tofile(out / "sigma.bin")
         manifest["files"]["sigma"] = "sigma.bin"
-        manifest["sigma_min_m"] = float(sig.min())
-        manifest["sigma_max_m"] = float(sig.max())
-        manifest["sigma_mean_m"] = float(sig.mean())
+        if sok.any():
+            manifest["sigma_min_m"] = float(sig[sok].min())
+            manifest["sigma_max_m"] = float(sig[sok].max())
+            manifest["sigma_mean_m"] = float(sig[sok].mean())
 
     if args.terrain:
         manifest["terrain"] = args.terrain
