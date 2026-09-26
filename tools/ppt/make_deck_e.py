@@ -162,51 +162,39 @@ def set_title(s, text: str) -> None:
 
 # ------------------------------------------------------------------------- slide 1
 def slide_title(s) -> None:
-    for sh in by_name(s, "TextBox 9"):
-        drop(sh)
-    for sh in by_name(s, "Subtitle 3"):
-        drop(sh)
+    """The template's own title page, as the guide asked: its title, "TITLE PAGE"
+    subtitle, artwork and field list are kept exactly. The only writing is each field's
+    value, appended to the run that holds its label so it inherits the template's font,
+    plus the two links at the foot."""
+    values = {"Problem Statement ID": f" {PS_ID}",
+              "Problem Statement Title": f" {PS_TITLE}",
+              "Theme": f" {PS_THEME}",
+              "Team ID": f" {TEAM_ID}",
+              "Team Name (Registered on portal)": f" – {TEAM}"}
+    (box,) = by_name(s, "TextBox 9")
+    filled = set()
+    for p in box.text_frame.paragraphs:
+        text = "".join(r.text for r in p.runs)
+        if text.startswith("PS Category"):
+            # The form offers "Software/Hardware"; filling it in means naming ours.
+            p.runs[-1].text = p.runs[-1].text.replace("Software/Hardware", "Software")
+            filled.add("PS Category")
+            continue
+        for label, v in values.items():
+            if text.startswith(label):
+                p.runs[-1].text = p.runs[-1].text + v
+                filled.add(label)
+    assert filled == set(values) | {"PS Category"}, f"template fields changed: {filled}"
+    # Blank, the form fits at 24 pt and double spacing; filled, the title alone wraps to
+    # three lines and pushes Team ID and Team Name off the slide. So exactly two numbers
+    # change -- size and line spacing. Font, bold, bullets, justification, labels and the
+    # box's position are the template's own.
+    for p in box.text_frame.paragraphs:
+        p.line_spacing = 1.4
+        for r in p.runs:
+            r.font.size = Pt(20)
 
-    PX, PW = X0, 5.62
-    panel(s, PX, 1.30, PW, 3.56)
-    rounded(s, PX, 1.30, PW, 0.68, fill=NAVY, edge=None, radius=0.10)
-    para(s, PX + 0.20, 1.42, PW - 0.40, 0.42,
-         [("DEPTH", {"colour": WHITE}), ("WIZARD", {"colour": SAND})],
-         size=23, font=DISPLAY, line=0.95)
-    para(s, PX + 0.20, 2.12, PW - 0.40, 0.28,
-         "One satellite image in, a measurable 3D surface out.", size=11.5,
-         colour=BODY, font=SANS)
-
-    fields = [("Problem Statement ID", PS_ID), ("Problem Statement Title", PS_TITLE),
-              ("Theme", PS_THEME), ("PS Category", "Software"),
-              ("Team ID", TEAM_ID), ("Team Name (on portal)", TEAM)]
-    TAG_W, BOX_W, CHAR_W = 1.95, PW - 2.49, 0.098
-    y = 2.56
-    for k, v in fields:
-        tg = tag(s, PX + 0.20, y, TAG_W, 0.24, k, fill=STEEL, size=8.0)
-        tg.text_frame.margin_left = tg.text_frame.margin_right = 0
-        lines = max(1, math.ceil(len(v) * CHAR_W / BOX_W))
-        para(s, PX + 0.20 + TAG_W + 0.18, y - 0.03, BOX_W, 0.24 + 0.19 * (lines - 1),
-             v, size=12.5, colour=INK, font=SANS_B, line=0.98)
-        y += 0.35 + 0.19 * (lines - 1)
-
-    # What goes in and what comes out -- the idea in three numbers that are definitions,
-    # not measurements. The measurements are on slide 7, where ISRO asked for them.
-    pill(s, PX, 5.00, PW, "A working prototype — measured results on slide 7", h=0.34,
-         fill=EMBER, size=T_PILL_S)
-    stats = [("1", " image", "in: GeoTIFF, or plain\nPNG / JPG"),
-             ("2", " layers", "out: metric height and\nper-pixel confidence"),
-             ("0", " GPUs", "needed to run it or\nits 3D viewer")]
-    cw = (PW - 0.24) / 3
-    for i, (v, u, cap) in enumerate(stats):
-        stat_chip(s, PX + i * (cw + 0.12), 5.44, cw, 0.88, v, u, cap)
-
-    for i, c in enumerate(RAMP):
-        rect(s, PX + i * (PW / 6), 6.44, PW / 6, 0.12, fill=c)
-    para(s, PX, 6.59, PW, 0.20,
-         "The palette is the model's own output scale: 0 m at the left, 155 m at the "
-         "right.", size=T_MICRO - 0.4, colour=SLATE)
-    tf = para(s, PX, 6.82, PW, 0.32,
+    tf = para(s, X0, 6.90, 6.40, 0.32,
               [("LIVE  ", {"colour": EMBER, "font": COND, "size": 9.4}),
                ("project5.zaidansari.tech", {"colour": STEEL, "font": SANS_B}),
                ("      DOCS  ", {"colour": EMBER, "font": COND, "size": 9.4}),
