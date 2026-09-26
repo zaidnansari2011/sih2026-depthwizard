@@ -175,6 +175,8 @@ def slide_title(s) -> None:
               "PS Category": ("PS Category :", "Software"),
               "Team ID": ("Team ID :", TEAM_ID),
               "Team Name": ("Team Name :", TEAM)}
+    for sh in by_name(s, "Subtitle 3"):         # the "TITLE PAGE" heading, dropped at
+        drop(sh)                                 # the guide's request
     (box,) = by_name(s, "TextBox 9")
     filled = set()
     for p in box.text_frame.paragraphs:
