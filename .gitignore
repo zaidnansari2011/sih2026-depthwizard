@@ -80,3 +80,15 @@ out_controls/
 # --- demo-video staging copy of the viewer (regenerable; holds DFC2019 scene imagery,
 # which is not redistributed) ---
 tools/video/_stage/
+
+# --- superseded decks (A-D carry the withdrawn 0.6 m '3.6 %' claim) and another team's
+# deck; kept locally, never published. Deck E is the submission. ---
+docs/SIH2026-DevUp-SIH26175-DepthWizard.pptx
+docs/SIH2026-DevUp-SIH26175-DepthWizard.pdf
+docs/SIH2026-DevUp-SIH26175-DepthWizard-B.pptx
+docs/SIH2026-DevUp-SIH26175-DepthWizard-B.pdf
+docs/SIH2026-DevUp-SIH26175-DepthWizard-C.pptx
+docs/SIH2026-DevUp-SIH26175-DepthWizard-C.pdf
+docs/SIH2026-DevUp-SIH26175-DepthWizard-D.pptx
+docs/SIH2026-DevUp-SIH26175-DepthWizard-D.pdf
+docs/Debug Dynasty*
