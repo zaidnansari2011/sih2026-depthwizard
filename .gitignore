@@ -92,3 +92,7 @@ docs/SIH2026-DevUp-SIH26175-DepthWizard-C.pdf
 docs/SIH2026-DevUp-SIH26175-DepthWizard-D.pptx
 docs/SIH2026-DevUp-SIH26175-DepthWizard-D.pdf
 docs/Debug Dynasty*
+
+# Local tool config
+.claude/
+CLAUDE.md
